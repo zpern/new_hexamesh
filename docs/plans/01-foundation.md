@@ -25,6 +25,7 @@
 ```text
 CMakeLists.txt
 cmake/
+├── CompileOptions.cmake
 └── Dependencies.cmake
 include/boundary_mesh/
 ├── core/
@@ -45,6 +46,7 @@ third/
 职责：
 
 - `types.hpp`：标量、三维点/向量和实体 ID。
+- `cmake/CompileOptions.cmake`：集中管理本项目的编译器警告、UTF-8 和 PIC 选项。
 - `cmake/Dependencies.cmake`：集中发现或创建第三方依赖 target。
 - `surface_mesh.hpp`：三角形、四边形、边界标签和混合表面网格。
 - `volume_mesh.hpp`：四面体、金字塔、三棱柱、六面体及混合体网格。
@@ -57,6 +59,7 @@ third/
 **Files:**
 
 - Modify: `CMakeLists.txt`
+- Create: `cmake/CompileOptions.cmake`
 - Create: `cmake/Dependencies.cmake`
 - Create: `include/boundary_mesh/core/types.hpp`
 - Create: `tests/CMakeLists.txt`
@@ -82,6 +85,39 @@ git submodule status
 预期输出包含 `third/eigen`。
 
 - [ ] **Step 2: 编写顶层 CMake**
+
+创建 `cmake/CompileOptions.cmake`：
+
+```cmake
+include_guard(GLOBAL)
+
+add_library(boundary_mesh_compile_options INTERFACE)
+add_library(
+    BoundaryMesh::CompileOptions
+    ALIAS boundary_mesh_compile_options
+)
+
+target_compile_features(
+    boundary_mesh_compile_options
+    INTERFACE cxx_std_17
+)
+
+target_compile_options(
+    boundary_mesh_compile_options
+    INTERFACE
+        $<$<CXX_COMPILER_ID:MSVC>:/utf-8>
+        $<$<CXX_COMPILER_ID:MSVC>:/W4>
+        $<$<CXX_COMPILER_ID:MSVC>:/permissive->
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall>
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wextra>
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wpedantic>
+)
+
+set_target_properties(
+    boundary_mesh_compile_options
+    PROPERTIES INTERFACE_POSITION_INDEPENDENT_CODE ON
+)
+```
 
 创建 `cmake/Dependencies.cmake`：
 
@@ -127,12 +163,13 @@ message(STATUS "BoundaryMesh Eigen directory: ${BOUNDARY_MESH_EIGEN_DIR}")
 ```cmake
 cmake_minimum_required(VERSION 3.20)
 
-project(new_boundaryMesh VERSION 0.1.0 LANGUAGES CXX)
+project(BoundaryMesh VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include("${PROJECT_SOURCE_DIR}/cmake/CompileOptions.cmake")
 include("${PROJECT_SOURCE_DIR}/cmake/Dependencies.cmake")
 
 add_library(boundary_mesh_core INTERFACE)
@@ -143,7 +180,12 @@ target_include_directories(boundary_mesh_core INTERFACE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(boundary_mesh_core INTERFACE Eigen3::Eigen)
+target_link_libraries(
+    boundary_mesh_core
+    INTERFACE
+        BoundaryMesh::CompileOptions
+        Eigen3::Eigen
+)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -237,7 +279,7 @@ ctest --test-dir build -C Debug --output-on-failure
 - [ ] **Step 7: 提交**
 
 ```powershell
-git add CMakeLists.txt cmake/Dependencies.cmake .gitmodules third/eigen include tests
+git add CMakeLists.txt cmake/CompileOptions.cmake cmake/Dependencies.cmake include tests
 git commit -m "build: establish core library foundation"
 ```
 
