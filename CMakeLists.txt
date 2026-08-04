@@ -59,6 +59,33 @@ target_link_libraries(
         BoundaryMesh::Core
 )
 
+add_library(
+    boundary_mesh_boundary_layer
+    STATIC
+        src/growth/growth_patch_builder.cpp
+)
+add_library(
+    BoundaryMesh::BoundaryLayer
+    ALIAS boundary_mesh_boundary_layer
+)
+target_compile_features(
+    boundary_mesh_boundary_layer
+    PUBLIC
+        cxx_std_17
+)
+target_include_directories(
+    boundary_mesh_boundary_layer
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(
+    boundary_mesh_boundary_layer
+    PUBLIC
+        BoundaryMesh::Core
+        BoundaryMesh::Surface
+)
+
 include(CTest)
 
 if(BUILD_TESTING)
