@@ -15,7 +15,9 @@
 - `Surface` 逐个计算 Triangle/Quad，不接收完整 `SurfaceMesh`，不保存网格状态。
 - `BoundaryLayer` 遍历整个当前 `GrowthFront`，逐面调用 `Surface` 并汇总结果。
 - 完整 `SurfaceTopology` 必须封闭；提取后的 Wall `GrowthPatch` 允许开放边界和多个连通分量。
-- `GrowthFront` 使用紧凑局部顶点编号，显式保存到源顶点、源面的映射。
+- `GrowthFront` 使用紧凑局部顶点编号，显式保存到源顶点、源面的映射以及逐顶点 Symmetry region 归属。
+- GrowthPatch 的对称归属只由 Wall 顶点的 `vertexFaces()` 决定，不读取边的二侧邻接；Wall 与 Farfield 不相交。
+- 当前 `SurfaceTopologyBuilder` 仍拒绝非流形边；本阶段只移除 GrowthPatch 对二侧边邻接的新增依赖，不扩展阶段 02 的输入范围。
 - 前沿坐标变化后必须重新评价，禁止复用上一层面积、法向或方向。
 - 容差由当前前沿包围盒尺度计算，局部 Surface 算法只接收有效长度容差。
 - 可预期错误使用 `Result<T, E>`；库代码不打印日志、不返回部分结果、不让异常跨公共 API。
@@ -311,7 +313,7 @@ git commit -m "feat: add stateless surface evaluation"
 
 ---
 
-### Task 3: GrowthPatch 提取与边界分类
+### Task 3: GrowthPatch 提取与逐顶点对称归属
 
 **Files:**
 
@@ -329,20 +331,35 @@ git commit -m "feat: add stateless surface evaluation"
 - Produces: `GrowthPatchBuilder::build(const SurfaceMesh&, const SurfaceTopology&)`
 - Produces target: `BoundaryMesh::BoundaryLayer`
 
-- [ ] **Step 1: 用封闭三棱柱写 RED 测试**
+- [ ] **Step 1: 用无 Wall-Farfield 交点的封闭三棱柱写 RED 测试**
 
-为五个面赋 Wall、Farfield、Symmetry 标签。断言只选择 Wall 面；源面、源顶点和源边按 ID 升序；边分别被分类为 Interior、SymmetryBoundary、FarfieldBoundary；全部改成 Farfield 后返回 `EmptyGrowthPatch`。
+三棱柱底面标记为 Wall，顶面标记为 Farfield，三个侧面分别标记为 `Symmetry region 30/31/32`。Wall 与 Farfield 不共享顶点。断言只选择底面；三个 Wall 顶点按源 ID 升序输出，并分别记录排序后的 `{30,32}`、`{30,31}`、`{31,32}`。该测试只通过 `vertexFaces()` 表达顶点归属，不断言任何 Patch 边。
 
 ```cpp
-enum class PatchEdgeKind { Interior, SymmetryBoundary, FarfieldBoundary };
+const auto &vertices = patch.value().vertices();
+const std::array<std::vector<std::uint32_t>, 3> expected_regions{{
+    {30, 32},
+    {30, 31},
+    {31, 32}}};
 
-struct PatchEdge
+if (patch.value().sourceFaceIds() !=
+        std::vector<SurfaceFaceId>{SurfaceFaceId{0}} ||
+    vertices.size() != expected_regions.size())
 {
-    EdgeId source_edge_id{};
-    std::array<SurfaceFaceId, 2> complete_face_ids{};
-    PatchEdgeKind kind{PatchEdgeKind::Interior};
-};
+    return 1;
+}
+
+for (std::size_t index = 0; index < vertices.size(); ++index)
+{
+    if (vertices[index].source_vertex_id != static_cast<VertexId>(index) ||
+        vertices[index].symmetry_region_ids != expected_regions[index])
+    {
+        return 2;
+    }
+}
 ```
+
+把全部面改成 Wall，断言六个 PatchVertex 的 `symmetry_region_ids` 均为空；把全部面改成 Farfield，断言返回 `EmptyGrowthPatch`。
 
 - [ ] **Step 2: 运行 RED**
 
@@ -355,19 +372,22 @@ cmake --build build --config Debug --target boundary_mesh_growth_patch_test
 - [ ] **Step 3: 定义只读 GrowthPatch**
 
 ```cpp
+struct PatchVertex
+{
+    VertexId source_vertex_id{};
+    std::vector<std::uint32_t> symmetry_region_ids;
+};
+
 class GrowthPatch
 {
 public:
-    const std::vector<VertexId> &sourceVertexIds() const noexcept;
+    const std::vector<PatchVertex> &vertices() const noexcept;
     const std::vector<SurfaceFaceId> &sourceFaceIds() const noexcept;
-    const std::vector<PatchEdge> &edges() const noexcept;
 private:
     friend class GrowthPatchBuilder;
-    GrowthPatch(std::vector<VertexId>, std::vector<SurfaceFaceId>,
-                std::vector<PatchEdge>);
-    std::vector<VertexId> source_vertex_ids_;
+    GrowthPatch(std::vector<PatchVertex>, std::vector<SurfaceFaceId>);
+    std::vector<PatchVertex> vertices_;
     std::vector<SurfaceFaceId> source_face_ids_;
-    std::vector<PatchEdge> edges_;
 };
 
 struct EmptyGrowthPatch {};
@@ -383,7 +403,7 @@ using GrowthPatchError = std::variant<EmptyGrowthPatch, MeshTopologyMismatch>;
 
 - [ ] **Step 4: 实现确定性提取**
 
-依次扫描面 ID 选择 Wall；使用按输入大小建立的 `vector<bool>` 标记顶点和边；最后按索引升序输出。每条已选边读取 `edgeFaces()` 两侧标签并按 `Wall+Wall`、`Wall+Symmetry`、`Wall+Farfield` 分类。禁止用 `unordered_map` 遍历顺序生成公开数组。
+依次扫描面 ID 选择 Wall，并使用与 `mesh.vertices` 等长的 `vector<bool>` 标记 Wall 顶点。随后按 VertexId 升序处理每个已标记顶点，遍历 `topology.vertexFaces()[vertex_id]`；关联面标签为 Symmetry 时收集其 `region_id`，最后 `sort/unique`。Wall 和 Farfield 面不增加约束。公开 `PatchVertex`、逐顶点 region 和源面数组均不得依赖 `unordered_map` 遍历顺序。
 
 - [ ] **Step 5: 建立 BoundaryLayer target、验证并提交**
 
@@ -426,7 +446,7 @@ git commit -m "feat: extract wall growth patch"
 
 - [ ] **Step 1: 写紧凑编号 RED 测试**
 
-使用 Task 3 的三棱柱数据，构造 topology、patch、front 后断言：`layer == 0`；坐标依照 `source_vertex_ids` 复制；面数量与 `source_face_ids` 一致；每个面改用 `[0, front.vertices.size())` 的局部编号；绕序保持不变。
+使用 Task 3 的三棱柱数据，构造 topology、patch、front 后断言：`layer == 0`；坐标和 `source_vertex_ids` 依照 `patch.vertices()` 复制；`vertex_boundaries` 与前沿顶点一一对应并继承排序后的多个 Symmetry region；面数量与 `source_face_ids` 一致；每个面改用 `[0, front.vertices.size())` 的局部编号；绕序保持不变。
 
 - [ ] **Step 2: 运行 RED**
 
@@ -439,6 +459,11 @@ cmake --build build --config Debug --target boundary_mesh_growth_front_test
 - [ ] **Step 3: 定义数据与错误**
 
 ```cpp
+struct FrontVertexBoundary
+{
+    std::vector<std::uint32_t> symmetry_region_ids;
+};
+
 struct GrowthFront
 {
     std::uint32_t layer{};
@@ -446,6 +471,7 @@ struct GrowthFront
     std::vector<SurfaceFace> faces;
     std::vector<VertexId> source_vertex_ids;
     std::vector<SurfaceFaceId> source_face_ids;
+    std::vector<FrontVertexBoundary> vertex_boundaries;
 };
 
 struct InvalidPatchVertex { VertexId source_vertex_id{}; };
@@ -463,7 +489,7 @@ using GrowthFrontError = std::variant<
 
 - [ ] **Step 4: 用固定两阶段算法实现 buildInitial**
 
-第一阶段复制源顶点并建立 `source VertexId -> local VertexId` 映射；验证每个源顶点在 mesh 范围内。随后对每个源面执行以下两个明确阶段，不使用异常控制流：
+第一阶段按 `patch.vertices()` 顺序复制源坐标、源顶点 ID 和 `symmetry_region_ids`，并建立 `source VertexId -> local VertexId` 映射；验证每个源顶点在 mesh 范围内。随后对每个源面执行以下两个明确阶段，不使用异常控制流：
 
 1. 先遍历源面的全部 `vertex_ids`。任一顶点不在映射中，立即返回 `Result<GrowthFront, GrowthFrontError>::failure(PatchFaceUsesUnknownVertex{source_face_id, source_vertex_id})`。
 2. 全部验证通过后，再用不可能失败的 `std::visit` lambda 将 Triangle/Quad 的源顶点 ID 重建为局部 ID。
@@ -978,18 +1004,18 @@ git commit -m "feat: compute angle weighted growth directions"
 
 **Interfaces:**
 
-- Consumes: 完整 `SurfaceMesh/SurfaceTopology`、`GrowthPatch`、当前 `GrowthFront/FrontEvaluation`
+- Consumes: 完整 `SurfaceMesh`、当前 `GrowthFront/FrontEvaluation` 以及前沿逐顶点 Symmetry region 归属
 - Produces: `SymmetryConstraintBuilder::build(...)`
 - Produces: `SymmetryConstraints::apply(front_vertex_index, raw_direction)`
 - 单平面投影、两平面交线、共线法向去重、三个独立约束报错均与遍历顺序无关
 
 - [ ] **Step 1: 写单对称面和 region 平面验证 RED 测试**
 
-在封闭三棱柱数据中把一个侧面标记为 `Symmetry, region_id=7`，提取 patch、front 和 evaluation 后构建约束。对位于该边界上的前沿顶点应用含对称面法向分量的方向，断言结果单位化且点乘平面法向为零；无约束顶点保持原方向单位化。
+在包含 `Symmetry, region_id=7` 平面的封闭数据中构造 front 和 evaluation；把一个前沿顶点的 `vertex_boundaries` 设为 `{7}`，另一个设为空。对前者应用含平面法向分量的方向，断言结果单位化且点乘平面法向为零；无约束顶点保持原方向单位化。
 
 ```cpp
 const auto constraints = SymmetryConstraintBuilder{}.build(
-    mesh, topology, patch, front, evaluation);
+    mesh, front, evaluation);
 if (!constraints.hasValue())
 {
     return 1;
@@ -1014,7 +1040,7 @@ if (!constrained.hasValue() ||
 - 同一前沿顶点属于两个正交对称 region，约束方向必须沿两平面交线，且与 raw direction 点积非负；
 - 两个 region 法向平行或反平行，去重后等价于一个平面；
 - 三个 region 法向线性独立，返回 `OverConstrainedGrowthVertex`；
-- 将输入面或 patch edge 顺序打乱，约束结果不变。
+- 将输入面或顶点中的 `symmetry_region_ids` 顺序打乱，约束结果不变。
 
 ```cpp
 const Vector3 raw_line_hint{1.0, 1.0, 1.0};
@@ -1131,8 +1157,6 @@ public:
     Result<SymmetryConstraints, GrowthDirectionError>
     build(
         const SurfaceMesh &mesh,
-        const SurfaceTopology &topology,
-        const GrowthPatch &patch,
         const GrowthFront &front,
         const FrontEvaluation &evaluation) const;
 };
@@ -1140,9 +1164,9 @@ public:
 
 - [ ] **Step 5: 验证 Symmetry region 是真实平面**
 
-按 `region_id` 升序建立 region。对于每个被 Patch 对称边引用的 region：
+先从全部 `front.vertex_boundaries` 收集被引用的 region ID，排序并去重；随后按 `region_id` 升序建立平面。对于每个被前沿顶点引用的 region：
 
-1. 取该 region 最小 `SurfaceFaceId` 作为参考面；逐面调用 Task 2 的 Triangle/Quad 算法。
+1. 若输入表面中不存在该 region 的 Symmetry 面，返回 `SymmetryInputMismatch`；否则取该 region 最小 `SurfaceFaceId` 作为参考面，逐面调用 Task 2 的 Triangle/Quad 算法。
 2. 参考点取参考面中心，参考法向取其单位法向。
 3. 同一 region 所有面法向必须满足 `abs(dot(reference, current)) >= 1-angular_tolerance`。
 4. 同一 region 所有面顶点到参考平面的距离必须不超过 `evaluation.effective_length_tolerance`。
@@ -1152,7 +1176,7 @@ public:
 
 - [ ] **Step 6: 建立顶点到独立平面的约束**
 
-从每条 `PatchEdgeKind::SymmetryBoundary` 的 `source_edge_id` 读取完整 topology 边端点，并找到其非 Wall 相邻面的 Symmetry `region_id`。通过 `front.source_vertex_ids` 映射到当前局部顶点。
+逐个读取 `front.vertex_boundaries[front_vertex_index].symmetry_region_ids`，并将 region ID 映射到已验证平面的稳定索引。构建器不读取 Patch 边、`edgeFaces()` 或完整拓扑的边二侧邻接。
 
 每个顶点的平面按 `region_id` 排序。若两个单位法向满足：
 
@@ -1237,10 +1261,10 @@ const auto evaluation0 = FrontEvaluator{}.evaluate(layer0.value());
 const auto directions0 = computeGrowthDirections(
     layer0.value(), evaluation0.value());
 const auto constraints0 = SymmetryConstraintBuilder{}.build(
-    mesh, topology.value(), patch.value(), layer0.value(), evaluation0.value());
+    mesh, layer0.value(), evaluation0.value());
 ```
 
-每一步先检查 `hasValue()` 再读取 `value()`。保存第一个前沿面的 layer 0 面积、法向以及两份 source 映射。
+每一步先检查 `hasValue()` 再读取 `value()`。保存第一个前沿面的 layer 0 面积、法向、两份 source 映射以及逐顶点对称归属。
 
 - [ ] **Step 2: 人工移动出 layer 1 并验证重算**
 
@@ -1271,9 +1295,21 @@ if (evaluation1.value().layer != 1 ||
     return 11;
 }
 if (layer1.source_vertex_ids != layer0.value().source_vertex_ids ||
-    layer1.source_face_ids != layer0.value().source_face_ids)
+    layer1.source_face_ids != layer0.value().source_face_ids ||
+    layer1.vertex_boundaries.size() !=
+        layer0.value().vertex_boundaries.size())
 {
     return 12;
+}
+for (std::size_t index = 0;
+     index < layer1.vertex_boundaries.size();
+     ++index)
+{
+    if (layer1.vertex_boundaries[index].symmetry_region_ids !=
+        layer0.value().vertex_boundaries[index].symmetry_region_ids)
+    {
+        return 12;
+    }
 }
 ```
 
@@ -1334,8 +1370,8 @@ git status --short --branch
 - [ ] `SurfaceTopologyBuilder` 拒绝全部输入顶点中的 NaN/Infinity。
 - [ ] `Surface` 函数只计算单个 Triangle/Quad，不接收完整网格。
 - [ ] `FrontEvaluator` 遍历整个当前前沿并逐面调用 `Surface`。
-- [ ] `GrowthPatch` 允许开放边界，输出顺序确定。
-- [ ] `GrowthFront` 使用紧凑编号并保存显式源实体映射。
+- [ ] `GrowthPatch` 允许开放边界，按 `vertexFaces()` 保存排序去重的逐顶点 Symmetry region，且不读取边的二侧邻接。
+- [ ] `GrowthFront` 使用紧凑编号并保存显式源实体映射和逐顶点对称归属。
 - [ ] layer 1 坐标变化后面积、法向和节点方向确实重算。
 - [ ] 退化错误包含当前实体、源实体和 layer。
 - [ ] 节点方向只使用当前前沿局部关联面。
