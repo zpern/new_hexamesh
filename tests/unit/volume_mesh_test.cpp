@@ -98,8 +98,7 @@ int main()
         return 8;
     }
 
-    if (
-        mesh.metadata[2].source_face_id != SurfaceFaceId{2})
+    if (mesh.metadata[2].source_face_id != SurfaceFaceId{2})
     {
         return 9;
     }
