@@ -63,6 +63,7 @@ add_library(
     boundary_mesh_boundary_layer
     STATIC
         src/growth/growth_patch_builder.cpp
+        src/growth/growth_front_builder.cpp
 )
 add_library(
     BoundaryMesh::BoundaryLayer
