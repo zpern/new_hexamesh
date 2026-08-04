@@ -1,9 +1,9 @@
 #pragma once
 
 #include <boundary_mesh/core/result.hpp>
-#include <boundary_mesh/mesh/surface_mesh.hpp>
-#include <boundary_mesh/mesh/surface_topology.hpp>
-#include <boundary_mesh/mesh/surface_topology_error.hpp>
+#include <boundary_mesh/mesh/mesh_surface.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_error.hpp>
 
 namespace boundary_mesh
 {

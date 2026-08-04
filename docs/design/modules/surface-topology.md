@@ -214,13 +214,13 @@ BoundaryMesh::Core
 include/boundary_mesh/core/result.hpp
     通用 Result<T, E>
 
-include/boundary_mesh/mesh/surface_topology.hpp
+include/boundary_mesh/mesh/mesh_surface_topology.hpp
     Edge、面邻接类型和 SurfaceTopology 只读接口
 
-include/boundary_mesh/mesh/surface_topology_error.hpp
+include/boundary_mesh/mesh/mesh_surface_topology_error.hpp
     显式拓扑错误类型
 
-include/boundary_mesh/mesh/surface_topology_builder.hpp
+include/boundary_mesh/mesh/mesh_surface_topology_builder.hpp
     无状态构建器公开接口
 
 src/mesh/surface_topology_builder.cpp

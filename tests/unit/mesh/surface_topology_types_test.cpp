@@ -4,8 +4,8 @@
 #include <variant>
 #include <vector>
 
-#include <boundary_mesh/mesh/surface_topology.hpp>
-#include <boundary_mesh/mesh/surface_topology_error.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_error.hpp>
 
 int main()
 {

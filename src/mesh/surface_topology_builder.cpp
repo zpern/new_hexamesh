@@ -10,7 +10,7 @@
 #include <variant>
 #include <vector>
 
-#include <boundary_mesh/mesh/surface_topology_builder.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 #include <optional>
 
 namespace boundary_mesh

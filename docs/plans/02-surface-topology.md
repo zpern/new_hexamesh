@@ -29,13 +29,13 @@
 include/boundary_mesh/core/result.hpp
     C++17 通用 Result<T, E>
 
-include/boundary_mesh/mesh/surface_topology.hpp
+include/boundary_mesh/mesh/mesh_surface_topology.hpp
     Edge、面邻接类型和 SurfaceTopology 只读快照
 
-include/boundary_mesh/mesh/surface_topology_error.hpp
+include/boundary_mesh/mesh/mesh_surface_topology_error.hpp
     显式拓扑错误结构和 SurfaceTopologyError 变体
 
-include/boundary_mesh/mesh/surface_topology_builder.hpp
+include/boundary_mesh/mesh/mesh_surface_topology_builder.hpp
     无状态 SurfaceTopologyBuilder 公开接口
 
 src/mesh/surface_topology_builder.cpp
@@ -277,8 +277,8 @@ git commit -m "feat: add result value type"
 
 **Files:**
 
-- Create: `include/boundary_mesh/mesh/surface_topology.hpp`
-- Create: `include/boundary_mesh/mesh/surface_topology_error.hpp`
+- Create: `include/boundary_mesh/mesh/mesh_surface_topology.hpp`
+- Create: `include/boundary_mesh/mesh/mesh_surface_topology_error.hpp`
 - Create: `tests/unit/surface_topology_types_test.cpp`
 - Modify: `tests/CMakeLists.txt`
 
@@ -298,8 +298,8 @@ git commit -m "feat: add result value type"
 #include <variant>
 #include <vector>
 
-#include <boundary_mesh/mesh/surface_topology.hpp>
-#include <boundary_mesh/mesh/surface_topology_error.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_error.hpp>
 
 int main()
 {
@@ -380,7 +380,7 @@ cmake --build build --config Debug
 
 - [ ] **Step 3: 定义错误类型**
 
-创建 `include/boundary_mesh/mesh/surface_topology_error.hpp`：
+创建 `include/boundary_mesh/mesh/mesh_surface_topology_error.hpp`：
 
 ```cpp
 #pragma once
@@ -453,7 +453,7 @@ namespace boundary_mesh
 
 - [ ] **Step 4: 定义只读拓扑**
 
-创建 `include/boundary_mesh/mesh/surface_topology.hpp`：
+创建 `include/boundary_mesh/mesh/mesh_surface_topology.hpp`：
 
 ```cpp
 #pragma once
@@ -558,8 +558,8 @@ ctest --test-dir build -C Debug --output-on-failure
 - [ ] **Step 6: 提交**
 
 ```powershell
-git add include/boundary_mesh/mesh/surface_topology.hpp `
-        include/boundary_mesh/mesh/surface_topology_error.hpp `
+git add include/boundary_mesh/mesh/mesh_surface_topology.hpp `
+        include/boundary_mesh/mesh/mesh_surface_topology_error.hpp `
         tests/CMakeLists.txt `
         tests/unit/surface_topology_types_test.cpp
 git diff --cached --check
@@ -572,7 +572,7 @@ git commit -m "feat: define surface topology types"
 
 **Files:**
 
-- Create: `include/boundary_mesh/mesh/surface_topology_builder.hpp`
+- Create: `include/boundary_mesh/mesh/mesh_surface_topology_builder.hpp`
 - Create: `src/mesh/surface_topology_builder.cpp`
 - Create: `tests/unit/surface_topology_validation_test.cpp`
 - Modify: `CMakeLists.txt`
@@ -590,7 +590,7 @@ git commit -m "feat: define surface topology types"
 ```cpp
 #include <variant>
 
-#include <boundary_mesh/mesh/surface_topology_builder.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 
 namespace
 {
@@ -734,15 +734,15 @@ cmake --build build --config Debug
 
 - [ ] **Step 3: 声明构建器**
 
-创建 `include/boundary_mesh/mesh/surface_topology_builder.hpp`：
+创建 `include/boundary_mesh/mesh/mesh_surface_topology_builder.hpp`：
 
 ```cpp
 #pragma once
 
 #include <boundary_mesh/core/result.hpp>
-#include <boundary_mesh/mesh/surface_mesh.hpp>
-#include <boundary_mesh/mesh/surface_topology.hpp>
-#include <boundary_mesh/mesh/surface_topology_error.hpp>
+#include <boundary_mesh/mesh/mesh_surface.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_error.hpp>
 
 namespace boundary_mesh
 {
@@ -770,7 +770,7 @@ namespace boundary_mesh
 #include <utility>
 #include <vector>
 
-#include <boundary_mesh/mesh/surface_topology_builder.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 
 namespace boundary_mesh
 {
@@ -956,7 +956,7 @@ ctest --test-dir build -C Debug --output-on-failure
 
 ```powershell
 git add CMakeLists.txt `
-        include/boundary_mesh/mesh/surface_topology_builder.hpp `
+        include/boundary_mesh/mesh/mesh_surface_topology_builder.hpp `
         src/mesh/surface_topology_builder.cpp `
         tests/CMakeLists.txt `
         tests/unit/surface_topology_validation_test.cpp
@@ -989,7 +989,7 @@ git commit -m "feat: validate surface topology input"
 #include <variant>
 #include <vector>
 
-#include <boundary_mesh/mesh/surface_topology_builder.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 
 namespace
 {
@@ -1179,7 +1179,7 @@ ctest --test-dir build -C Debug --output-on-failure
 #include <utility>
 #include <vector>
 
-#include <boundary_mesh/mesh/surface_topology_builder.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 
 namespace boundary_mesh
 {
@@ -1535,7 +1535,7 @@ git commit -m "feat: build mixed surface topology"
 #include <array>
 #include <variant>
 
-#include <boundary_mesh/mesh/surface_topology_builder.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 
 namespace
 {

@@ -28,7 +28,7 @@
 ## File Map
 
 ```text
-include/boundary_mesh/mesh/surface_topology_error.hpp
+include/boundary_mesh/mesh/mesh_surface_topology_error.hpp
 src/mesh/surface_topology_builder.cpp
     输入 SurfaceMesh 的有限坐标检查
 
@@ -92,7 +92,7 @@ src/growth/symmetry_constraint_builder.cpp
 
 **Files:**
 
-- Modify: `include/boundary_mesh/mesh/surface_topology_error.hpp`
+- Modify: `include/boundary_mesh/mesh/mesh_surface_topology_error.hpp`
 - Modify: `src/mesh/surface_topology_builder.cpp`
 - Modify: `tests/unit/mesh/surface_topology_validation_test.cpp`
 
@@ -177,7 +177,7 @@ for (std::size_t vertex_index = 0;
 ```powershell
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
-git add include/boundary_mesh/mesh/surface_topology_error.hpp src/mesh/surface_topology_builder.cpp tests/unit/mesh/surface_topology_validation_test.cpp
+git add include/boundary_mesh/mesh/mesh_surface_topology_error.hpp src/mesh/surface_topology_builder.cpp tests/unit/mesh/surface_topology_validation_test.cpp
 git diff --cached --check
 git commit -m "feat: reject non-finite surface vertices"
 ```

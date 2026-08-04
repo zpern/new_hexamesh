@@ -325,7 +325,7 @@ git commit -m "build: establish core library foundation"
 
 **Files:**
 
-- Create: `include/boundary_mesh/mesh/surface_mesh.hpp`
+- Create: `include/boundary_mesh/mesh/mesh_surface.hpp`
 - Create: `tests/unit/surface_mesh_test.cpp`
 - Modify: `tests/CMakeLists.txt`
 
@@ -341,7 +341,7 @@ git commit -m "build: establish core library foundation"
 
 ```cpp
 #include <variant>
-#include <boundary_mesh/mesh/surface_mesh.hpp>
+#include <boundary_mesh/mesh/mesh_surface.hpp>
 
 int main()
 {
@@ -384,11 +384,11 @@ add_test(NAME boundary_mesh_surface_mesh_test COMMAND boundary_mesh_surface_mesh
 cmake --build build --config Debug
 ```
 
-预期因缺少 `boundary_mesh/mesh/surface_mesh.hpp` 而失败。
+预期因缺少 `boundary_mesh/mesh/mesh_surface.hpp` 而失败。
 
 - [ ] **Step 3: 实现混合表面类型**
 
-创建 `include/boundary_mesh/mesh/surface_mesh.hpp`：
+创建 `include/boundary_mesh/mesh/mesh_surface.hpp`：
 
 ```cpp
 #pragma once
@@ -441,7 +441,7 @@ ctest --test-dir build -C Debug --output-on-failure
 - [ ] **Step 5: 提交**
 
 ```powershell
-git add include/boundary_mesh/mesh/surface_mesh.hpp tests
+git add include/boundary_mesh/mesh/mesh_surface.hpp tests
 git commit -m "feat: add mixed surface mesh types"
 ```
 
@@ -451,7 +451,7 @@ git commit -m "feat: add mixed surface mesh types"
 
 **Files:**
 
-- Create: `include/boundary_mesh/mesh/volume_mesh.hpp`
+- Create: `include/boundary_mesh/mesh/mesh_volume.hpp`
 - Create: `tests/unit/volume_mesh_test.cpp`
 - Modify: `tests/CMakeLists.txt`
 
@@ -467,7 +467,7 @@ git commit -m "feat: add mixed surface mesh types"
 创建 `tests/unit/volume_mesh_test.cpp`：
 
 ```cpp
-#include <boundary_mesh/mesh/volume_mesh.hpp>
+#include <boundary_mesh/mesh/mesh_volume.hpp>
 
 int main()
 {
@@ -515,11 +515,11 @@ add_test(NAME boundary_mesh_volume_mesh_test COMMAND boundary_mesh_volume_mesh_t
 cmake --build build --config Debug
 ```
 
-预期因缺少 `boundary_mesh/mesh/volume_mesh.hpp` 而失败。
+预期因缺少 `boundary_mesh/mesh/mesh_volume.hpp` 而失败。
 
 - [ ] **Step 3: 实现混合体网格**
 
-创建 `include/boundary_mesh/mesh/volume_mesh.hpp`：
+创建 `include/boundary_mesh/mesh/mesh_volume.hpp`：
 
 ```cpp
 #pragma once
@@ -596,7 +596,7 @@ ctest --test-dir build -C Debug --output-on-failure
 - [ ] **Step 5: 提交**
 
 ```powershell
-git add include/boundary_mesh/mesh/volume_mesh.hpp tests
+git add include/boundary_mesh/mesh/mesh_volume.hpp tests
 git commit -m "feat: add mixed volume mesh types"
 ```
 

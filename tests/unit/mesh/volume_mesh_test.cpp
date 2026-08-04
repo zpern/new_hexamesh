@@ -1,6 +1,6 @@
 #include <variant>
 
-#include <boundary_mesh/mesh/volume_mesh.hpp>
+#include <boundary_mesh/mesh/mesh_volume.hpp>
 
 int main()
 {

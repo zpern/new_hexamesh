@@ -1,6 +1,6 @@
 #include <variant>
 
-#include <boundary_mesh/mesh/surface_mesh.hpp>
+#include <boundary_mesh/mesh/mesh_surface.hpp>
 
 int main()
 {
