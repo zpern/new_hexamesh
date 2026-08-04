@@ -1,0 +1,37 @@
+cmake_minimum_required(VERSION 3.20)
+
+project(BoundaryMesh VERSION 1.0.0 LANGUAGES CXX)
+
+message(STATUS "##############################")
+MESSAGE(STATUS "CMake config files are writtern by zpern")
+MESSAGE(STATUS "config bug report to: zpern@outlook.com")
+
+set(TIGER_ROOT_DIR "${CMAKE_SOURCE_DIR}/")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompileOptions.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake")
+
+
+add_library(boundary_mesh_core INTERFACE)
+add_library(BoundaryMesh::Core ALIAS boundary_mesh_core)
+
+target_compile_features(boundary_mesh_core INTERFACE cxx_std_17)
+
+target_include_directories(
+    boundary_mesh_core
+    INTERFACE
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(
+    boundary_mesh_core
+    INTERFACE
+        BoundaryMesh::CompileOptions
+        Eigen3::Eigen
+)
+
+include(CTest)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
