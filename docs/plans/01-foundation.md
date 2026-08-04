@@ -332,7 +332,7 @@ git commit -m "build: establish core library foundation"
 **Interfaces:**
 
 - Consumes: `Point3`, `VertexId`
-- Produces: `Triangle`, `Quadrilateral`, `SurfaceFace`
+- Produces: `Triangle`, `Quad`, `SurfaceFace`
 - Produces: `SurfaceBoundaryKind`, `SurfaceBoundaryTag`, `SurfaceMesh`
 
 - [ ] **Step 1: 编写失败测试**
@@ -354,16 +354,16 @@ int main()
     };
     mesh.faces.emplace_back(
         Triangle{{VertexId{0}, VertexId{1}, VertexId{2}}});
-    mesh.faces.emplace_back(Quadrilateral{{
+    mesh.faces.emplace_back(Quad{{
         VertexId{0}, VertexId{1}, VertexId{2}, VertexId{3}}});
     mesh.face_tags = {
-        SurfaceBoundaryTag{SurfaceBoundaryKind::Growth, 4},
+        SurfaceBoundaryTag{SurfaceBoundaryKind::Wall, 4},
         SurfaceBoundaryTag{SurfaceBoundaryKind::Symmetry, 9}
     };
 
     if (mesh.vertices.size() != 4) return 1;
     if (!std::holds_alternative<Triangle>(mesh.faces[0])) return 2;
-    if (!std::holds_alternative<Quadrilateral>(mesh.faces[1])) return 3;
+    if (!std::holds_alternative<Quad>(mesh.faces[1])) return 3;
     if (mesh.face_tags[1].kind != SurfaceBoundaryKind::Symmetry) return 4;
     if (mesh.face_tags[1].region_id != 9) return 5;
     return 0;
@@ -402,23 +402,21 @@ cmake --build build --config Debug
 
 namespace boundary_mesh {
 
-struct Triangle { std::array<VertexId, 3> vertices{}; };
-struct Quadrilateral { std::array<VertexId, 4> vertices{}; };
-using SurfaceFace = std::variant<Triangle, Quadrilateral>;
+struct Triangle { std::array<VertexId, 3> vertex_ids{}; };
+struct Quad { std::array<VertexId, 4> vertex_ids{}; };
+using SurfaceFace = std::variant<Triangle, Quad>;
 
-enum class SurfaceBoundaryKind : std::uint8_t
+enum class SurfaceBoundaryKind
 {
-    Growth,
-    Symmetry,
-    Wall,
     Farfield,
-    UserDefined
+    Wall,
+    Symmetry
 };
 
 struct SurfaceBoundaryTag
 {
-    SurfaceBoundaryKind kind{SurfaceBoundaryKind::Growth};
-    std::int32_t region_id{0};
+    SurfaceBoundaryKind kind{SurfaceBoundaryKind::Farfield};
+    std::uint32_t region_id{};
 };
 
 struct SurfaceMesh
@@ -536,10 +534,10 @@ cmake --build build --config Debug
 
 namespace boundary_mesh {
 
-struct Tetra { std::array<VertexId, 4> vertices{}; };
-struct Pyramid { std::array<VertexId, 5> vertices{}; };
-struct Prism { std::array<VertexId, 6> vertices{}; };
-struct Hexa { std::array<VertexId, 8> vertices{}; };
+struct Tetra { std::array<VertexId, 4> vertex_ids{}; };
+struct Pyramid { std::array<VertexId, 5> vertex_ids{}; };
+struct Prism { std::array<VertexId, 6> vertex_ids{}; };
+struct Hexa { std::array<VertexId, 8> vertex_ids{}; };
 
 using VolumeCell = std::variant<Tetra, Pyramid, Prism, Hexa>;
 
@@ -567,12 +565,12 @@ inline CellType cellType(const VolumeCell& cell)
     }, cell);
 }
 
-enum class CellRole : std::uint8_t { RegularLayer, Transition };
+enum class CellRole { RegularLayer, Transition };
 
 struct CellMetadata
 {
     CellRole role{CellRole::RegularLayer};
-    SurfaceFaceId source_face{};
+    SurfaceFaceId source_face_id{};
     std::uint32_t layer{0};
 };
 

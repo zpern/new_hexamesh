@@ -176,15 +176,15 @@ using VolumeCellId = std::uint32_t;
 ```cpp
 struct Triangle
 {
-    std::array<VertexId, 3> vertices;
+    std::array<VertexId, 3> vertex_ids{};
 };
 
-struct Quadrilateral
+struct Quad
 {
-    std::array<VertexId, 4> vertices;
+    std::array<VertexId, 4> vertex_ids{};
 };
 
-using SurfaceFace = std::variant<Triangle, Quadrilateral>;
+using SurfaceFace = std::variant<Triangle, Quad>;
 ```
 
 `SurfaceMesh` 保存：
@@ -206,22 +206,22 @@ using SurfaceFace = std::variant<Triangle, Quadrilateral>;
 ```cpp
 struct Tetra
 {
-    std::array<VertexId, 4> vertices;
+    std::array<VertexId, 4> vertex_ids{};
 };
 
 struct Pyramid
 {
-    std::array<VertexId, 5> vertices;
+    std::array<VertexId, 5> vertex_ids{};
 };
 
 struct Prism
 {
-    std::array<VertexId, 6> vertices;
+    std::array<VertexId, 6> vertex_ids{};
 };
 
 struct Hexa
 {
-    std::array<VertexId, 8> vertices;
+    std::array<VertexId, 8> vertex_ids{};
 };
 
 using VolumeCell =
@@ -264,7 +264,7 @@ using VolumeCell =
 ```cpp
 struct FaceGrowthState
 {
-    SurfaceFaceId source_face;
+    SurfaceFaceId source_face_id;
     std::uint32_t requested_layers;
     std::uint32_t accepted_layers;
     StopReason stop_reason;
