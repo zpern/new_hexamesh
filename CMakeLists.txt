@@ -65,6 +65,7 @@ add_library(
         src/growth/growth_patch_builder.cpp
         src/growth/growth_front_builder.cpp
         src/growth/front_evaluator.cpp
+        src/growth/growth_direction.cpp
 )
 add_library(
     BoundaryMesh::BoundaryLayer
