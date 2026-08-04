@@ -1,15 +1,9 @@
-add_executable(
-    boundary_mesh_core_types_test
-    unit/core_types_test.cpp
-)
+# 1
+add_executable(boundary_mesh_core_types_test unit/core_types_test.cpp)
+target_link_libraries(boundary_mesh_core_types_test PRIVATE BoundaryMesh::Core)
+add_test(NAME boundary_mesh_core_types_test COMMAND boundary_mesh_core_types_test)
 
-target_link_libraries(
-    boundary_mesh_core_types_test
-    PRIVATE
-        BoundaryMesh::Core
-)
-
-add_test(
-    NAME boundary_mesh_core_types_test
-    COMMAND boundary_mesh_core_types_test
-)
+#2
+add_executable(boundary_mesh_surface_mesh_test unit/surface_mesh_test.cpp)
+target_link_libraries(boundary_mesh_surface_mesh_test PRIVATE BoundaryMesh::Core)
+add_test(NAME boundary_mesh_surface_mesh_test COMMAND boundary_mesh_surface_mesh_test)

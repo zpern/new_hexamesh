@@ -1,7 +1,7 @@
 #include <cstdint>
 #include <type_traits>
 
-#include "boundary_mesh/core/types.hpp"
+#include <boundary_mesh/core/types.hpp>
 
 int main()
 {
@@ -23,7 +23,7 @@ int main()
 
     if (direction.norm() != 1.0)
     {
-        return 1;
+        return 2;
     }
 
     return 0;
