@@ -30,6 +30,35 @@ target_link_libraries(
         BoundaryMesh::CompileOptions
 )
 
+add_library(
+    boundary_mesh_surface
+    STATIC
+        src/surface/face_evaluation.cpp
+)
+add_library(
+    BoundaryMesh::Surface
+    ALIAS boundary_mesh_surface
+)
+
+target_compile_features(
+    boundary_mesh_surface
+    PUBLIC
+        cxx_std_17
+)
+
+target_include_directories(
+    boundary_mesh_surface
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(
+    boundary_mesh_surface
+    PUBLIC
+        BoundaryMesh::Core
+)
+
 include(CTest)
 
 if(BUILD_TESTING)

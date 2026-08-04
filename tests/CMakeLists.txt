@@ -60,3 +60,20 @@ add_test(
     NAME boundary_mesh_surface_topology_edge_error_test
     COMMAND boundary_mesh_surface_topology_edge_error_test
 )
+
+# 9
+add_executable(
+    boundary_mesh_surface_face_evaluation_test
+    unit/surface/face_evaluation_test.cpp
+)
+
+target_link_libraries(
+    boundary_mesh_surface_face_evaluation_test
+    PRIVATE
+        BoundaryMesh::Surface
+)
+
+add_test(
+    NAME boundary_mesh_surface_face_evaluation_test
+    COMMAND boundary_mesh_surface_face_evaluation_test
+)
