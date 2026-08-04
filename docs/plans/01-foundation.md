@@ -24,6 +24,8 @@
 
 ```text
 CMakeLists.txt
+cmake/
+└── Dependencies.cmake
 include/hexamesh/
 ├── core/
 │   └── types.hpp
@@ -43,6 +45,7 @@ extern/
 职责：
 
 - `types.hpp`：标量、三维点/向量和实体 ID。
+- `cmake/Dependencies.cmake`：集中发现或创建第三方依赖 target。
 - `surface_mesh.hpp`：三角形、四边形、边界标签和混合表面网格。
 - `volume_mesh.hpp`：四面体、金字塔、三棱柱、六面体及混合体网格。
 - `tests/CMakeLists.txt`：为每个单元测试建立独立可执行程序。
@@ -54,6 +57,7 @@ extern/
 **Files:**
 
 - Modify: `CMakeLists.txt`
+- Create: `cmake/Dependencies.cmake`
 - Create: `include/hexamesh/core/types.hpp`
 - Create: `tests/CMakeLists.txt`
 - Create: `tests/unit/core_types_test.cpp`
@@ -79,6 +83,45 @@ git submodule status
 
 - [ ] **Step 2: 编写顶层 CMake**
 
+创建 `cmake/Dependencies.cmake`：
+
+```cmake
+include_guard(GLOBAL)
+
+if(TARGET Eigen3::Eigen)
+    message(STATUS "HexaMesh reuses existing target Eigen3::Eigen")
+    return()
+endif()
+
+set(
+    HEXAMESH_DEPENDENCIES_DIR
+    "${PROJECT_SOURCE_DIR}/extern"
+    CACHE PATH
+    "Directory containing HexaMesh third-party dependencies"
+)
+
+set(HEXAMESH_EIGEN_DIR "${HEXAMESH_DEPENDENCIES_DIR}/eigen")
+
+if(NOT EXISTS "${HEXAMESH_EIGEN_DIR}/Eigen/Core")
+    message(FATAL_ERROR
+        "HexaMesh could not find Eigen. Expected: "
+        "${HEXAMESH_EIGEN_DIR}/Eigen/Core"
+    )
+endif()
+
+add_library(hexamesh_eigen INTERFACE)
+
+target_include_directories(
+    hexamesh_eigen
+    SYSTEM INTERFACE
+        "${HEXAMESH_EIGEN_DIR}"
+)
+
+add_library(Eigen3::Eigen ALIAS hexamesh_eigen)
+
+message(STATUS "HexaMesh Eigen directory: ${HEXAMESH_EIGEN_DIR}")
+```
+
 将根目录 `CMakeLists.txt` 替换为：
 
 ```cmake
@@ -90,18 +133,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(NOT TARGET Eigen3::Eigen)
-    if(EXISTS "${PROJECT_SOURCE_DIR}/extern/eigen/Eigen/Core")
-        add_library(hexamesh_eigen INTERFACE)
-        target_include_directories(hexamesh_eigen INTERFACE
-            "${PROJECT_SOURCE_DIR}/extern/eigen"
-        )
-        add_library(Eigen3::Eigen ALIAS hexamesh_eigen)
-    else()
-        message(FATAL_ERROR
-            "Eigen3::Eigen is unavailable and extern/eigen is missing")
-    endif()
-endif()
+include("${PROJECT_SOURCE_DIR}/cmake/Dependencies.cmake")
 
 add_library(hexamesh_core INTERFACE)
 add_library(HexaMesh::Core ALIAS hexamesh_core)
@@ -205,7 +237,7 @@ ctest --test-dir build -C Debug --output-on-failure
 - [ ] **Step 7: 提交**
 
 ```powershell
-git add CMakeLists.txt .gitmodules extern/eigen include tests
+git add CMakeLists.txt cmake/Dependencies.cmake .gitmodules extern/eigen include tests
 git commit -m "build: establish core library foundation"
 ```
 
