@@ -229,31 +229,22 @@ max(characteristic_length × relative_length_tolerance,
 
 `GrowthPatch` 表示完整表面中本次需要生长的 Wall 子集。
 
-完整 `SurfaceTopology` 必须封闭，但 `GrowthPatch` 可以开放。Wall 与 Symmetry 或 Farfield 的共享边，在完整表面中连接两个面，在 Patch 中则形成合法边界。
+完整 `SurfaceTopology` 必须封闭，但 `GrowthPatch` 可以开放。GrowthPatch 的对称归属来自 Wall 顶点的关联面，不依赖“一条边恰好关联两个面”的二流形假设。当前 `SurfaceTopologyBuilder` 仍拒绝非流形边；本设计只保证 GrowthPatch 数据模型不会继续固化该限制。
 
 ### 6.2 数据模型
 
 ```cpp
-enum class PatchEdgeKind
+struct PatchVertex
 {
-    Interior,
-    SymmetryBoundary,
-    FarfieldBoundary
-};
-
-struct PatchEdge
-{
-    EdgeId source_edge_id{};
-    std::array<SurfaceFaceId, 2> complete_face_ids{};
-    PatchEdgeKind kind{PatchEdgeKind::Interior};
+    VertexId source_vertex_id{};
+    std::vector<std::uint32_t> symmetry_region_ids;
 };
 
 class GrowthPatch
 {
 public:
-    const std::vector<VertexId>& sourceVertexIds() const noexcept;
+    const std::vector<PatchVertex>& vertices() const noexcept;
     const std::vector<SurfaceFaceId>& sourceFaceIds() const noexcept;
-    const std::vector<PatchEdge>& edges() const noexcept;
 };
 ```
 
@@ -262,22 +253,16 @@ public:
 ### 6.3 确定性顺序
 
 - `source_face_ids` 按 `SurfaceFaceId` 升序；
-- `source_vertex_ids` 按 `VertexId` 升序；
-- `edges` 按完整表面的稳定 `EdgeId` 升序。
+- `vertices` 按 `source_vertex_id` 升序；
+- 每个顶点的 `symmetry_region_ids` 按 `region_id` 升序并去重。
 
 不能通过遍历 `unordered_map` 决定最终顺序。
 
-### 6.4 边界分类
+### 6.4 顶点边界归属
 
-对于 Wall 面使用的每条完整表面边，读取 `SurfaceTopology::edgeFaces()` 和两侧标签：
+先按面 ID 选择全部 Wall 面并标记其顶点。随后对每个已标记顶点遍历 `SurfaceTopology::vertexFaces()`：关联 Wall 面不增加约束；关联 Symmetry 面时记录其 `region_id`；关联 Farfield 面不产生对称约束。Wall 与 Farfield 按输入业务不变量不会相交，因此不建立 Wall-Farfield 分类。
 
-```text
-Wall + Wall      -> Interior
-Wall + Symmetry  -> SymmetryBoundary
-Wall + Farfield  -> FarfieldBoundary
-```
-
-同一边两侧都不是 Wall 时，不属于 GrowthPatch。
+一个 Wall 顶点可以属于多个 Symmetry region。后续按这些 region 的实际平面秩决定零约束、单平面、双平面交线或过约束，不根据 region 数量直接推断独立约束数量。该算法不查询边的两侧面，也不产生边级边界分类。
 
 阶段 03 选择全部 `SurfaceBoundaryKind::Wall`。按 Wall region 选择不同生长参数属于后续生长配置，不在本阶段裁剪 Patch。
 
@@ -290,6 +275,11 @@ Wall + Farfield  -> FarfieldBoundary
 `GrowthPatch` 描述源表面中的生长范围，`GrowthFront` 描述该范围在当前层的实际空间位置。
 
 ```cpp
+struct FrontVertexBoundary
+{
+    std::vector<std::uint32_t> symmetry_region_ids;
+};
+
 struct GrowthFront
 {
     std::uint32_t layer{};
@@ -297,6 +287,7 @@ struct GrowthFront
     std::vector<SurfaceFace> faces;
     std::vector<VertexId> source_vertex_ids;
     std::vector<SurfaceFaceId> source_face_ids;
+    std::vector<FrontVertexBoundary> vertex_boundaries;
 };
 ```
 
@@ -310,6 +301,9 @@ front.source_vertex_ids[front_vertex_index]
 
 front.source_face_ids[front_face_index]
     -> 原始 SurfaceMesh 面
+
+front.vertex_boundaries[front_vertex_index]
+    -> 该前沿顶点继承的全部 Symmetry region
 ```
 
 禁止使用“源顶点编号 + 层号 × 顶点数量”的隐式公式。
@@ -318,7 +312,7 @@ front.source_face_ids[front_face_index]
 
 `GrowthFrontBuilder::buildInitial()`：
 
-1. 按 GrowthPatch 的稳定源顶点顺序复制坐标；
+1. 按 GrowthPatch 的稳定 PatchVertex 顺序复制坐标、源顶点 ID 和对称 region 集合；
 2. 建立源 `VertexId` 到前沿局部下标的临时映射；
 3. 按源面顺序复制 Wall 面并将顶点编号改为前沿局部下标；
 4. 保留输入面的顶点绕序；
@@ -416,7 +410,7 @@ struct UndefinedGrowthDirection
 
 ### 10.1 约束来源
 
-`PatchEdgeKind::SymmetryBoundary` 保存的完整表面邻接能够确定对应 Symmetry 面。对称面法向通过 `BoundaryMesh::Surface` 的无状态算法计算。
+每个 `PatchVertex::symmetry_region_ids` 直接记录该 Wall 顶点所属的全部 Symmetry region。建立 GrowthFront 时该集合复制到相同局部下标的 `FrontVertexBoundary`；约束构建器不再通过 Patch 边反查对称面。对称面法向通过 `BoundaryMesh::Surface` 的无状态算法计算。
 
 对称面本身不随 Wall 前沿生长，因此其约束平面来自输入表面。阶段 03 只约束方向；候选节点位置投影属于规则生长阶段。
 
@@ -448,6 +442,16 @@ projected = direction - dot(direction, n) × n
 - 三个线性独立法向：不存在非零允许方向，返回过约束错误。
 
 交线方向选择与原始基础方向点积非负的一侧，保证结果确定。
+
+### 10.4 规则生长阶段的位置投影
+
+阶段 05 使用受约束方向和层高生成候选节点后，还必须修正浮点漂移。单平面约束使用正交投影：
+
+```text
+candidate = candidate - dot(candidate - plane_point, n) × n
+```
+
+两个独立平面约束将候选点投影到两平面的交线，不采用依次投影两个平面的顺序相关算法。阶段 03 不生成候选节点，只提供 region 归属、经约束的方向以及用于后续位置投影的平面信息。
 
 ## 11. 错误模型
 
@@ -482,7 +486,7 @@ src/surface/face_evaluation.cpp
     三角形、四边形和顶点内角实现
 
 include/boundary_mesh/growth/growth_patch.hpp
-    GrowthPatch、PatchEdge 和边界分类
+    GrowthPatch、PatchVertex 和逐顶点对称 region 归属
 
 include/boundary_mesh/growth/growth_patch_builder.hpp
 src/growth/growth_patch_builder.cpp
@@ -528,9 +532,10 @@ src/growth/growth_direction.cpp
 
 - 只选择 Wall 面；
 - 源实体顺序稳定；
-- Wall-Wall 边分类为 Interior；
-- Wall-Symmetry 边分类为 SymmetryBoundary；
-- Wall-Farfield 边分类为 FarfieldBoundary；
+- 普通 Wall 顶点不携带对称 region；
+- Wall 与单个 Symmetry region 共有的顶点携带一个 region；
+- 同时属于多个 Symmetry region 的 Wall 顶点保存排序去重后的全部 region；
+- 顶点归属只使用 `vertexFaces()`，不依赖边的二侧邻接；
 - Patch 开放边界不被当作完整表面错误；
 - 无 Wall 面时返回错误。
 
@@ -540,6 +545,7 @@ src/growth/growth_direction.cpp
 - 前沿顶点编号紧凑；
 - 面绕序保持不变；
 - 源顶点和源面映射正确；
+- 逐顶点对称 region 映射正确；
 - 输入 Mesh 和 Patch 不被修改。
 
 ### 13.5 动态评价与方向
@@ -559,7 +565,7 @@ src/growth/growth_direction.cpp
 
 1. `NonFiniteVertex` 输入坐标检查；
 2. Triangle/Quad 无状态 `Surface` 算法；
-3. GrowthPatch 提取和边界分类；
+3. GrowthPatch 提取和逐顶点对称归属；
 4. 第 0 层 GrowthFront 与源实体映射；
 5. 当前前沿动态面积、法向与退化检查；
 6. 角度加权节点方向；
