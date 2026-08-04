@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -394,6 +395,27 @@ namespace boundary_mesh
                     FaceTagCountMismatch{
                         mesh.faces.size(),
                         mesh.face_tags.size()}});
+        }
+
+        // 所有输入顶点都必须是有限坐标，
+        // 包括当前没有被任何面引用的顶点。
+        for (std::size_t vertex_index = 0;
+             vertex_index < mesh.vertices.size();
+             ++vertex_index)
+        {
+            const Point3 &point =
+                mesh.vertices[vertex_index];
+
+            if (!std::isfinite(point.x()) ||
+                !std::isfinite(point.y()) ||
+                !std::isfinite(point.z()))
+            {
+                return BuildResult::failure(
+                    SurfaceTopologyError{
+                        NonFiniteVertex{
+                            static_cast<VertexId>(
+                                vertex_index)}});
+            }
         }
 
         // 第一阶段只验证面自身，不产生任何拓扑结果。

@@ -20,6 +20,12 @@ namespace boundary_mesh
         std::size_t face_tag_count{};
     };
 
+    /// 输入顶点至少包含一个 NaN 或无穷坐标分量。
+    struct NonFiniteVertex
+    {
+        VertexId vertex_id{};
+    };
+
     /// 某个面片引用了 vertices 范围之外的顶点编号。
     struct InvalidVertexReference
     {
@@ -67,6 +73,7 @@ namespace boundary_mesh
     using SurfaceTopologyError = std::variant<
         EmptySurface,
         FaceTagCountMismatch,
+        NonFiniteVertex,
         InvalidVertexReference,
         DegenerateFace,
         DuplicateFace,

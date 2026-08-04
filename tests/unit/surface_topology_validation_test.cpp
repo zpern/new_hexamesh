@@ -1,4 +1,5 @@
 #include <variant>
+#include <limits>
 
 #include <boundary_mesh/mesh/surface_topology_builder.hpp>
 
@@ -158,6 +159,73 @@ int main()
             error->duplicate_face_id != SurfaceFaceId{1})
         {
             return 6;
+        }
+    }
+
+    // 输入顶点包含 NaN 时，必须返回 NonFiniteVertex。
+    {
+        SurfaceMesh mesh;
+        mesh.vertices = {
+            Point3{0.0, 0.0, 0.0},
+            Point3{
+                std::numeric_limits<Scalar>::quiet_NaN(),
+                0.0,
+                0.0},
+            Point3{0.0, 1.0, 0.0}};
+
+        mesh.faces.emplace_back(
+            Triangle{{VertexId{0},
+                      VertexId{1},
+                      VertexId{2}}});
+
+        mesh.face_tags.push_back(wallTag());
+
+        const auto result = builder.build(mesh);
+
+        const auto *error =
+            result.hasValue()
+                ? nullptr
+                : std::get_if<NonFiniteVertex>(
+                      &result.error());
+
+        if (error == nullptr ||
+            error->vertex_id != VertexId{1})
+        {
+            return 7;
+        }
+    }
+
+    // 即使顶点没有被任何面引用，非有限坐标也必须被拒绝。
+    {
+        SurfaceMesh mesh;
+        mesh.vertices = {
+            Point3{0.0, 0.0, 0.0},
+            Point3{1.0, 0.0, 0.0},
+            Point3{0.0, 1.0, 0.0},
+            Point3{
+                0.0,
+                -std::numeric_limits<Scalar>::infinity(),
+                0.0}};
+
+        mesh.faces.emplace_back(
+            Triangle{{VertexId{0},
+                      VertexId{1},
+                      VertexId{2}}});
+
+        mesh.face_tags.push_back(wallTag());
+
+        const auto result = builder.build(mesh);
+
+        const auto *error =
+            result.hasValue()
+                ? nullptr
+                : std::get_if<NonFiniteVertex>(
+                      &result.error());
+
+        if (error == nullptr ||
+            error->vertex_id != VertexId{3})
+        {
+            return 8;
         }
     }
 
