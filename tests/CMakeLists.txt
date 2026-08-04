@@ -136,3 +136,17 @@ add_test(
     NAME boundary_mesh_growth_direction_test
     COMMAND boundary_mesh_growth_direction_test
 )
+
+# 14
+add_executable(
+    boundary_mesh_symmetry_constraints_test
+    unit/growth/symmetry_constraints_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_symmetry_constraints_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_symmetry_constraints_test
+    COMMAND boundary_mesh_symmetry_constraints_test
+)

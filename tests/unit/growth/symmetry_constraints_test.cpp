@@ -1,0 +1,210 @@
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <variant>
+#include <vector>
+
+#include <boundary_mesh/growth/symmetry_constraint_builder.hpp>
+
+namespace
+{
+    using namespace boundary_mesh;
+
+    SurfaceMesh makeSymmetryMesh()
+    {
+        SurfaceMesh mesh;
+        mesh.vertices = {
+            Point3{0.0, 0.0, 0.0}, Point3{1.0, 0.0, 0.0},
+            Point3{0.0, 0.0, 1.0}, Point3{0.0, 1.0, 0.0},
+            Point3{0.0, 0.0, -1.0}, Point3{-1.0, 0.0, 0.0}};
+        mesh.faces = {
+            Triangle{{VertexId{0}, VertexId{2}, VertexId{1}}},
+            Triangle{{VertexId{0}, VertexId{3}, VertexId{2}}},
+            Triangle{{VertexId{0}, VertexId{1}, VertexId{3}}},
+            Triangle{{VertexId{0}, VertexId{5}, VertexId{4}}}};
+        mesh.face_tags = {
+            SurfaceBoundaryTag{SurfaceBoundaryKind::Symmetry, 7},
+            SurfaceBoundaryTag{SurfaceBoundaryKind::Symmetry, 8},
+            SurfaceBoundaryTag{SurfaceBoundaryKind::Symmetry, 9},
+            SurfaceBoundaryTag{SurfaceBoundaryKind::Symmetry, 10}};
+        return mesh;
+    }
+
+    GrowthFront makeFront(
+        std::vector<std::uint32_t> first_regions)
+    {
+        GrowthFront front;
+        front.layer = 2;
+        front.vertices = {
+            Point3{0.0, 0.0, 0.0},
+            Point3{1.0, 0.0, 0.0},
+            Point3{0.0, 1.0, 0.0}};
+        front.faces = {
+            Triangle{{VertexId{0}, VertexId{1}, VertexId{2}}}};
+        front.source_vertex_ids = {
+            VertexId{20}, VertexId{21}, VertexId{22}};
+        front.source_face_ids = {SurfaceFaceId{30}};
+        front.vertex_boundaries = {
+            FrontVertexBoundary{std::move(first_regions)},
+            FrontVertexBoundary{},
+            FrontVertexBoundary{}};
+        return front;
+    }
+
+    FrontEvaluation makeEvaluation()
+    {
+        FrontEvaluation evaluation;
+        evaluation.layer = 2;
+        evaluation.characteristic_length = 2.0;
+        evaluation.effective_length_tolerance = 1e-12;
+        return evaluation;
+    }
+
+    bool nearlyEqual(
+        const Vector3 &first,
+        const Vector3 &second,
+        Scalar tolerance = 1e-12)
+    {
+        return (first - second).norm() <= tolerance;
+    }
+}
+
+int main()
+{
+    using namespace boundary_mesh;
+
+    const SurfaceMesh mesh = makeSymmetryMesh();
+    const FrontEvaluation evaluation = makeEvaluation();
+
+    // 单平面约束会去除法向分量；无约束顶点只做归一化。
+    const GrowthFront single_front = makeFront({7});
+    const auto single = SymmetryConstraintBuilder{}.build(
+        mesh, single_front, evaluation);
+    if (!single.hasValue() ||
+        single.value().planes().size() != 1 ||
+        single.value().vertices().size() != single_front.vertices.size())
+    {
+        return 1;
+    }
+    const auto single_direction = single.value().apply(
+        0, Vector3{1.0, 2.0, 3.0});
+    if (!single_direction.hasValue() ||
+        std::abs(single_direction.value().dot(Vector3{0.0, 1.0, 0.0})) > 1e-12 ||
+        std::abs(single_direction.value().norm() - 1.0) > 1e-12)
+    {
+        return 2;
+    }
+    const auto unconstrained = single.value().apply(
+        1, Vector3{3.0, 0.0, 4.0});
+    if (!unconstrained.hasValue() ||
+        !nearlyEqual(unconstrained.value(), Vector3{0.6, 0.0, 0.8}))
+    {
+        return 3;
+    }
+
+    // 两个独立平面的允许方向只能沿其交线，并尽量保持原方向符号。
+    const GrowthFront line_front = makeFront({8, 7});
+    const auto line = SymmetryConstraintBuilder{}.build(
+        mesh, line_front, evaluation);
+    if (!line.hasValue())
+    {
+        return 4;
+    }
+    const Vector3 raw_line{1.0, 1.0, 1.0};
+    const auto line_direction = line.value().apply(0, raw_line);
+    if (!line_direction.hasValue() ||
+        std::abs(line_direction.value().dot(Vector3{1.0, 0.0, 0.0})) > 1e-12 ||
+        std::abs(line_direction.value().dot(Vector3{0.0, 1.0, 0.0})) > 1e-12 ||
+        line_direction.value().dot(raw_line) < 0.0)
+    {
+        return 5;
+    }
+
+    // 平行或反向的 region 法向属于同一个独立约束。
+    const GrowthFront redundant_front = makeFront({10, 7});
+    const auto redundant = SymmetryConstraintBuilder{}.build(
+        mesh, redundant_front, evaluation);
+    if (!redundant.hasValue() ||
+        redundant.value().vertices()[0].plane_indices.size() != 1)
+    {
+        return 6;
+    }
+
+    // region 输入顺序不影响平面顺序和约束结果。
+    const auto ordered = SymmetryConstraintBuilder{}.build(
+        mesh, makeFront({7, 8}), evaluation);
+    const auto reversed = SymmetryConstraintBuilder{}.build(
+        mesh, makeFront({8, 7}), evaluation);
+    if (!ordered.hasValue() || !reversed.hasValue())
+    {
+        return 7;
+    }
+    const auto ordered_direction = ordered.value().apply(0, raw_line);
+    const auto reversed_direction = reversed.value().apply(0, raw_line);
+    if (!ordered_direction.hasValue() || !reversed_direction.hasValue() ||
+        !nearlyEqual(ordered_direction.value(), reversed_direction.value()))
+    {
+        return 8;
+    }
+
+    // 三个线性独立的平面会完全锁死顶点，构建阶段必须拒绝。
+    const GrowthFront locked_front = makeFront({7, 8, 9});
+    const auto locked = SymmetryConstraintBuilder{}.build(
+        mesh, locked_front, evaluation);
+    const auto *locked_error = locked.hasValue()
+        ? nullptr
+        : std::get_if<OverConstrainedGrowthVertex>(&locked.error());
+    if (locked_error == nullptr ||
+        locked_error->front_vertex_index != 0 ||
+        locked_error->source_vertex_id != VertexId{20} ||
+        locked_error->layer != 2)
+    {
+        return 9;
+    }
+
+    // 前沿引用不存在的 region 时返回输入不匹配错误。
+    const auto missing = SymmetryConstraintBuilder{}.build(
+        mesh, makeFront({99}), evaluation);
+    const auto *missing_error = missing.hasValue()
+        ? nullptr
+        : std::get_if<SymmetryInputMismatch>(&missing.error());
+    if (missing_error == nullptr || missing_error->region_id != 99)
+    {
+        return 10;
+    }
+
+    // 同一 region 的面不共面时，错误指向首个不合法源面。
+    SurfaceMesh bent = mesh;
+    bent.faces.push_back(
+        Triangle{{VertexId{0}, VertexId{1}, VertexId{3}}});
+    bent.face_tags.push_back(
+        SurfaceBoundaryTag{SurfaceBoundaryKind::Symmetry, 7});
+    const auto invalid = SymmetryConstraintBuilder{}.build(
+        bent, single_front, evaluation);
+    const auto *invalid_error = invalid.hasValue()
+        ? nullptr
+        : std::get_if<InvalidSymmetrySurface>(&invalid.error());
+    if (invalid_error == nullptr ||
+        invalid_error->region_id != 7 ||
+        invalid_error->source_face_id != SurfaceFaceId{4})
+    {
+        return 11;
+    }
+
+    // 投影后没有剩余切向分量时返回可诊断错误。
+    const auto undefined = single.value().apply(
+        0, Vector3{0.0, 1.0, 0.0});
+    const auto *undefined_error = undefined.hasValue()
+        ? nullptr
+        : std::get_if<UndefinedConstrainedDirection>(&undefined.error());
+    if (undefined_error == nullptr ||
+        undefined_error->front_vertex_index != 0 ||
+        undefined_error->source_vertex_id != VertexId{20} ||
+        undefined_error->layer != 2)
+    {
+        return 12;
+    }
+
+    return 0;
+}
