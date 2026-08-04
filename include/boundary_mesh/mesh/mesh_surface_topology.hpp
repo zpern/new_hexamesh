@@ -16,40 +16,33 @@ namespace boundary_mesh
     /// SurfaceTopologyBuilder 的成功结果保证端点按升序保存。
     struct Edge
     {
-        std::array<VertexId, 2> vertex_ids{};
+        std::array<VertexId, 2> vertex_ids{}; // 按升序保存的两个端点编号
     };
 
-    /// 一条封闭流形边两侧的表面面片编号。
     using EdgeFaceIds =
-        std::array<SurfaceFaceId, 2>;
+        std::array<SurfaceFaceId, 2>; // 一条封闭流形边两侧的面片编号
 
-    /// 三角形按局部边顺序保存的三个边编号。
     using TriangleEdgeIds =
-        std::array<EdgeId, 3>;
+        std::array<EdgeId, 3>; // 三角形按局部边顺序保存的三个边编号
 
-    /// 四边形按局部边顺序保存的四个边编号。
     using QuadEdgeIds =
-        std::array<EdgeId, 4>;
+        std::array<EdgeId, 4>; // 四边形按局部边顺序保存的四个边编号
 
-    /// 一个表面面片的边编号；实际类型与源面类型一致。
     using FaceEdgeIds =
         std::variant<
             TriangleEdgeIds,
-            QuadEdgeIds>;
+            QuadEdgeIds>; // 与源面类型一致的局部边编号集合
 
-    /// 三角形跨越每条局部边后的相邻面编号。
     using TriangleNeighborIds =
-        std::array<SurfaceFaceId, 3>;
+        std::array<SurfaceFaceId, 3>; // 三角形逐条局部边对应的相邻面编号
 
-    /// 四边形跨越每条局部边后的相邻面编号。
     using QuadNeighborIds =
-        std::array<SurfaceFaceId, 4>;
+        std::array<SurfaceFaceId, 4>; // 四边形逐条局部边对应的相邻面编号
 
-    /// 一个表面面片的相邻面编号；顺序与 FaceEdgeIds 一一对应。
     using FaceNeighborIds =
         std::variant<
             TriangleNeighborIds,
-            QuadNeighborIds>;
+            QuadNeighborIds>; // 与 FaceEdgeIds 局部顺序一致的相邻面编号集合
 
     /// SurfaceMesh 的只读拓扑快照。
     /// 网格发生变化后必须重新构建，不允许局部修改该对象。
