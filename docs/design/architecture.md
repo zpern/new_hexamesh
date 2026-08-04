@@ -34,7 +34,7 @@
 new_boundaryMesh/
 ├── CMakeLists.txt
 ├── cmake/
-├── include/hexamesh/
+├── include/boundary_mesh/
 │   ├── core/
 │   ├── mesh/
 │   ├── geometry/
@@ -58,7 +58,7 @@ new_boundaryMesh/
 │   ├── integration/
 │   ├── data/
 │   └── baselines/
-├── extern/
+├── third/
 └── docs/
     ├── design/
     └── plans/
@@ -382,10 +382,10 @@ struct GrowthRetryRequest
 
 第一阶段只建立四个主要库目标：
 
-- `HexaMesh::Core`
-- `HexaMesh::Geometry`
-- `HexaMesh::BoundaryLayer`
-- `HexaMesh::IO`
+- `BoundaryMesh::Core`
+- `BoundaryMesh::Geometry`
+- `BoundaryMesh::BoundaryLayer`
+- `BoundaryMesh::IO`
 
 依赖方向：
 
@@ -408,7 +408,7 @@ BoundaryLayer
 依赖来源采用混合方式：
 
 - 如果上层工程已经提供标准 CMake target，则直接复用；
-- 否则使用 `extern/` 下的本地依赖。
+- 否则使用 `third/` 下的本地依赖。
 
 ## 13. 测试结构
 

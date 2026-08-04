@@ -4,17 +4,17 @@
 
 **Goal:** 建立可独立编译测试的 C++17 工程，并实现基础类型、混合表面网格和混合体网格数据模型。
 
-**Architecture:** `hexamesh_core` 是 header-only 基础目标，公开依赖 Eigen。表面和体单元使用 `std::variant` 显式表达类型，不通过节点数量推断类型。本计划不包含拓扑、几何算法或边界层生成。
+**Architecture:** `boundary_mesh_core` 是 header-only 基础目标，公开依赖 Eigen。表面和体单元使用 `std::variant` 显式表达类型，不通过节点数量推断类型。本计划不包含拓扑、几何算法或边界层生成。
 
 **Tech Stack:** C++17、CMake、CTest、Eigen
 
 ## Global Constraints
 
 - 使用 C++17。
-- Eigen 是 `HexaMesh::Core` 的公共依赖。
-- 上层已提供 `Eigen3::Eigen` 时直接复用，否则使用 `extern/eigen`。
-- 所有公共头文件位于 `include/hexamesh/`。
-- 项目代码位于 `hexamesh` 命名空间。
+- Eigen 是 `BoundaryMesh::Core` 的公共依赖。
+- 上层已提供 `Eigen3::Eigen` 时直接复用，否则使用 `third/eigen`。
+- 所有公共头文件位于 `include/boundary_mesh/`。
+- 项目代码位于 `boundary_mesh` 命名空间。
 - 测试不依赖网络下载的测试框架。
 - 每项任务遵循：失败测试、最小实现、测试通过、提交。
 
@@ -26,7 +26,7 @@
 CMakeLists.txt
 cmake/
 └── Dependencies.cmake
-include/hexamesh/
+include/boundary_mesh/
 ├── core/
 │   └── types.hpp
 └── mesh/
@@ -38,7 +38,7 @@ tests/
     ├── core_types_test.cpp
     ├── surface_mesh_test.cpp
     └── volume_mesh_test.cpp
-extern/
+third/
 └── eigen/
 ```
 
@@ -58,28 +58,28 @@ extern/
 
 - Modify: `CMakeLists.txt`
 - Create: `cmake/Dependencies.cmake`
-- Create: `include/hexamesh/core/types.hpp`
+- Create: `include/boundary_mesh/core/types.hpp`
 - Create: `tests/CMakeLists.txt`
 - Create: `tests/unit/core_types_test.cpp`
 - Create: `.gitmodules`
-- Create submodule: `extern/eigen`
+- Create submodule: `third/eigen`
 
 **Interfaces:**
 
-- Produces: `hexamesh::Scalar`
-- Produces: `hexamesh::Point3`
-- Produces: `hexamesh::Vector3`
+- Produces: `boundary_mesh::Scalar`
+- Produces: `boundary_mesh::Point3`
+- Produces: `boundary_mesh::Vector3`
 - Produces: `VertexId`, `EdgeId`, `SurfaceFaceId`, `VolumeCellId`
-- Produces CMake target: `HexaMesh::Core`
+- Produces CMake target: `BoundaryMesh::Core`
 
 - [ ] **Step 1: 添加 Eigen 子模块**
 
 ```powershell
-git submodule add https://github.com/mySharedsource/eigen.git extern/eigen
+git submodule add https://github.com/mySharedsource/eigen.git third/eigen
 git submodule status
 ```
 
-预期输出包含 `extern/eigen`。
+预期输出包含 `third/eigen`。
 
 - [ ] **Step 2: 编写顶层 CMake**
 
@@ -89,37 +89,37 @@ git submodule status
 include_guard(GLOBAL)
 
 if(TARGET Eigen3::Eigen)
-    message(STATUS "HexaMesh reuses existing target Eigen3::Eigen")
+    message(STATUS "BoundaryMesh reuses existing target Eigen3::Eigen")
     return()
 endif()
 
 set(
-    HEXAMESH_DEPENDENCIES_DIR
-    "${PROJECT_SOURCE_DIR}/extern"
+    BOUNDARY_MESH_DEPENDENCIES_DIR
+    "${PROJECT_SOURCE_DIR}/third"
     CACHE PATH
-    "Directory containing HexaMesh third-party dependencies"
+    "Directory containing BoundaryMesh third-party dependencies"
 )
 
-set(HEXAMESH_EIGEN_DIR "${HEXAMESH_DEPENDENCIES_DIR}/eigen")
+set(BOUNDARY_MESH_EIGEN_DIR "${BOUNDARY_MESH_DEPENDENCIES_DIR}/eigen")
 
-if(NOT EXISTS "${HEXAMESH_EIGEN_DIR}/Eigen/Core")
+if(NOT EXISTS "${BOUNDARY_MESH_EIGEN_DIR}/Eigen/Core")
     message(FATAL_ERROR
-        "HexaMesh could not find Eigen. Expected: "
-        "${HEXAMESH_EIGEN_DIR}/Eigen/Core"
+        "BoundaryMesh could not find Eigen. Expected: "
+        "${BOUNDARY_MESH_EIGEN_DIR}/Eigen/Core"
     )
 endif()
 
-add_library(hexamesh_eigen INTERFACE)
+add_library(boundary_mesh_eigen INTERFACE)
 
 target_include_directories(
-    hexamesh_eigen
+    boundary_mesh_eigen
     SYSTEM INTERFACE
-        "${HEXAMESH_EIGEN_DIR}"
+        "${BOUNDARY_MESH_EIGEN_DIR}"
 )
 
-add_library(Eigen3::Eigen ALIAS hexamesh_eigen)
+add_library(Eigen3::Eigen ALIAS boundary_mesh_eigen)
 
-message(STATUS "HexaMesh Eigen directory: ${HEXAMESH_EIGEN_DIR}")
+message(STATUS "BoundaryMesh Eigen directory: ${BOUNDARY_MESH_EIGEN_DIR}")
 ```
 
 将根目录 `CMakeLists.txt` 替换为：
@@ -135,15 +135,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include("${PROJECT_SOURCE_DIR}/cmake/Dependencies.cmake")
 
-add_library(hexamesh_core INTERFACE)
-add_library(HexaMesh::Core ALIAS hexamesh_core)
+add_library(boundary_mesh_core INTERFACE)
+add_library(BoundaryMesh::Core ALIAS boundary_mesh_core)
 
-target_compile_features(hexamesh_core INTERFACE cxx_std_17)
-target_include_directories(hexamesh_core INTERFACE
+target_compile_features(boundary_mesh_core INTERFACE cxx_std_17)
+target_include_directories(boundary_mesh_core INTERFACE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(hexamesh_core INTERFACE Eigen3::Eigen)
+target_link_libraries(boundary_mesh_core INTERFACE Eigen3::Eigen)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -159,11 +159,11 @@ endif()
 #include <cstdint>
 #include <type_traits>
 
-#include <hexamesh/core/types.hpp>
+#include <boundary_mesh/core/types.hpp>
 
 int main()
 {
-    using namespace hexamesh;
+    using namespace boundary_mesh;
 
     static_assert(std::is_same_v<Scalar, double>);
     static_assert(std::is_same_v<VertexId, std::uint32_t>);
@@ -187,9 +187,9 @@ int main()
 创建 `tests/CMakeLists.txt`：
 
 ```cmake
-add_executable(hexamesh_core_types_test unit/core_types_test.cpp)
-target_link_libraries(hexamesh_core_types_test PRIVATE HexaMesh::Core)
-add_test(NAME hexamesh_core_types_test COMMAND hexamesh_core_types_test)
+add_executable(boundary_mesh_core_types_test unit/core_types_test.cpp)
+target_link_libraries(boundary_mesh_core_types_test PRIVATE BoundaryMesh::Core)
+add_test(NAME boundary_mesh_core_types_test COMMAND boundary_mesh_core_types_test)
 ```
 
 - [ ] **Step 4: 验证测试先失败**
@@ -199,11 +199,11 @@ cmake -S . -B build
 cmake --build build --config Debug
 ```
 
-预期因缺少 `hexamesh/core/types.hpp` 而失败。
+预期因缺少 `boundary_mesh/core/types.hpp` 而失败。
 
 - [ ] **Step 5: 实现基础类型**
 
-创建 `include/hexamesh/core/types.hpp`：
+创建 `include/boundary_mesh/core/types.hpp`：
 
 ```cpp
 #pragma once
@@ -211,7 +211,7 @@ cmake --build build --config Debug
 #include <cstdint>
 #include <Eigen/Core>
 
-namespace hexamesh {
+namespace boundary_mesh {
 
 using Scalar = double;
 using Point3 = Eigen::Vector3d;
@@ -222,7 +222,7 @@ using EdgeId = std::uint32_t;
 using SurfaceFaceId = std::uint32_t;
 using VolumeCellId = std::uint32_t;
 
-} // namespace hexamesh
+} // namespace boundary_mesh
 ```
 
 - [ ] **Step 6: 验证测试通过**
@@ -237,7 +237,7 @@ ctest --test-dir build -C Debug --output-on-failure
 - [ ] **Step 7: 提交**
 
 ```powershell
-git add CMakeLists.txt cmake/Dependencies.cmake .gitmodules extern/eigen include tests
+git add CMakeLists.txt cmake/Dependencies.cmake .gitmodules third/eigen include tests
 git commit -m "build: establish core library foundation"
 ```
 
@@ -247,7 +247,7 @@ git commit -m "build: establish core library foundation"
 
 **Files:**
 
-- Create: `include/hexamesh/mesh/surface_mesh.hpp`
+- Create: `include/boundary_mesh/mesh/surface_mesh.hpp`
 - Create: `tests/unit/surface_mesh_test.cpp`
 - Modify: `tests/CMakeLists.txt`
 
@@ -263,11 +263,11 @@ git commit -m "build: establish core library foundation"
 
 ```cpp
 #include <variant>
-#include <hexamesh/mesh/surface_mesh.hpp>
+#include <boundary_mesh/mesh/surface_mesh.hpp>
 
 int main()
 {
-    using namespace hexamesh;
+    using namespace boundary_mesh;
 
     SurfaceMesh mesh;
     mesh.vertices = {
@@ -295,9 +295,9 @@ int main()
 在 `tests/CMakeLists.txt` 末尾添加：
 
 ```cmake
-add_executable(hexamesh_surface_mesh_test unit/surface_mesh_test.cpp)
-target_link_libraries(hexamesh_surface_mesh_test PRIVATE HexaMesh::Core)
-add_test(NAME hexamesh_surface_mesh_test COMMAND hexamesh_surface_mesh_test)
+add_executable(boundary_mesh_surface_mesh_test unit/surface_mesh_test.cpp)
+target_link_libraries(boundary_mesh_surface_mesh_test PRIVATE BoundaryMesh::Core)
+add_test(NAME boundary_mesh_surface_mesh_test COMMAND boundary_mesh_surface_mesh_test)
 ```
 
 - [ ] **Step 2: 验证测试先失败**
@@ -306,11 +306,11 @@ add_test(NAME hexamesh_surface_mesh_test COMMAND hexamesh_surface_mesh_test)
 cmake --build build --config Debug
 ```
 
-预期因缺少 `hexamesh/mesh/surface_mesh.hpp` 而失败。
+预期因缺少 `boundary_mesh/mesh/surface_mesh.hpp` 而失败。
 
 - [ ] **Step 3: 实现混合表面类型**
 
-创建 `include/hexamesh/mesh/surface_mesh.hpp`：
+创建 `include/boundary_mesh/mesh/surface_mesh.hpp`：
 
 ```cpp
 #pragma once
@@ -320,9 +320,9 @@ cmake --build build --config Debug
 #include <variant>
 #include <vector>
 
-#include <hexamesh/core/types.hpp>
+#include <boundary_mesh/core/types.hpp>
 
-namespace hexamesh {
+namespace boundary_mesh {
 
 struct Triangle { std::array<VertexId, 3> vertices{}; };
 struct Quadrilateral { std::array<VertexId, 4> vertices{}; };
@@ -350,7 +350,7 @@ struct SurfaceMesh
     std::vector<SurfaceBoundaryTag> face_tags;
 };
 
-} // namespace hexamesh
+} // namespace boundary_mesh
 ```
 
 - [ ] **Step 4: 验证测试通过**
@@ -365,7 +365,7 @@ ctest --test-dir build -C Debug --output-on-failure
 - [ ] **Step 5: 提交**
 
 ```powershell
-git add include/hexamesh/mesh/surface_mesh.hpp tests
+git add include/boundary_mesh/mesh/surface_mesh.hpp tests
 git commit -m "feat: add mixed surface mesh types"
 ```
 
@@ -375,7 +375,7 @@ git commit -m "feat: add mixed surface mesh types"
 
 **Files:**
 
-- Create: `include/hexamesh/mesh/volume_mesh.hpp`
+- Create: `include/boundary_mesh/mesh/volume_mesh.hpp`
 - Create: `tests/unit/volume_mesh_test.cpp`
 - Modify: `tests/CMakeLists.txt`
 
@@ -391,11 +391,11 @@ git commit -m "feat: add mixed surface mesh types"
 创建 `tests/unit/volume_mesh_test.cpp`：
 
 ```cpp
-#include <hexamesh/mesh/volume_mesh.hpp>
+#include <boundary_mesh/mesh/volume_mesh.hpp>
 
 int main()
 {
-    using namespace hexamesh;
+    using namespace boundary_mesh;
 
     VolumeMesh mesh;
     mesh.vertices.resize(8, Point3::Zero());
@@ -428,9 +428,9 @@ int main()
 在 `tests/CMakeLists.txt` 末尾添加：
 
 ```cmake
-add_executable(hexamesh_volume_mesh_test unit/volume_mesh_test.cpp)
-target_link_libraries(hexamesh_volume_mesh_test PRIVATE HexaMesh::Core)
-add_test(NAME hexamesh_volume_mesh_test COMMAND hexamesh_volume_mesh_test)
+add_executable(boundary_mesh_volume_mesh_test unit/volume_mesh_test.cpp)
+target_link_libraries(boundary_mesh_volume_mesh_test PRIVATE BoundaryMesh::Core)
+add_test(NAME boundary_mesh_volume_mesh_test COMMAND boundary_mesh_volume_mesh_test)
 ```
 
 - [ ] **Step 2: 验证测试先失败**
@@ -439,11 +439,11 @@ add_test(NAME hexamesh_volume_mesh_test COMMAND hexamesh_volume_mesh_test)
 cmake --build build --config Debug
 ```
 
-预期因缺少 `hexamesh/mesh/volume_mesh.hpp` 而失败。
+预期因缺少 `boundary_mesh/mesh/volume_mesh.hpp` 而失败。
 
 - [ ] **Step 3: 实现混合体网格**
 
-创建 `include/hexamesh/mesh/volume_mesh.hpp`：
+创建 `include/boundary_mesh/mesh/volume_mesh.hpp`：
 
 ```cpp
 #pragma once
@@ -454,9 +454,9 @@ cmake --build build --config Debug
 #include <variant>
 #include <vector>
 
-#include <hexamesh/core/types.hpp>
+#include <boundary_mesh/core/types.hpp>
 
-namespace hexamesh {
+namespace boundary_mesh {
 
 struct Tetrahedron { std::array<VertexId, 4> vertices{}; };
 struct Pyramid { std::array<VertexId, 5> vertices{}; };
@@ -505,7 +505,7 @@ struct VolumeMesh
     std::vector<CellMetadata> metadata;
 };
 
-} // namespace hexamesh
+} // namespace boundary_mesh
 ```
 
 - [ ] **Step 4: 验证测试通过**
@@ -520,7 +520,7 @@ ctest --test-dir build -C Debug --output-on-failure
 - [ ] **Step 5: 提交**
 
 ```powershell
-git add include/hexamesh/mesh/volume_mesh.hpp tests
+git add include/boundary_mesh/mesh/volume_mesh.hpp tests
 git commit -m "feat: add mixed volume mesh types"
 ```
 
@@ -566,7 +566,7 @@ git log --oneline --decorate -4
 
 ## Completion Criteria
 
-1. `HexaMesh::Core` 可以被其他 CMake 目标链接。
+1. `BoundaryMesh::Core` 可以被其他 CMake 目标链接。
 2. Eigen 通过标准 target `Eigen3::Eigen` 使用。
 3. 三角形和四边形通过 `SurfaceFace` 显式表达。
 4. 四面体、金字塔、三棱柱和六面体通过 `VolumeCell` 显式表达。
