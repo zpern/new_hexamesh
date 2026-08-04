@@ -67,13 +67,34 @@ src/growth/symmetry_constraint_builder.cpp
 
 ---
 
+### Task 2 前置整理: 测试目录按模块迁移
+
+**Files:**
+
+- Move: `tests/unit/core_types_test.cpp` → `tests/unit/core/core_types_test.cpp`
+- Move: `tests/unit/result_test.cpp` → `tests/unit/core/result_test.cpp`
+- Move: `tests/unit/surface_mesh_test.cpp` → `tests/unit/mesh/surface_mesh_test.cpp`
+- Move: `tests/unit/volume_mesh_test.cpp` → `tests/unit/mesh/volume_mesh_test.cpp`
+- Move: `tests/unit/surface_topology_types_test.cpp` → `tests/unit/mesh/surface_topology_types_test.cpp`
+- Move: `tests/unit/surface_topology_validation_test.cpp` → `tests/unit/mesh/surface_topology_validation_test.cpp`
+- Move: `tests/unit/surface_topology_builder_test.cpp` → `tests/unit/mesh/surface_topology_builder_test.cpp`
+- Move: `tests/unit/surface_topology_edge_error_test.cpp` → `tests/unit/mesh/surface_topology_edge_error_test.cpp`
+- Move: `tests/unit/surface_face_evaluation_test.cpp` → `tests/unit/surface/face_evaluation_test.cpp`
+- Modify: `tests/CMakeLists.txt`
+
+- [ ] 保持所有 CMake target 和 CTest name 不变，只修改 `.cpp` 相对路径。
+- [ ] 重新运行 `cmake -S . -B build`，避免旧生成系统继续引用原路径。
+- [ ] Debug 构建并运行全部 CTest；迁移提交不得包含生产代码变化。
+
+---
+
 ### Task 1: 输入顶点有限坐标检查
 
 **Files:**
 
 - Modify: `include/boundary_mesh/mesh/surface_topology_error.hpp`
 - Modify: `src/mesh/surface_topology_builder.cpp`
-- Modify: `tests/unit/surface_topology_validation_test.cpp`
+- Modify: `tests/unit/mesh/surface_topology_validation_test.cpp`
 
 **Interfaces:**
 
@@ -156,7 +177,7 @@ for (std::size_t vertex_index = 0;
 ```powershell
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
-git add include/boundary_mesh/mesh/surface_topology_error.hpp src/mesh/surface_topology_builder.cpp tests/unit/surface_topology_validation_test.cpp
+git add include/boundary_mesh/mesh/surface_topology_error.hpp src/mesh/surface_topology_builder.cpp tests/unit/mesh/surface_topology_validation_test.cpp
 git diff --cached --check
 git commit -m "feat: reject non-finite surface vertices"
 ```
@@ -169,7 +190,7 @@ git commit -m "feat: reject non-finite surface vertices"
 
 - Create: `include/boundary_mesh/surface/face_evaluation.hpp`
 - Create: `src/surface/face_evaluation.cpp`
-- Create: `tests/unit/surface_face_evaluation_test.cpp`
+- Create: `tests/unit/surface/face_evaluation_test.cpp`
 - Modify: `CMakeLists.txt`
 - Modify: `tests/CMakeLists.txt`
 
@@ -222,7 +243,7 @@ if (degenerate.hasValue() ||
 ```
 
 ```cmake
-add_executable(boundary_mesh_surface_face_evaluation_test unit/surface_face_evaluation_test.cpp)
+add_executable(boundary_mesh_surface_face_evaluation_test unit/surface/face_evaluation_test.cpp)
 target_link_libraries(boundary_mesh_surface_face_evaluation_test PRIVATE BoundaryMesh::Surface)
 add_test(NAME boundary_mesh_surface_face_evaluation_test COMMAND boundary_mesh_surface_face_evaluation_test)
 ```
@@ -283,7 +304,7 @@ target_link_libraries(boundary_mesh_surface PUBLIC BoundaryMesh::Core)
 ```powershell
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
-git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/surface/face_evaluation.hpp src/surface/face_evaluation.cpp tests/unit/surface_face_evaluation_test.cpp
+git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/surface/face_evaluation.hpp src/surface/face_evaluation.cpp tests/unit/surface/face_evaluation_test.cpp
 git diff --cached --check
 git commit -m "feat: add stateless surface evaluation"
 ```
@@ -298,7 +319,7 @@ git commit -m "feat: add stateless surface evaluation"
 - Create: `include/boundary_mesh/growth/growth_patch_error.hpp`
 - Create: `include/boundary_mesh/growth/growth_patch_builder.hpp`
 - Create: `src/growth/growth_patch_builder.cpp`
-- Create: `tests/unit/growth_patch_test.cpp`
+- Create: `tests/unit/growth/growth_patch_test.cpp`
 - Modify: `CMakeLists.txt`
 - Modify: `tests/CMakeLists.txt`
 
@@ -379,7 +400,7 @@ target_link_libraries(boundary_mesh_boundary_layer PUBLIC BoundaryMesh::Core Bou
 ```powershell
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
-git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth src/growth/growth_patch_builder.cpp tests/unit/growth_patch_test.cpp
+git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth src/growth/growth_patch_builder.cpp tests/unit/growth/growth_patch_test.cpp
 git diff --cached --check
 git commit -m "feat: extract wall growth patch"
 ```
@@ -394,7 +415,7 @@ git commit -m "feat: extract wall growth patch"
 - Create: `include/boundary_mesh/growth/growth_front_error.hpp`
 - Create: `include/boundary_mesh/growth/growth_front_builder.hpp`
 - Create: `src/growth/growth_front_builder.cpp`
-- Create: `tests/unit/growth_front_test.cpp`
+- Create: `tests/unit/growth/growth_front_test.cpp`
 - Modify: `CMakeLists.txt`
 - Modify: `tests/CMakeLists.txt`
 
@@ -500,7 +521,7 @@ for (std::size_t face_index = 0;
 ```powershell
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
-git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth/growth_front.hpp include/boundary_mesh/growth/growth_front_error.hpp include/boundary_mesh/growth/growth_front_builder.hpp src/growth/growth_front_builder.cpp tests/unit/growth_front_test.cpp
+git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth/growth_front.hpp include/boundary_mesh/growth/growth_front_error.hpp include/boundary_mesh/growth/growth_front_builder.hpp src/growth/growth_front_builder.cpp tests/unit/growth/growth_front_test.cpp
 git diff --cached --check
 git commit -m "feat: build initial growth front"
 ```
@@ -515,7 +536,7 @@ git commit -m "feat: build initial growth front"
 - Create: `include/boundary_mesh/growth/front_evaluation_error.hpp`
 - Create: `include/boundary_mesh/growth/front_evaluator.hpp`
 - Create: `src/growth/front_evaluator.cpp`
-- Create: `tests/unit/front_evaluator_test.cpp`
+- Create: `tests/unit/growth/front_evaluator_test.cpp`
 - Modify: `CMakeLists.txt`
 - Modify: `tests/CMakeLists.txt`
 
@@ -605,7 +626,7 @@ if (face_error == nullptr ||
 注册：
 
 ```cmake
-add_executable(boundary_mesh_front_evaluator_test unit/front_evaluator_test.cpp)
+add_executable(boundary_mesh_front_evaluator_test unit/growth/front_evaluator_test.cpp)
 target_link_libraries(boundary_mesh_front_evaluator_test PRIVATE BoundaryMesh::BoundaryLayer)
 add_test(NAME boundary_mesh_front_evaluator_test COMMAND boundary_mesh_front_evaluator_test)
 ```
@@ -795,7 +816,7 @@ const auto local_result = std::visit(
 ```powershell
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
-git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth/front_evaluation.hpp include/boundary_mesh/growth/front_evaluation_error.hpp include/boundary_mesh/growth/front_evaluator.hpp src/growth/front_evaluator.cpp tests/unit/front_evaluator_test.cpp
+git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth/front_evaluation.hpp include/boundary_mesh/growth/front_evaluation_error.hpp include/boundary_mesh/growth/front_evaluator.hpp src/growth/front_evaluator.cpp tests/unit/growth/front_evaluator_test.cpp
 git diff --cached --check
 git commit -m "feat: evaluate dynamic growth front"
 ```
@@ -809,7 +830,7 @@ git commit -m "feat: evaluate dynamic growth front"
 - Create: `include/boundary_mesh/growth/growth_direction.hpp`
 - Create: `include/boundary_mesh/growth/growth_direction_error.hpp`
 - Create: `src/growth/growth_direction.cpp`
-- Create: `tests/unit/growth_direction_test.cpp`
+- Create: `tests/unit/growth/growth_direction_test.cpp`
 - Modify: `CMakeLists.txt`
 - Modify: `tests/CMakeLists.txt`
 
@@ -936,7 +957,7 @@ accumulated[center_id] +=
 ```powershell
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
-git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth/growth_direction.hpp include/boundary_mesh/growth/growth_direction_error.hpp src/growth/growth_direction.cpp tests/unit/growth_direction_test.cpp
+git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth/growth_direction.hpp include/boundary_mesh/growth/growth_direction_error.hpp src/growth/growth_direction.cpp tests/unit/growth/growth_direction_test.cpp
 git diff --cached --check
 git commit -m "feat: compute angle weighted growth directions"
 ```
@@ -950,7 +971,7 @@ git commit -m "feat: compute angle weighted growth directions"
 - Create: `include/boundary_mesh/growth/symmetry_constraints.hpp`
 - Create: `include/boundary_mesh/growth/symmetry_constraint_builder.hpp`
 - Create: `src/growth/symmetry_constraint_builder.cpp`
-- Create: `tests/unit/symmetry_constraints_test.cpp`
+- Create: `tests/unit/growth/symmetry_constraints_test.cpp`
 - Modify: `include/boundary_mesh/growth/growth_direction_error.hpp`
 - Modify: `CMakeLists.txt`
 - Modify: `tests/CMakeLists.txt`
@@ -1172,7 +1193,7 @@ return line;
 ```powershell
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
-git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth/growth_direction_error.hpp include/boundary_mesh/growth/symmetry_constraints.hpp include/boundary_mesh/growth/symmetry_constraint_builder.hpp src/growth/symmetry_constraint_builder.cpp tests/unit/symmetry_constraints_test.cpp
+git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth/growth_direction_error.hpp include/boundary_mesh/growth/symmetry_constraints.hpp include/boundary_mesh/growth/symmetry_constraint_builder.hpp src/growth/symmetry_constraint_builder.cpp tests/unit/growth/symmetry_constraints_test.cpp
 git diff --cached --check
 git commit -m "feat: constrain growth directions on symmetry planes"
 ```
