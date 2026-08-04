@@ -108,3 +108,17 @@ add_test(
     NAME boundary_mesh_growth_front_test
     COMMAND boundary_mesh_growth_front_test
 )
+
+# 12
+add_executable(
+    boundary_mesh_front_evaluator_test
+    unit/growth/front_evaluator_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_front_evaluator_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_front_evaluator_test
+    COMMAND boundary_mesh_front_evaluator_test
+)
