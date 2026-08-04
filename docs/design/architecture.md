@@ -24,7 +24,7 @@
 5. 单元类型必须显式表达，禁止通过节点数量推测类型。
 6. 模块之间通过输入和结果传递数据，避免共享大规模可变状态。
 7. Eigen 是公共基础依赖。
-8. libigl 是固定依赖，但其类型限制在 `geometry` 模块内部。
+8. libigl 是固定依赖，但其类型限制在 `spatial` 模块内部。
 9. 算法库不直接打印日志，而是返回错误和诊断信息。
 10. 每个迁移阶段都必须具备可运行测试。
 
@@ -37,19 +37,21 @@ new_boundaryMesh/
 ├── include/boundary_mesh/
 │   ├── core/
 │   ├── mesh/
-│   ├── geometry/
+│   ├── surface/
 │   ├── growth/
 │   ├── transition/
 │   ├── quality/
+│   ├── spatial/
 │   ├── io/
 │   └── boundary_layer.hpp
 ├── src/
 │   ├── core/
 │   ├── mesh/
-│   ├── geometry/
+│   ├── surface/
 │   ├── growth/
 │   ├── transition/
 │   ├── quality/
+│   ├── spatial/
 │   └── io/
 ├── apps/
 ├── examples/
@@ -92,21 +94,31 @@ new_boundaryMesh/
 
 `mesh` 不负责法向、碰撞或边界层生长。
 
-### 4.3 `geometry`
+### 4.3 `surface`
 
-负责无状态或局部状态的几何能力：
+负责无状态、可复用的表面算法：
 
-- 面法向和节点法向；
-- 精确几何谓词；
-- 三角形相交；
+- 三角形和四边形的面积与面积向量；
+- 面中心和单位法向；
+- 四边形翘曲角；
+- 顶点内角和相邻面夹角；
+- 后续特征边所需的基础表面量。
+
+`surface` 不保存初始表面的永久计算快照，也不决定生长、停止或质量接受策略。当前活动前沿何时重新计算由 `growth` 负责。
+
+### 4.4 `spatial`
+
+负责空间查询与碰撞能力：
+
 - AABB 空间查询；
 - 最近点查询；
-- 对称面方向约束和位置投影；
-- 各类体单元的体积和 Jacobian 计算。
+- 三角形相交；
+- 候选层与原始表面、已有单元和活动前沿的碰撞查询；
+- 对 libigl 和其他空间查询实现的内部适配。
 
-libigl 和 geom 依赖限制在本模块内部，不向 `growth` 暴露第三方类型。
+libigl 类型限制在本模块内部，不向 `growth` 暴露第三方类型。
 
-### 4.4 `quality`
+### 4.5 `quality`
 
 负责：
 
@@ -120,11 +132,12 @@ libigl 和 geom 依赖限制在本模块内部，不向 `growth` 暴露第三方
 
 `quality` 负责评价，不负责决定停止范围。
 
-### 4.5 `growth`
+### 4.6 `growth`
 
 负责规则边界层生长：
 
 - 计算生长方向；
+- 对当前活动前沿逐层调用 `surface` 算法；
 - 计算每层高度；
 - 生成候选层节点；
 - 应用对称约束；
@@ -137,7 +150,7 @@ libigl 和 geom 依赖限制在本模块内部，不向 `growth` 暴露第三方
 
 `growth` 不生成金字塔或四面体过渡单元。
 
-### 4.6 `transition`
+### 4.7 `transition`
 
 负责规则生长结束后的局部共形过渡：
 
@@ -149,7 +162,7 @@ libigl 和 geom 依赖限制在本模块内部，不向 `growth` 暴露第三方
 - 必要时请求 `growth` 扩大局部停止区域并重试；
 - 输出最终封闭外表面。
 
-### 4.7 `io`
+### 4.8 `io`
 
 负责：
 
@@ -385,28 +398,35 @@ struct GrowthRetryRequest
 
 ## 12. CMake 目标
 
-第一阶段只建立四个主要库目标：
+工程按阶段建立以下主要库目标：
 
 - `BoundaryMesh::Core`
-- `BoundaryMesh::Geometry`
+- `BoundaryMesh::Surface`
 - `BoundaryMesh::BoundaryLayer`
+- `BoundaryMesh::Quality`
+- `BoundaryMesh::Spatial`
 - `BoundaryMesh::IO`
 
 依赖方向：
 
 ```text
-Core
- ↑  ↑
-Geometry  IO
- ↑
-BoundaryLayer
+BoundaryLayer ──> Surface ──> Core
+       │            ↑
+       ├─────────> Quality ──> Core
+       └─────────> Spatial ──> Core
+
+IO ──> Core
 ```
+
+箭头表示“左侧依赖右侧”。
 
 具体约束：
 
 - `Core` 公开依赖 Eigen；
-- `Geometry` 私有依赖 libigl 和 geom；
-- `BoundaryLayer` 依赖 `Core` 和 `Geometry`；
+- `Surface` 依赖 `Core`，不持有网格状态；
+- `Quality` 依赖 `Core` 和必要的 `Surface` 基础算法；
+- `Spatial` 依赖 `Core`，并私有依赖 libigl 等空间查询实现；
+- `BoundaryLayer` 依赖 `Core`、`Surface`、`Quality` 和 `Spatial`；
 - `IO` 依赖 `Core`；
 - `IO` 不能成为边界层算法的依赖。
 
@@ -458,7 +478,7 @@ docs/design/roadmap.md
 
 1. 工程基础与混合网格类型；
 2. 封闭混合表面拓扑；
-3. GrowthPatch、活动前沿与动态表面几何；
+3. GrowthPatch、活动前沿与动态表面评价；
 4. 体单元几何与质量评价；
 5. Prism/Hexa 等层规则生长；
 6. 空间查询、碰撞检测与局部停止；

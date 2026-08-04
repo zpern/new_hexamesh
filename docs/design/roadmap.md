@@ -29,7 +29,7 @@ docs/plans/
         ↓
 02 封闭混合表面拓扑
         ↓
-03 GrowthPatch、活动前沿与动态表面几何
+03 GrowthPatch、活动前沿与动态表面评价
         ↓
 04 体单元几何与质量评价
         ↓
@@ -56,7 +56,7 @@ docs/plans/
 | --- | --- | --- |
 | 01 | 工程基础与混合网格类型 | 已完成 |
 | 02 | 封闭混合表面拓扑 | 已完成 |
-| 03 | GrowthPatch、活动前沿与动态表面几何 | 下一阶段 |
+| 03 | GrowthPatch、活动前沿与动态表面评价 | 下一阶段 |
 | 04 | 体单元几何与质量评价 | 未开始 |
 | 05 | Prism/Hexa 等层规则生长 | 未开始 |
 | 06 | 空间查询、碰撞检测与局部停止 | 未开始 |
@@ -104,7 +104,7 @@ docs/plans/
 
 本阶段只验证离散连接关系，不计算面法向、面积、碰撞或生长方向。详细设计见 `docs/design/modules/surface-topology.md`。
 
-## 6. 03：GrowthPatch、活动前沿与动态表面几何
+## 6. 03：GrowthPatch、活动前沿与动态表面评价
 
 ### 目标
 
@@ -113,7 +113,7 @@ docs/plans/
 ### 核心设计决定
 
 - 不创建只服务初始表面的永久 `SurfaceGeometry` 快照；
-- 局部几何公式是无状态、可复用函数；
+- `BoundaryMesh::Surface` 提供无状态、可复用的表面算法；
 - `growth` 决定何时对当前 `GrowthFront` 调用这些函数；
 - 新一层顶点位置变化后必须重新计算前沿几何；
 - 初始坐标是否为有限数属于输入合法性，加入表面拓扑入口检查；
@@ -122,7 +122,7 @@ docs/plans/
 ### 主要交付物
 
 1. 在输入验证中拒绝包含 `NaN` 或无穷坐标的顶点；
-2. 三角形和四边形的无状态面积、面积向量、中心和单位法向计算；
+2. 在 `BoundaryMesh::Surface` 中实现三角形和四边形的无状态面积、面积向量、中心和单位法向计算；
 3. 四边形固定 `v0-v2` 拆分和翘曲角计算；
 4. 从完整 `SurfaceTopology` 提取 Wall `GrowthPatch`；
 5. 区分 Patch 内部边、Wall-Symmetry 边和 Wall-Farfield 边；
@@ -182,7 +182,7 @@ docs/plans/
 
 ### 主要交付物
 
-- libigl 隔离适配层；
+- `BoundaryMesh::Spatial` 和 libigl 隔离适配层；
 - AABB 与最近点查询；
 - 三角形化后的候选表面碰撞检查；
 - 候选节点最大安全步长；
