@@ -100,7 +100,7 @@ struct Triangle
 
 ## 5. 验证标准
 
-- 旧五个 include 路径在源码、测试和设计文档中搜索为零；
+- 旧五个 include 路径在源码、测试和历史设计/计划中搜索为零；本迁移规范中的旧到新映射除外；
 - 新五个头文件均存在且被正确引用；
 - `include/boundary_mesh` 中公开 `using`、枚举值和 struct 数据成员具有行尾 `//`；
 - CMake Debug 全量构建成功；

@@ -12,7 +12,7 @@
 
 - 不保留旧头文件或转发兼容层。
 - `SurfaceMesh`、`VolumeMesh`、`SurfaceTopology`、`SurfaceTopologyBuilder`、`SurfaceTopologyError` 类型名不变。
-- 旧 include 路径必须在 `include`、`src`、`tests`、`docs` 中搜索为零。
+- 旧 include 路径必须在 `include`、`src`、`tests` 和历史 `docs` 中搜索为零；本计划与迁移规范中的旧到新映射除外。
 - 公共 `using`、枚举值和 struct 数据成员使用行尾 `//`；函数和类继续使用上方 `///`。
 - 不修改可执行语句，不改变 ABI 数据布局。
 - 保留工作区中 Task 2 的 `CMakeLists.txt`、Surface 头文件、实现和测试改动。
@@ -73,7 +73,12 @@ Do not replace C++ identifiers such as `SurfaceMesh`.
 - [ ] **Step 4: Verify old paths are absent and behavior is unchanged**
 
 ```powershell
-Get-ChildItem include,src,tests,docs -Recurse -File |
+Get-ChildItem include,src,tests -Recurse -File |
+    Select-String -Pattern 'boundary_mesh/mesh/(surface_mesh|volume_mesh|surface_topology|surface_topology_builder|surface_topology_error)\.hpp'
+Get-ChildItem docs -Recurse -File |
+    Where-Object {
+        $_.FullName -notlike '*public-header-conventions.md'
+    } |
     Select-String -Pattern 'boundary_mesh/mesh/(surface_mesh|volume_mesh|surface_topology|surface_topology_builder|surface_topology_error)\.hpp'
 cmake -S . -B build
 cmake --build build --config Debug
