@@ -91,10 +91,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(NOT TARGET Eigen3::Eigen)
-    if(EXISTS "${PROJECT_SOURCE_DIR}/extern/eigen/CMakeLists.txt")
-        set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
-        set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-        add_subdirectory(extern/eigen EXCLUDE_FROM_ALL)
+    if(EXISTS "${PROJECT_SOURCE_DIR}/extern/eigen/Eigen/Core")
+        add_library(hexamesh_eigen INTERFACE)
+        target_include_directories(hexamesh_eigen INTERFACE
+            "${PROJECT_SOURCE_DIR}/extern/eigen"
+        )
+        add_library(Eigen3::Eigen ALIAS hexamesh_eigen)
     else()
         message(FATAL_ERROR
             "Eigen3::Eigen is unavailable and extern/eigen is missing")
