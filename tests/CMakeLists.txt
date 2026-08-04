@@ -150,3 +150,17 @@ add_test(
     NAME boundary_mesh_symmetry_constraints_test
     COMMAND boundary_mesh_symmetry_constraints_test
 )
+
+# 15：阶段 03 的公开接口流水线集成测试
+add_executable(
+    boundary_mesh_growth_front_pipeline_test
+    integration/growth_front_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_growth_front_pipeline_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_growth_front_pipeline_test
+    COMMAND boundary_mesh_growth_front_pipeline_test
+)
