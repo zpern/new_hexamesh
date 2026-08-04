@@ -408,7 +408,9 @@ BoundaryLayer
 依赖来源采用混合方式：
 
 - 如果上层工程已经提供标准 CMake target，则直接复用；
-- 否则使用 `third/` 下的本地依赖。
+- 嵌入 TiGER 时兼容复用 `tiger_eigen` 等 TiGER 依赖 target；
+- 如果上层只提供 `TIGER_ROOT_DIR`，依次查找其 `extern/` 和 `third/`；
+- 独立构建时使用 BoundaryMesh 自身 `third/` 下的本地依赖。
 
 ## 13. 测试结构
 

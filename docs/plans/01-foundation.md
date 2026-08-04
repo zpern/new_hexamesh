@@ -126,36 +126,72 @@ include_guard(GLOBAL)
 
 if(TARGET Eigen3::Eigen)
     message(STATUS "BoundaryMesh reuses existing target Eigen3::Eigen")
-    return()
-endif()
+elseif(TARGET tiger_eigen)
+    add_library(boundary_mesh_eigen INTERFACE)
+    target_link_libraries(boundary_mesh_eigen INTERFACE tiger_eigen)
+    add_library(Eigen3::Eigen ALIAS boundary_mesh_eigen)
+    message(STATUS "BoundaryMesh reuses existing target tiger_eigen")
+else()
+    set(
+        BOUNDARY_MESH_DEPENDENCIES_DIR
+        ""
+        CACHE PATH
+        "Optional directory containing BoundaryMesh dependencies"
+    )
 
-set(
-    BOUNDARY_MESH_DEPENDENCIES_DIR
-    "${PROJECT_SOURCE_DIR}/third"
-    CACHE PATH
-    "Directory containing BoundaryMesh third-party dependencies"
-)
+    set(_boundary_mesh_dependency_candidates)
 
-set(BOUNDARY_MESH_EIGEN_DIR "${BOUNDARY_MESH_DEPENDENCIES_DIR}/eigen")
+    if(BOUNDARY_MESH_DEPENDENCIES_DIR)
+        list(APPEND _boundary_mesh_dependency_candidates
+            "${BOUNDARY_MESH_DEPENDENCIES_DIR}"
+        )
+    endif()
 
-if(NOT EXISTS "${BOUNDARY_MESH_EIGEN_DIR}/Eigen/Core")
-    message(FATAL_ERROR
-        "BoundaryMesh could not find Eigen. Expected: "
-        "${BOUNDARY_MESH_EIGEN_DIR}/Eigen/Core"
+    if(DEFINED TIGER_ROOT_DIR)
+        list(APPEND _boundary_mesh_dependency_candidates
+            "${TIGER_ROOT_DIR}/extern"
+            "${TIGER_ROOT_DIR}/third"
+        )
+    endif()
+
+    list(APPEND _boundary_mesh_dependency_candidates
+        "${PROJECT_SOURCE_DIR}/third"
+        "${PROJECT_SOURCE_DIR}/extern"
+    )
+
+    unset(BOUNDARY_MESH_RESOLVED_DEPENDENCIES_DIR)
+    foreach(_candidate IN LISTS _boundary_mesh_dependency_candidates)
+        if(EXISTS "${_candidate}/eigen/Eigen/Core")
+            set(BOUNDARY_MESH_RESOLVED_DEPENDENCIES_DIR "${_candidate}")
+            break()
+        endif()
+    endforeach()
+
+    if(NOT BOUNDARY_MESH_RESOLVED_DEPENDENCIES_DIR)
+        message(FATAL_ERROR
+            "BoundaryMesh could not find Eigen in: "
+            "${_boundary_mesh_dependency_candidates}"
+        )
+    endif()
+
+    set(BOUNDARY_MESH_EIGEN_DIR
+        "${BOUNDARY_MESH_RESOLVED_DEPENDENCIES_DIR}/eigen"
+    )
+
+    add_library(boundary_mesh_eigen INTERFACE)
+
+    target_include_directories(
+        boundary_mesh_eigen
+        SYSTEM INTERFACE
+            "${BOUNDARY_MESH_EIGEN_DIR}"
+    )
+
+    add_library(Eigen3::Eigen ALIAS boundary_mesh_eigen)
+
+    message(STATUS
+        "BoundaryMesh Eigen directory: ${BOUNDARY_MESH_EIGEN_DIR}"
     )
 endif()
-
-add_library(boundary_mesh_eigen INTERFACE)
-
-target_include_directories(
-    boundary_mesh_eigen
-    SYSTEM INTERFACE
-        "${BOUNDARY_MESH_EIGEN_DIR}"
-)
-
-add_library(Eigen3::Eigen ALIAS boundary_mesh_eigen)
-
-message(STATUS "BoundaryMesh Eigen directory: ${BOUNDARY_MESH_EIGEN_DIR}")
 ```
 
 将根目录 `CMakeLists.txt` 替换为：
