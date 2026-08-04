@@ -204,7 +204,7 @@ using SurfaceFace = std::variant<Triangle, Quadrilateral>;
 ### 5.3 混合体网格
 
 ```cpp
-struct Tetrahedron
+struct Tetra
 {
     std::array<VertexId, 4> vertices;
 };
@@ -219,13 +219,13 @@ struct Prism
     std::array<VertexId, 6> vertices;
 };
 
-struct Hexahedron
+struct Hexa
 {
     std::array<VertexId, 8> vertices;
 };
 
 using VolumeCell =
-    std::variant<Tetrahedron, Pyramid, Prism, Hexahedron>;
+    std::variant<Tetra, Pyramid, Prism, Hexa>;
 ```
 
 `VolumeMesh` 保存：
@@ -295,7 +295,7 @@ struct FaceGrowthState
 生成当前层候选节点
         ↓
 三角面构造候选 Prism
-四边面构造候选 Hexahedron
+四边面构造候选 Hexa
         ↓
 几何有效性检查
         ↓
@@ -311,7 +311,7 @@ struct FaceGrowthState
         ↓
 检测 TransitionRegion
         ↓
-生成 Pyramid/Tetrahedron 候选模板
+生成 Pyramid/Tetra 候选模板
         ↓
 验证并选择过渡方案
         ↓

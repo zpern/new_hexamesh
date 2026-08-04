@@ -460,8 +460,8 @@ git commit -m "feat: add mixed surface mesh types"
 **Interfaces:**
 
 - Consumes: `Point3`, `VertexId`, `SurfaceFaceId`
-- Produces: `Tetrahedron`, `Pyramid`, `Prism`, `Hexahedron`
-- Produces: `VolumeCell`, `VolumeCellType`, `cellType(const VolumeCell&)`
+- Produces: `Tetra`, `Pyramid`, `Prism`, `Hexa`
+- Produces: `VolumeCell`, `CellType`, `cellType(const VolumeCell&)`
 - Produces: `CellRole`, `CellMetadata`, `VolumeMesh`
 
 - [ ] **Step 1: 编写失败测试**
@@ -477,14 +477,14 @@ int main()
 
     VolumeMesh mesh;
     mesh.vertices.resize(8, Point3::Zero());
-    mesh.cells.emplace_back(Tetrahedron{{
+    mesh.cells.emplace_back(Tetra{{
         VertexId{0}, VertexId{1}, VertexId{2}, VertexId{3}}});
     mesh.cells.emplace_back(Pyramid{{
         VertexId{0}, VertexId{1}, VertexId{2}, VertexId{3}, VertexId{4}}});
     mesh.cells.emplace_back(Prism{{
         VertexId{0}, VertexId{1}, VertexId{2},
         VertexId{3}, VertexId{4}, VertexId{5}}});
-    mesh.cells.emplace_back(Hexahedron{{
+    mesh.cells.emplace_back(Hexa{{
         VertexId{0}, VertexId{1}, VertexId{2}, VertexId{3},
         VertexId{4}, VertexId{5}, VertexId{6}, VertexId{7}}});
     mesh.metadata = {
@@ -494,10 +494,10 @@ int main()
         CellMetadata{CellRole::RegularLayer, SurfaceFaceId{3}, 1}
     };
 
-    if (cellType(mesh.cells[0]) != VolumeCellType::Tetrahedron) return 1;
-    if (cellType(mesh.cells[1]) != VolumeCellType::Pyramid) return 2;
-    if (cellType(mesh.cells[2]) != VolumeCellType::Prism) return 3;
-    if (cellType(mesh.cells[3]) != VolumeCellType::Hexahedron) return 4;
+    if (cellType(mesh.cells[0]) != CellType::Tetra) return 1;
+    if (cellType(mesh.cells[1]) != CellType::Pyramid) return 2;
+    if (cellType(mesh.cells[2]) != CellType::Prism) return 3;
+    if (cellType(mesh.cells[3]) != CellType::Hexa) return 4;
     if (mesh.metadata[2].role != CellRole::RegularLayer) return 5;
     return 0;
 }
@@ -536,33 +536,33 @@ cmake --build build --config Debug
 
 namespace boundary_mesh {
 
-struct Tetrahedron { std::array<VertexId, 4> vertices{}; };
+struct Tetra { std::array<VertexId, 4> vertices{}; };
 struct Pyramid { std::array<VertexId, 5> vertices{}; };
 struct Prism { std::array<VertexId, 6> vertices{}; };
-struct Hexahedron { std::array<VertexId, 8> vertices{}; };
+struct Hexa { std::array<VertexId, 8> vertices{}; };
 
-using VolumeCell = std::variant<Tetrahedron, Pyramid, Prism, Hexahedron>;
+using VolumeCell = std::variant<Tetra, Pyramid, Prism, Hexa>;
 
-enum class VolumeCellType : std::uint8_t
+enum class CellType : std::uint8_t
 {
-    Tetrahedron,
+    Tetra,
     Pyramid,
     Prism,
-    Hexahedron
+    Hexa
 };
 
-inline VolumeCellType cellType(const VolumeCell& cell)
+inline CellType cellType(const VolumeCell& cell)
 {
     return std::visit([](const auto& value) {
         using Cell = std::decay_t<decltype(value)>;
-        if constexpr (std::is_same_v<Cell, Tetrahedron>) {
-            return VolumeCellType::Tetrahedron;
+        if constexpr (std::is_same_v<Cell, Tetra>) {
+            return CellType::Tetra;
         } else if constexpr (std::is_same_v<Cell, Pyramid>) {
-            return VolumeCellType::Pyramid;
+            return CellType::Pyramid;
         } else if constexpr (std::is_same_v<Cell, Prism>) {
-            return VolumeCellType::Prism;
+            return CellType::Prism;
         } else {
-            return VolumeCellType::Hexahedron;
+            return CellType::Hexa;
         }
     }, cell);
 }
