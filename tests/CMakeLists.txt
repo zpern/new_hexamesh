@@ -17,3 +17,8 @@ add_test(NAME boundary_mesh_volume_mesh_test COMMAND boundary_mesh_volume_mesh_t
 add_executable(boundary_mesh_result_test unit/result_test.cpp)
 target_link_libraries(boundary_mesh_result_test PRIVATE BoundaryMesh::Core)
 add_test(NAME boundary_mesh_result_test COMMAND boundary_mesh_result_test)
+
+# 5
+add_executable(boundary_mesh_surface_topology_types_test unit/surface_topology_types_test.cpp)
+target_link_libraries(boundary_mesh_surface_topology_types_test PRIVATE BoundaryMesh::Core)
+add_test(NAME boundary_mesh_surface_topology_types_test COMMAND boundary_mesh_surface_topology_types_test)
