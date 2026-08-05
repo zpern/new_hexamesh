@@ -12,3 +12,8 @@ add_test(NAME boundary_mesh_surface_mesh_test COMMAND boundary_mesh_surface_mesh
 add_executable(boundary_mesh_volume_mesh_test unit/volume_mesh_test.cpp)
 target_link_libraries(boundary_mesh_volume_mesh_test PRIVATE BoundaryMesh::Core)
 add_test(NAME boundary_mesh_volume_mesh_test COMMAND boundary_mesh_volume_mesh_test)
+
+# 4
+add_executable(boundary_mesh_result_test unit/result_test.cpp)
+target_link_libraries(boundary_mesh_result_test PRIVATE BoundaryMesh::Core)
+add_test(NAME boundary_mesh_result_test COMMAND boundary_mesh_result_test)
