@@ -43,3 +43,20 @@ add_test(
     NAME boundary_mesh_surface_topology_builder_test
     COMMAND boundary_mesh_surface_topology_builder_test
 )
+
+# 8
+add_executable(
+    boundary_mesh_surface_topology_edge_error_test
+    unit/surface_topology_edge_error_test.cpp
+)
+
+target_link_libraries(
+    boundary_mesh_surface_topology_edge_error_test
+    PRIVATE
+        BoundaryMesh::Core
+)
+
+add_test(
+    NAME boundary_mesh_surface_topology_edge_error_test
+    COMMAND boundary_mesh_surface_topology_edge_error_test
+)

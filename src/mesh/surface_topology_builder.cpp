@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <boundary_mesh/mesh/surface_topology_builder.hpp>
+#include <optional>
 
 namespace boundary_mesh
 {
@@ -74,6 +75,7 @@ namespace boundary_mesh
         };
 
         /// 为 EdgeKey 提供哈希值。
+
         struct EdgeKeyHash
         {
             std::size_t operator()(
@@ -160,10 +162,10 @@ namespace boundary_mesh
             return key;
         }
 
-        /// 登记一条局部边并返回稳定的 EdgeId。
+        /// 登记一条局部边，并检查共享边是否合法。
         ///
-        /// 新 EdgeId 只按照面和局部边的扫描顺序分配，
-        /// 不依赖 unordered_map 的遍历顺序。
+        /// 第三个关联面会形成非流形边；第二个面如果沿共享边
+        /// 使用相同方向，则两个面的绕序不一致。
         EdgeId appendEdge(
             VertexId first,
             VertexId second,
@@ -178,16 +180,30 @@ namespace boundary_mesh
                 &incident_faces,
             std::vector<
                 std::vector<int>>
-                &incident_directions)
+                &incident_directions,
+            std::optional<
+                SurfaceTopologyError> &error)
         {
+            // 当前面前面的局部边已经发现错误时，不再继续登记。
+            if (error.has_value())
+            {
+                return EdgeId{};
+            }
+
             const EdgeKey key =
                 makeEdgeKey(
+                    first,
+                    second);
+
+            const int direction =
+                edgeDirection(
                     first,
                     second);
 
             const auto found =
                 edge_ids.find(key);
 
+            // 第一次遇到该边时，分配稳定的 EdgeId。
             if (found == edge_ids.end())
             {
                 const auto edge_id =
@@ -206,9 +222,7 @@ namespace boundary_mesh
                     {face_id});
 
                 incident_directions.push_back(
-                    {edgeDirection(
-                        first,
-                        second)});
+                    {direction});
 
                 return edge_id;
             }
@@ -220,21 +234,48 @@ namespace boundary_mesh
                 static_cast<std::size_t>(
                     edge_id);
 
-            incident_faces[edge_index]
-                .push_back(face_id);
+            auto &faces =
+                incident_faces[edge_index];
 
-            incident_directions[edge_index]
-                .push_back(
-                    edgeDirection(
-                        first,
-                        second));
+            auto &directions =
+                incident_directions[edge_index];
+
+            // 已经有两个关联面时，当前面就是第三个关联面。
+            if (faces.size() >= 2)
+            {
+                error =
+                    SurfaceTopologyError{
+                        NonManifoldEdge{
+                            {key.first,
+                             key.second},
+                            {faces[0],
+                             faces[1],
+                             face_id}}};
+
+                return edge_id;
+            }
+
+            // 封闭且方向一致的表面中，共享边两侧的面必须
+            // 使用相反的局部边方向。
+            if (directions[0] == direction)
+            {
+                error =
+                    SurfaceTopologyError{
+                        InconsistentOrientation{
+                            {key.first,
+                             key.second},
+                            faces[0],
+                            face_id}};
+
+                return edge_id;
+            }
+
+            faces.push_back(face_id);
+            directions.push_back(direction);
 
             return edge_id;
         }
-
         /// 登记一个面的所有顶点和局部边。
-        ///
-        /// 返回数组的顺序与输入面的局部边顺序完全一致。
         template <std::size_t Count>
         std::array<EdgeId, Count> appendFace(
             const std::array<
@@ -254,7 +295,9 @@ namespace boundary_mesh
                 &incident_directions,
             std::vector<
                 std::vector<SurfaceFaceId>>
-                &vertex_faces)
+                &vertex_faces,
+            std::optional<
+                SurfaceTopologyError> &error)
         {
             std::array<EdgeId, Count>
                 face_edge_ids{};
@@ -279,7 +322,8 @@ namespace boundary_mesh
                         edge_ids,
                         edges,
                         incident_faces,
-                        incident_directions);
+                        incident_directions,
+                        error);
             }
 
             return face_edge_ids;
@@ -436,6 +480,10 @@ namespace boundary_mesh
         std::vector<FaceEdgeIds>
             face_edges;
 
+        // 在遍历一个面的局部边期间传递首个边拓扑错误。
+        std::optional<SurfaceTopologyError>
+            edge_error;
+
         std::vector<
             std::vector<SurfaceFaceId>>
             vertex_faces(
@@ -464,9 +512,15 @@ namespace boundary_mesh
                             edges,
                             incident_faces,
                             incident_directions,
-                            vertex_faces);
+                            vertex_faces,
+                            edge_error);
                     },
                     mesh.faces[face_index]));
+            if (edge_error.has_value())
+            {
+                return BuildResult::failure(
+                    std::move(*edge_error));
+            }
         }
 
         // 将构建期动态邻接转换为稠密的边到面数组。
