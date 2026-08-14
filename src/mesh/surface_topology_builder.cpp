@@ -15,7 +15,7 @@ namespace boundary_mesh
 {
     namespace
     {
-        /// 与面顶点顺序无关的规范面键，用于检测重复面。
+        /// 与顶点绕序无关的规范面键，用于识别重复面。
         struct FaceKey
         {
             std::array<VertexId, 4> sorted_vertex_ids{};
@@ -24,27 +24,29 @@ namespace boundary_mesh
             bool operator==(
                 const FaceKey &other) const noexcept
             {
-                return vertex_count == other.vertex_count &&
+                return vertex_count ==
+                           other.vertex_count &&
                        sorted_vertex_ids ==
                            other.sorted_vertex_ids;
             }
         };
 
-        /// 为 FaceKey 提供 unordered_map 哈希值。
+        /// 为 FaceKey 提供哈希值。
         struct FaceKeyHash
         {
             std::size_t operator()(
                 const FaceKey &key) const noexcept
             {
-                std::size_t seed = key.vertex_count;
+                std::size_t seed =
+                    key.vertex_count;
 
-                for (std::size_t i = 0;
-                     i < key.vertex_count;
-                     ++i)
+                for (std::size_t index = 0;
+                     index < key.vertex_count;
+                     ++index)
                 {
                     seed ^=
                         std::hash<VertexId>{}(
-                            key.sorted_vertex_ids[i]) +
+                            key.sorted_vertex_ids[index]) +
                         0x9e3779b9U +
                         (seed << 6U) +
                         (seed >> 2U);
@@ -54,7 +56,73 @@ namespace boundary_mesh
             }
         };
 
-        /// 将三角形或四边形的定长顶点数组转换为统一序列。
+        /// 与局部边方向无关的规范边键。
+        ///
+        /// 始终保证 first < second，因此同一条无向边只会
+        /// 在哈希表中出现一次。
+        struct EdgeKey
+        {
+            VertexId first{};
+            VertexId second{};
+
+            bool operator==(
+                const EdgeKey &other) const noexcept
+            {
+                return first == other.first &&
+                       second == other.second;
+            }
+        };
+
+        /// 为 EdgeKey 提供哈希值。
+        struct EdgeKeyHash
+        {
+            std::size_t operator()(
+                const EdgeKey &key) const noexcept
+            {
+                std::size_t seed =
+                    std::hash<VertexId>{}(
+                        key.first);
+
+                seed ^=
+                    std::hash<VertexId>{}(
+                        key.second) +
+                    0x9e3779b9U +
+                    (seed << 6U) +
+                    (seed >> 2U);
+
+                return seed;
+            }
+        };
+
+        /// 将局部有向边转换成规范无向边。
+        EdgeKey makeEdgeKey(
+            VertexId first,
+            VertexId second)
+        {
+            if (first < second)
+            {
+                return EdgeKey{
+                    first,
+                    second};
+            }
+
+            return EdgeKey{
+                second,
+                first};
+        }
+
+        /// 返回局部边相对于规范边方向的符号。
+        ///
+        /// Task 4 只记录该信息；Task 5 将使用它检查
+        /// 相邻面的方向是否一致。
+        int edgeDirection(
+            VertexId first,
+            VertexId second)
+        {
+            return first < second ? 1 : -1;
+        }
+
+        /// 将三角形或四边形的顶点数组转换为统一序列。
         std::vector<VertexId> faceVertexIds(
             const SurfaceFace &face)
         {
@@ -68,9 +136,10 @@ namespace boundary_mesh
                 face);
         }
 
-        /// 对面顶点编号排序，生成与绕序无关的重复面键。
+        /// 生成与面顶点绕序无关的规范面键。
         FaceKey makeFaceKey(
-            const std::vector<VertexId> &vertex_ids)
+            const std::vector<VertexId>
+                &vertex_ids)
         {
             FaceKey key;
 
@@ -90,9 +159,172 @@ namespace boundary_mesh
 
             return key;
         }
+
+        /// 登记一条局部边并返回稳定的 EdgeId。
+        ///
+        /// 新 EdgeId 只按照面和局部边的扫描顺序分配，
+        /// 不依赖 unordered_map 的遍历顺序。
+        EdgeId appendEdge(
+            VertexId first,
+            VertexId second,
+            SurfaceFaceId face_id,
+            std::unordered_map<
+                EdgeKey,
+                EdgeId,
+                EdgeKeyHash> &edge_ids,
+            std::vector<Edge> &edges,
+            std::vector<
+                std::vector<SurfaceFaceId>>
+                &incident_faces,
+            std::vector<
+                std::vector<int>>
+                &incident_directions)
+        {
+            const EdgeKey key =
+                makeEdgeKey(
+                    first,
+                    second);
+
+            const auto found =
+                edge_ids.find(key);
+
+            if (found == edge_ids.end())
+            {
+                const auto edge_id =
+                    static_cast<EdgeId>(
+                        edges.size());
+
+                edge_ids.emplace(
+                    key,
+                    edge_id);
+
+                edges.push_back(
+                    Edge{{key.first,
+                          key.second}});
+
+                incident_faces.push_back(
+                    {face_id});
+
+                incident_directions.push_back(
+                    {edgeDirection(
+                        first,
+                        second)});
+
+                return edge_id;
+            }
+
+            const EdgeId edge_id =
+                found->second;
+
+            const auto edge_index =
+                static_cast<std::size_t>(
+                    edge_id);
+
+            incident_faces[edge_index]
+                .push_back(face_id);
+
+            incident_directions[edge_index]
+                .push_back(
+                    edgeDirection(
+                        first,
+                        second));
+
+            return edge_id;
+        }
+
+        /// 登记一个面的所有顶点和局部边。
+        ///
+        /// 返回数组的顺序与输入面的局部边顺序完全一致。
+        template <std::size_t Count>
+        std::array<EdgeId, Count> appendFace(
+            const std::array<
+                VertexId,
+                Count> &vertex_ids,
+            SurfaceFaceId face_id,
+            std::unordered_map<
+                EdgeKey,
+                EdgeId,
+                EdgeKeyHash> &edge_ids,
+            std::vector<Edge> &edges,
+            std::vector<
+                std::vector<SurfaceFaceId>>
+                &incident_faces,
+            std::vector<
+                std::vector<int>>
+                &incident_directions,
+            std::vector<
+                std::vector<SurfaceFaceId>>
+                &vertex_faces)
+        {
+            std::array<EdgeId, Count>
+                face_edge_ids{};
+
+            for (std::size_t index = 0;
+                 index < Count;
+                 ++index)
+            {
+                const VertexId vertex_id =
+                    vertex_ids[index];
+
+                vertex_faces[static_cast<std::size_t>(
+                                 vertex_id)]
+                    .push_back(face_id);
+
+                face_edge_ids[index] =
+                    appendEdge(
+                        vertex_id,
+                        vertex_ids[(index + 1) %
+                                   Count],
+                        face_id,
+                        edge_ids,
+                        edges,
+                        incident_faces,
+                        incident_directions);
+            }
+
+            return face_edge_ids;
+        }
+
+        /// 根据逐边邻接关系生成一个面的相邻面数组。
+        ///
+        /// 当前成功路径假设每条边至少关联两个面；
+        /// Task 6 将在调用本函数前正式验证封闭性。
+        template <std::size_t Count>
+        std::array<SurfaceFaceId, Count>
+        makeNeighbors(
+            SurfaceFaceId face_id,
+            const std::array<
+                EdgeId,
+                Count> &face_edge_ids,
+            const std::vector<
+                EdgeFaceIds> &edge_faces)
+        {
+            std::array<
+                SurfaceFaceId,
+                Count>
+                neighbors{};
+
+            for (std::size_t index = 0;
+                 index < Count;
+                 ++index)
+            {
+                const auto &faces =
+                    edge_faces[static_cast<std::size_t>(
+                        face_edge_ids[index])];
+
+                neighbors[index] =
+                    faces[0] == face_id
+                        ? faces[1]
+                        : faces[0];
+            }
+
+            return neighbors;
+        }
     }
 
-    Result<SurfaceTopology, SurfaceTopologyError>
+    Result<
+        SurfaceTopology,
+        SurfaceTopologyError>
     SurfaceTopologyBuilder::build(
         const SurfaceMesh &mesh) const
     {
@@ -101,7 +333,7 @@ namespace boundary_mesh
                 SurfaceTopology,
                 SurfaceTopologyError>;
 
-        // 没有面片时不存在可构建的表面拓扑。
+        // 空表面不存在可构建的拓扑。
         if (mesh.faces.empty())
         {
             return BuildResult::failure(
@@ -109,7 +341,7 @@ namespace boundary_mesh
                     EmptySurface{}});
         }
 
-        // 每个输入面都必须拥有一个边界标签。
+        // 每个输入面必须拥有一个边界标签。
         if (mesh.faces.size() !=
             mesh.face_tags.size())
         {
@@ -120,7 +352,7 @@ namespace boundary_mesh
                         mesh.face_tags.size()}});
         }
 
-        // 保存每种规范面键第一次出现的面编号。
+        // 第一阶段只验证面自身，不产生任何拓扑结果。
         std::unordered_map<
             FaceKey,
             SurfaceFaceId,
@@ -139,7 +371,6 @@ namespace boundary_mesh
                 faceVertexIds(
                     mesh.faces[face_index]);
 
-            // 检测面内重复顶点，同时验证顶点引用范围。
             std::unordered_set<VertexId>
                 unique_vertex_ids;
 
@@ -168,12 +399,9 @@ namespace boundary_mesh
                 }
             }
 
-            const FaceKey key =
-                makeFaceKey(vertex_ids);
-
             const auto insertion =
                 first_face_by_key.emplace(
-                    key,
+                    makeFaceKey(vertex_ids),
                     face_id);
 
             if (!insertion.second)
@@ -181,21 +409,124 @@ namespace boundary_mesh
                 return BuildResult::failure(
                     SurfaceTopologyError{
                         DuplicateFace{
-                            insertion.first->second,
+                            insertion
+                                .first
+                                ->second,
                             face_id}});
             }
         }
 
-        // Task 3 只完成基础输入验证。
-        // 稳定 EdgeId 和全部邻接数据将在下一任务中填充。
+        // 第二阶段按面和局部边顺序创建稳定 EdgeId。
+        std::unordered_map<
+            EdgeKey,
+            EdgeId,
+            EdgeKeyHash>
+            edge_ids;
+
+        std::vector<Edge> edges;
+
+        std::vector<
+            std::vector<SurfaceFaceId>>
+            incident_faces;
+
+        std::vector<
+            std::vector<int>>
+            incident_directions;
+
+        std::vector<FaceEdgeIds>
+            face_edges;
+
+        std::vector<
+            std::vector<SurfaceFaceId>>
+            vertex_faces(
+                mesh.vertices.size());
+
+        face_edges.reserve(
+            mesh.faces.size());
+
+        for (std::size_t face_index = 0;
+             face_index < mesh.faces.size();
+             ++face_index)
+        {
+            const auto face_id =
+                static_cast<SurfaceFaceId>(
+                    face_index);
+
+            face_edges.push_back(
+                std::visit(
+                    [&](const auto &face)
+                        -> FaceEdgeIds
+                    {
+                        return appendFace(
+                            face.vertex_ids,
+                            face_id,
+                            edge_ids,
+                            edges,
+                            incident_faces,
+                            incident_directions,
+                            vertex_faces);
+                    },
+                    mesh.faces[face_index]));
+        }
+
+        // 将构建期动态邻接转换为稠密的边到面数组。
+        std::vector<EdgeFaceIds>
+            edge_faces(
+                edges.size());
+
+        for (std::size_t edge_index = 0;
+             edge_index < edges.size();
+             ++edge_index)
+        {
+            if (!incident_faces[edge_index]
+                     .empty())
+            {
+                edge_faces[edge_index][0] =
+                    incident_faces[edge_index][0];
+            }
+
+            if (incident_faces[edge_index]
+                    .size() >= 2)
+            {
+                edge_faces[edge_index][1] =
+                    incident_faces[edge_index][1];
+            }
+        }
+
+        // 面邻接顺序必须与该面的局部边顺序一致。
+        std::vector<FaceNeighborIds>
+            face_neighbors;
+
+        face_neighbors.reserve(
+            face_edges.size());
+
+        for (std::size_t face_index = 0;
+             face_index < face_edges.size();
+             ++face_index)
+        {
+            const auto face_id =
+                static_cast<SurfaceFaceId>(
+                    face_index);
+
+            face_neighbors.push_back(
+                std::visit(
+                    [&](const auto &ids)
+                        -> FaceNeighborIds
+                    {
+                        return makeNeighbors(
+                            face_id,
+                            ids,
+                            edge_faces);
+                    },
+                    face_edges[face_index]));
+        }
+
         return BuildResult::success(
             SurfaceTopology{
-                {},
-                {},
-                {},
-                {},
-                std::vector<
-                    std::vector<SurfaceFaceId>>(
-                    mesh.vertices.size())});
+                std::move(edges),
+                std::move(edge_faces),
+                std::move(face_edges),
+                std::move(face_neighbors),
+                std::move(vertex_faces)});
     }
 }

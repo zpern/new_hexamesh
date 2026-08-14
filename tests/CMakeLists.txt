@@ -27,3 +27,19 @@ add_test(NAME boundary_mesh_surface_topology_types_test COMMAND boundary_mesh_su
 add_executable(boundary_mesh_surface_topology_validation_test unit/surface_topology_validation_test.cpp)
 target_link_libraries(boundary_mesh_surface_topology_validation_test PRIVATE BoundaryMesh::Core)
 add_test(NAME boundary_mesh_surface_topology_validation_test COMMAND boundary_mesh_surface_topology_validation_test)
+# 7
+add_executable(
+    boundary_mesh_surface_topology_builder_test
+    unit/surface_topology_builder_test.cpp
+)
+
+target_link_libraries(
+    boundary_mesh_surface_topology_builder_test
+    PRIVATE
+        BoundaryMesh::Core
+)
+
+add_test(
+    NAME boundary_mesh_surface_topology_builder_test
+    COMMAND boundary_mesh_surface_topology_builder_test
+)
