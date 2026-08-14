@@ -122,6 +122,48 @@ int main()
             return 4;
         }
     }
+    // 单个三角形的三条边都只关联一个面，
+    // 因此完整输入表面没有封闭。
+    {
+        SurfaceMesh mesh;
 
+        mesh.vertices.resize(
+            3,
+            Point3::Zero());
+
+        mesh.faces = {
+            Triangle{{VertexId{0},
+                      VertexId{1},
+                      VertexId{2}}}};
+
+        mesh.face_tags = {
+            wallTag()};
+
+        const auto result =
+            builder.build(mesh);
+
+        const auto *error =
+            result.hasValue()
+                ? nullptr
+                : std::get_if<BoundaryEdge>(
+                      &result.error());
+
+        if (error == nullptr)
+        {
+            return 5;
+        }
+
+        // EdgeId 按面和局部边的扫描顺序产生，
+        // 因此第一条开放边确定为 (0,1)。
+        if (error->edge_vertices !=
+                std::array<VertexId, 2>{
+                    VertexId{0},
+                    VertexId{1}} ||
+            error->face_id !=
+                SurfaceFaceId{0})
+        {
+            return 6;
+        }
+    }
     return 0;
 }

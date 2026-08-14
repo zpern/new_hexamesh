@@ -522,7 +522,24 @@ namespace boundary_mesh
                     std::move(*edge_error));
             }
         }
-
+        // 完整输入表面必须封闭。成功扫描到这里时，
+        // 非流形边和方向冲突已经被提前拒绝，因此只需
+        // 检查是否存在仅关联一个面的开放边。
+        for (std::size_t edge_index = 0;
+             edge_index < edges.size();
+             ++edge_index)
+        {
+            if (incident_faces[edge_index]
+                    .size() == 1)
+            {
+                return BuildResult::failure(
+                    SurfaceTopologyError{
+                        BoundaryEdge{
+                            edges[edge_index]
+                                .vertex_ids,
+                            incident_faces[edge_index][0]}});
+            }
+        }
         // 将构建期动态邻接转换为稠密的边到面数组。
         std::vector<EdgeFaceIds>
             edge_faces(
