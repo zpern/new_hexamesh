@@ -286,3 +286,17 @@ add_test(
     NAME boundary_mesh_growth_profile_test
     COMMAND boundary_mesh_growth_profile_test
 )
+
+# 24：规则层生长公共状态、输出与错误类型
+add_executable(
+    boundary_mesh_regular_layer_growth_types_test
+    unit/growth/regular_layer_growth_types_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_regular_layer_growth_types_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_regular_layer_growth_types_test
+    COMMAND boundary_mesh_regular_layer_growth_types_test
+)

@@ -302,7 +302,7 @@ git commit -m "feat: validate vertex growth profiles"
 - Consumes: profile types, `GrowthFront`, `VolumeMesh`, stage 03 errors, and stage 04 errors.
 - Produces: all state/result/error types used by the stepper and generator.
 
-- [ ] **Step 1: Write the public contract test**
+- [x] **Step 1: Write the public contract test**
 
 Check exact defaults and variant alternatives:
 
@@ -324,11 +324,11 @@ const auto *overflow = std::get_if<VolumeVertexIdOverflow>(&error);
 if (overflow == nullptr || overflow->attempted_index != 42) return 3;
 ```
 
-- [ ] **Step 2: Register and run the RED test**
+- [x] **Step 2: Register and run the RED test**
 
 Create `boundary_mesh_regular_layer_growth_types_test`, link it to `BoundaryMesh::BoundaryLayer`, and run its build target. Expected: missing-header compilation failure.
 
-- [ ] **Step 3: Define statuses, records, events, and results**
+- [x] **Step 3: Define statuses, records, events, and results**
 
 Add the exact contracts approved by the design:
 
@@ -379,7 +379,7 @@ using LayerVertexTable = std::vector<LayerVertexRecord>;
 
 Add `VertexGrowthRecord`, `FaceGrowthRecord`, `RegularLayerGrowthOptions`, and `RegularLayerGrowthResult` exactly as specified in the design document. `RegularLayerGrowthOptions` contains only `VolumeCellQualityOptions cell_quality` in stage 05.
 
-- [ ] **Step 4: Define wrapper errors without losing lower-level causes**
+- [x] **Step 4: Define wrapper errors without losing lower-level causes**
 
 ```cpp
 struct GrowthProfileFailure
@@ -426,7 +426,7 @@ using RegularLayerGrowthError = std::variant<
     VolumeVertexIdOverflow>;
 ```
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and commit**
 
 Run the focused type test and full Debug CTest. Expected: all tests pass. Then commit:
 
