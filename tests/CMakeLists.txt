@@ -316,3 +316,17 @@ add_test(
     NAME boundary_mesh_regular_layer_stepper_test
     COMMAND boundary_mesh_regular_layer_stepper_test
 )
+
+# 26：混合 Triangle/Quad 规则边界层完整生成流水线
+add_executable(
+    boundary_mesh_regular_layer_growth_pipeline_test
+    integration/regular_layer_growth_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_regular_layer_growth_pipeline_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_regular_layer_growth_pipeline_test
+    COMMAND boundary_mesh_regular_layer_growth_pipeline_test
+)

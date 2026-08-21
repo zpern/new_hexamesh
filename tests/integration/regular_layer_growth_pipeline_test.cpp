@@ -1,0 +1,160 @@
+#include <cstddef>
+#include <type_traits>
+#include <variant>
+#include <vector>
+
+#include <boundary_mesh/growth/growth_front_builder.hpp>
+#include <boundary_mesh/growth/growth_patch_builder.hpp>
+#include <boundary_mesh/growth/regular_layer_generator.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
+
+namespace
+{
+    using namespace boundary_mesh;
+
+    SurfaceMesh makeMixedMesh()
+    {
+        SurfaceMesh mesh;
+        mesh.vertices = {
+            Point3{0, 0, 0}, Point3{1, 0, 0}, Point3{0, 1, 0},
+            Point3{0, 0, 1}, Point3{1, 0, 1}, Point3{0, 1, 1}};
+        mesh.faces = {
+            Triangle{{VertexId{0}, VertexId{2}, VertexId{1}}},
+            Triangle{{VertexId{3}, VertexId{4}, VertexId{5}}},
+            Quad{{VertexId{0}, VertexId{1}, VertexId{4}, VertexId{3}}},
+            Quad{{VertexId{1}, VertexId{2}, VertexId{5}, VertexId{4}}},
+            Quad{{VertexId{2}, VertexId{0}, VertexId{3}, VertexId{5}}}};
+        mesh.face_tags = {
+            {SurfaceBoundaryKind::Farfield, 20},
+            {SurfaceBoundaryKind::Wall, 10},
+            {SurfaceBoundaryKind::Farfield, 21},
+            {SurfaceBoundaryKind::Farfield, 22},
+            {SurfaceBoundaryKind::Farfield, 23}};
+
+        const VertexId offset = static_cast<VertexId>(mesh.vertices.size());
+        std::vector<Point3> hexa_vertices{
+            Point3{3, 0, 0}, Point3{4, 0, 0},
+            Point3{4, 1, 0}, Point3{3, 1, 0},
+            Point3{3, 0, 1}, Point3{4, 0, 1},
+            Point3{4, 1, 1}, Point3{3, 1, 1}};
+        mesh.vertices.insert(
+            mesh.vertices.end(), hexa_vertices.begin(), hexa_vertices.end());
+        const std::vector<SurfaceFace> hexa_faces{
+            Quad{{VertexId{0}, VertexId{3}, VertexId{2}, VertexId{1}}},
+            Quad{{VertexId{4}, VertexId{5}, VertexId{6}, VertexId{7}}},
+            Quad{{VertexId{0}, VertexId{1}, VertexId{5}, VertexId{4}}},
+            Quad{{VertexId{1}, VertexId{2}, VertexId{6}, VertexId{5}}},
+            Quad{{VertexId{2}, VertexId{3}, VertexId{7}, VertexId{6}}},
+            Quad{{VertexId{3}, VertexId{0}, VertexId{4}, VertexId{7}}}};
+        for (const SurfaceFace &face : hexa_faces)
+        {
+            mesh.faces.push_back(std::visit(
+                [&](const auto &value) -> SurfaceFace
+                {
+                    using Face = std::decay_t<decltype(value)>;
+                    Face shifted = value;
+                    for (VertexId &vertex_id : shifted.vertex_ids)
+                    {
+                        vertex_id += offset;
+                    }
+                    return shifted;
+                },
+                face));
+        }
+        const std::vector<SurfaceBoundaryTag> hexa_tags{
+            {SurfaceBoundaryKind::Farfield, 30},
+            {SurfaceBoundaryKind::Wall, 11},
+            {SurfaceBoundaryKind::Farfield, 31},
+            {SurfaceBoundaryKind::Farfield, 32},
+            {SurfaceBoundaryKind::Farfield, 33},
+            {SurfaceBoundaryKind::Farfield, 34}};
+        mesh.face_tags.insert(
+            mesh.face_tags.end(), hexa_tags.begin(), hexa_tags.end());
+        return mesh;
+    }
+}
+
+int main()
+{
+    using namespace boundary_mesh;
+
+    const SurfaceMesh surface = makeMixedMesh();
+    const auto topology = SurfaceTopologyBuilder{}.build(surface);
+    if (!topology.hasValue()) return 1;
+    const auto patch = GrowthPatchBuilder{}.build(surface, topology.value());
+    if (!patch.hasValue()) return 2;
+    const auto front = GrowthFrontBuilder{}.buildInitial(
+        surface, patch.value());
+    if (!front.hasValue()) return 3;
+
+    std::vector<SourceVertexGrowthProfile> profiles;
+    for (const PatchVertex &vertex : patch.value().vertices())
+    {
+        profiles.push_back(
+            {vertex.source_vertex_id, {0.1, 2.0, 2}});
+    }
+
+    const auto result = generateRegularLayers(
+        patch.value(), front.value(), profiles);
+    if (!result.hasValue()) return 4;
+    const RegularLayerGrowthResult &growth = result.value();
+
+    if (growth.mesh.vertices.size() != 21 ||
+        growth.mesh.cells.size() != 4 ||
+        growth.mesh.metadata.size() != 4 ||
+        growth.layer_vertices.size() != 7 ||
+        growth.vertices.size() != 7 ||
+        growth.faces.size() != 2)
+    {
+        return 5;
+    }
+
+    if (std::get_if<Prism>(&growth.mesh.cells[0]) == nullptr ||
+        std::get_if<Hexa>(&growth.mesh.cells[1]) == nullptr ||
+        std::get_if<Prism>(&growth.mesh.cells[2]) == nullptr ||
+        std::get_if<Hexa>(&growth.mesh.cells[3]) == nullptr)
+    {
+        return 6;
+    }
+
+    const std::vector<std::uint32_t> expected_layers{1, 1, 2, 2};
+    const std::vector<SurfaceFaceId> expected_faces{
+        SurfaceFaceId{1}, SurfaceFaceId{6},
+        SurfaceFaceId{1}, SurfaceFaceId{6}};
+    for (std::size_t index = 0; index < 4; ++index)
+    {
+        if (growth.mesh.metadata[index].role != CellRole::RegularLayer ||
+            growth.mesh.metadata[index].layer != expected_layers[index] ||
+            growth.mesh.metadata[index].source_face_id != expected_faces[index])
+        {
+            return 7;
+        }
+    }
+
+    for (const LayerVertexRecord &record : growth.layer_vertices)
+    {
+        if (record.layer_vertex_ids.size() != 3) return 8;
+    }
+    for (const VertexGrowthRecord &record : growth.vertices)
+    {
+        if (record.accepted_layer_count != 2 ||
+            record.profile.first_height != Scalar{0.1} ||
+            record.profile.growth_ratio != Scalar{2.0} ||
+            record.profile.layer_count != 2)
+        {
+            return 9;
+        }
+    }
+    for (const FaceGrowthRecord &record : growth.faces)
+    {
+        if (record.accepted_layer_count != 2 ||
+            record.status != FaceGrowthStatus::Completed ||
+            record.stop_reason != FaceStopReason::VertexLayerLimit ||
+            record.stop_layer != 3)
+        {
+            return 10;
+        }
+    }
+
+    return 0;
+}

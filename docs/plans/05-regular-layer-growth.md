@@ -666,7 +666,7 @@ git commit -m "feat: step mixed regular growth fronts"
 - Consumes: `GrowthPatch`, initial `GrowthFront`, external profiles, options, and `RegularLayerStepper`.
 - Produces: `RegularLayerGenerator::generate(...)` and free convenience function `generateRegularLayers(...)`.
 
-- [ ] **Step 1: Write a RED multi-layer integration test**
+- [x] **Step 1: Write a RED multi-layer integration test**
 
 Build an initial mixed Front with one Triangle and one Quad. Give every vertex `{0.1, 2.0, 2}`. Assert:
 
@@ -679,11 +679,11 @@ Build an initial mixed Front with one Triangle and one Quad. Give every vertex `
 - all face records are `Completed` with `accepted_layer_count == 2`;
 - all vertex records preserve requested profiles and report two accepted layers.
 
-- [ ] **Step 2: Register and verify RED**
+- [x] **Step 2: Register and verify RED**
 
 Add `src/growth/regular_layer_generator.cpp` to the BoundaryLayer target. Register `boundary_mesh_regular_layer_growth_pipeline_test`. Build it. Expected: missing generator header or unresolved function.
 
-- [ ] **Step 3: Declare generator APIs**
+- [x] **Step 3: Declare generator APIs**
 
 ```cpp
 class RegularLayerGenerator
@@ -705,7 +705,7 @@ generateRegularLayers(
     const RegularLayerGrowthOptions &options = {});
 ```
 
-- [ ] **Step 4: Initialize layer 0 and records**
+- [x] **Step 4: Initialize layer 0 and records**
 
 Validate that `initial_front.layer == 0`, all parallel arrays match, and source vertex/face IDs exactly match the Patch sets. Build the profile table; wrap failure as `GrowthProfileFailure`.
 
@@ -722,7 +722,7 @@ if (index > static_cast<std::size_t>(
 }
 ```
 
-- [ ] **Step 5: Commit one successful LayerStepResult atomically**
+- [x] **Step 5: Commit one successful LayerStepResult atomically**
 
 Before changing `result`, create temporary vectors for new volume vertices, IDs, cells, metadata, and updated layer records. Check all target IDs first. Build each cell from the previous current-face order and the aligned next-face order:
 
@@ -735,7 +735,7 @@ Append the temporary buffers only after the entire layer converts successfully. 
 
 Update completed/stopped face records after successful commit. Then replace current Front and its local-to-volume ID vector with the step result. Loop until the next Front has no faces.
 
-- [ ] **Step 6: Run tests and commit**
+- [x] **Step 6: Run tests and commit**
 
 Run the focused pipeline test and full Debug CTest. Commit:
 

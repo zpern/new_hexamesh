@@ -95,6 +95,7 @@ add_library(
         src/growth/symmetry_constraint_builder.cpp
         src/growth/growth_profile_builder.cpp
         src/growth/regular_layer_stepper.cpp
+        src/growth/regular_layer_generator.cpp
 )
 add_library(
     BoundaryMesh::BoundaryLayer
