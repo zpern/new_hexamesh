@@ -585,13 +585,13 @@ git commit -m "feat: step triangle growth into prism"
 - Consumes: the Task 3 stepper contract.
 - Produces: complete mixed Triangle/Quad single-layer behavior.
 
-- [ ] **Step 1: Add RED Quad and mixed-front cases**
+- [x] **Step 1: Add RED Quad and mixed-front cases**
 
 Add a `+Z` Quad and check its four candidates, one next face, and a valid `HexaPoints` evaluation. Add a disconnected mixed front containing one Triangle and one Quad and check that both faces and all seven vertices survive with source mappings unchanged.
 
 Use different first heights per vertex and assert each candidate moves by its own height along its computed direction. Use `growth_ratio = 2` and a layer-1 input Front to verify target-layer-2 heights are doubled.
 
-- [ ] **Step 2: Add RED `4/5/6` eligibility behavior**
+- [x] **Step 2: Add RED `4/5/6` eligibility behavior**
 
 Construct a Triangle at `front.layer = 4` with vertex limits `4/5/6`. Assert:
 
@@ -607,7 +607,7 @@ if (!result.hasValue() ||
 
 Also construct two faces sharing vertices where one face contains a limit-0 vertex and the other remains eligible. Assert that only the eligible face influences directions and survives.
 
-- [ ] **Step 3: Add RED local quality-stop cases**
+- [x] **Step 3: Add RED local quality-stop cases**
 
 Use a strict `maximum_skewness` to reject one deliberately skewed Quad while a neighboring regular Triangle remains acceptable. Assert:
 
@@ -618,7 +618,7 @@ Use a strict `maximum_skewness` to reject one deliberately skewed Quad while a n
 
 Add explicit candidate configurations that stage 04 classifies as `Degenerate`, `Reversed`, and `LocallyInverted`, then check the exact mapped `FaceStopReason`.
 
-- [ ] **Step 4: Implement Quad assembly and shared compaction**
+- [x] **Step 4: Implement Quad assembly and shared compaction**
 
 Visit each eligible face:
 
@@ -641,7 +641,7 @@ return std::visit(
 
 For Quad, build `HexaPoints` as four current points followed by their four corresponding candidates and call `evaluateHexa`. Reuse one compaction path for accepted Triangle and Quad faces so mixed fronts remain deterministic.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and commit**
 
 Run the focused stepper test and full Debug CTest. Commit:
 

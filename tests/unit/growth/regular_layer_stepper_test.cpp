@@ -1,5 +1,6 @@
 #include <array>
 #include <cmath>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -61,6 +62,59 @@ namespace
             {SurfaceBoundaryKind::Farfield, 22},
             {SurfaceBoundaryKind::Farfield, 23},
             {SurfaceBoundaryKind::Farfield, 24}};
+        return mesh;
+    }
+
+    SurfaceMesh makeTetraWithTwoWallFaces()
+    {
+        SurfaceMesh mesh;
+        mesh.vertices = {
+            Point3{0.0, 0.0, 0.0},
+            Point3{1.0, 0.0, 0.0},
+            Point3{0.0, 1.0, 0.0},
+            Point3{0.0, 0.0, 1.0}};
+        mesh.faces = {
+            Triangle{{VertexId{0}, VertexId{2}, VertexId{1}}},
+            Triangle{{VertexId{0}, VertexId{1}, VertexId{3}}},
+            Triangle{{VertexId{1}, VertexId{2}, VertexId{3}}},
+            Triangle{{VertexId{2}, VertexId{0}, VertexId{3}}}};
+        mesh.face_tags = {
+            {SurfaceBoundaryKind::Wall, 10},
+            {SurfaceBoundaryKind::Wall, 11},
+            {SurfaceBoundaryKind::Farfield, 20},
+            {SurfaceBoundaryKind::Farfield, 21}};
+        return mesh;
+    }
+
+    SurfaceMesh makeDisconnectedMixedWallMesh()
+    {
+        SurfaceMesh mesh = makePrismWithTopWall();
+        SurfaceMesh hexa = makeHexaWithTopWall();
+        const VertexId offset = static_cast<VertexId>(mesh.vertices.size());
+        for (Point3 point : hexa.vertices)
+        {
+            point.x() += 3.0;
+            mesh.vertices.push_back(point);
+        }
+        for (const SurfaceFace &face : hexa.faces)
+        {
+            mesh.faces.push_back(std::visit(
+                [&](const auto &value) -> SurfaceFace
+                {
+                    using Face = std::decay_t<decltype(value)>;
+                    Face shifted = value;
+                    for (VertexId &vertex_id : shifted.vertex_ids)
+                    {
+                        vertex_id += offset;
+                    }
+                    return shifted;
+                },
+                face));
+        }
+        mesh.face_tags.insert(
+            mesh.face_tags.end(),
+            hexa.face_tags.begin(),
+            hexa.face_tags.end());
         return mesh;
     }
 }
@@ -174,6 +228,136 @@ int main()
         hexa_quality.value().validity != VolumeCellValidity::Valid)
     {
         return 16;
+    }
+
+    const SurfaceMesh mixed_mesh = makeDisconnectedMixedWallMesh();
+    const auto mixed_topology = SurfaceTopologyBuilder{}.build(mixed_mesh);
+    if (!mixed_topology.hasValue()) return 26;
+    const auto mixed_patch = GrowthPatchBuilder{}.build(
+        mixed_mesh, mixed_topology.value());
+    if (!mixed_patch.hasValue()) return 27;
+    const auto mixed_front = GrowthFrontBuilder{}.buildInitial(
+        mixed_mesh, mixed_patch.value());
+    if (!mixed_front.hasValue()) return 28;
+    std::vector<SourceVertexGrowthProfile> mixed_profile_input;
+    for (const PatchVertex &vertex : mixed_patch.value().vertices())
+    {
+        mixed_profile_input.push_back(
+            {vertex.source_vertex_id, {0.2, 1.0, 1}});
+    }
+    const auto mixed_profiles = GrowthProfileBuilder{}.build(
+        mixed_patch.value(), mixed_profile_input);
+    if (!mixed_profiles.hasValue()) return 29;
+    const auto mixed_step = RegularLayerStepper{}.step(
+        mixed_front.value(), mixed_profiles.value());
+    if (!mixed_step.hasValue() ||
+        mixed_step.value().next_front.vertices.size() != 7 ||
+        mixed_step.value().next_front.faces.size() != 2 ||
+        std::get_if<Triangle>(&mixed_step.value().next_front.faces[0]) ==
+            nullptr ||
+        std::get_if<Quad>(&mixed_step.value().next_front.faces[1]) == nullptr)
+    {
+        return 30;
+    }
+
+    const std::vector<SourceVertexGrowthProfile> ratio_profile_input{
+        {VertexId{3}, {0.25, 2.0, 2}},
+        {VertexId{4}, {0.25, 2.0, 2}},
+        {VertexId{5}, {0.25, 2.0, 2}}};
+    const auto ratio_profiles = GrowthProfileBuilder{}.build(
+        patch.value(), ratio_profile_input);
+    if (!ratio_profiles.hasValue()) return 31;
+    GrowthFront layer1 = front.value();
+    layer1.layer = 1;
+    const auto ratio_step = RegularLayerStepper{}.step(
+        layer1, ratio_profiles.value());
+    if (!ratio_step.hasValue()) return 32;
+    for (std::size_t index = 0; index < 3; ++index)
+    {
+        const Point3 expected =
+            layer1.vertices[index] + Vector3{0.0, 0.0, 0.5};
+        if ((ratio_step.value().next_front.vertices[index] - expected).norm() >
+            1e-12)
+        {
+            return 33;
+        }
+    }
+
+    const std::vector<SourceVertexGrowthProfile> limited_profiles_input{
+        {VertexId{3}, {0.25, 1.0, 4}},
+        {VertexId{4}, {0.25, 1.0, 5}},
+        {VertexId{5}, {0.25, 1.0, 6}}};
+    const auto limited_profiles = GrowthProfileBuilder{}.build(
+        patch.value(), limited_profiles_input);
+    if (!limited_profiles.hasValue()) return 17;
+    GrowthFront layer4 = front.value();
+    layer4.layer = 4;
+    const auto completed = RegularLayerStepper{}.step(
+        layer4, limited_profiles.value());
+    if (!completed.hasValue() ||
+        !completed.value().next_front.faces.empty() ||
+        completed.value().completed_faces.size() != 1 ||
+        completed.value().completed_faces[0].reason !=
+            FaceStopReason::VertexLayerLimit ||
+        completed.value().completed_faces[0].layer != 5)
+    {
+        return 18;
+    }
+
+    const SurfaceMesh tetra_mesh = makeTetraWithTwoWallFaces();
+    const auto tetra_topology = SurfaceTopologyBuilder{}.build(tetra_mesh);
+    if (!tetra_topology.hasValue()) return 19;
+    const auto tetra_patch = GrowthPatchBuilder{}.build(
+        tetra_mesh, tetra_topology.value());
+    if (!tetra_patch.hasValue()) return 20;
+    const auto tetra_front = GrowthFrontBuilder{}.buildInitial(
+        tetra_mesh, tetra_patch.value());
+    if (!tetra_front.hasValue()) return 21;
+    const std::vector<SourceVertexGrowthProfile> tetra_profile_input{
+        {VertexId{0}, {0.1, 1.0, 1}},
+        {VertexId{1}, {0.1, 1.0, 1}},
+        {VertexId{2}, {0.1, 1.0, 0}},
+        {VertexId{3}, {0.1, 1.0, 1}}};
+    const auto tetra_profiles = GrowthProfileBuilder{}.build(
+        tetra_patch.value(), tetra_profile_input);
+    if (!tetra_profiles.hasValue()) return 22;
+    const auto tetra_step = RegularLayerStepper{}.step(
+        tetra_front.value(), tetra_profiles.value());
+    if (!tetra_step.hasValue() ||
+        tetra_step.value().completed_faces.size() != 1 ||
+        tetra_step.value().completed_faces[0].source_face_id !=
+            SurfaceFaceId{0} ||
+        tetra_step.value().next_front.faces.size() != 1 ||
+        tetra_step.value().next_front.source_face_ids !=
+            std::vector<SurfaceFaceId>{SurfaceFaceId{1}} ||
+        tetra_step.value().next_front.source_vertex_ids !=
+            std::vector<VertexId>{VertexId{0}, VertexId{1}, VertexId{3}})
+    {
+        return 23;
+    }
+
+    const std::vector<SourceVertexGrowthProfile> skewed_profile_input{
+        {VertexId{4}, {0.25, 1.0, 1}},
+        {VertexId{5}, {0.50, 1.0, 1}},
+        {VertexId{6}, {0.75, 1.0, 1}},
+        {VertexId{7}, {1.00, 1.0, 1}}};
+    const auto skewed_profiles = GrowthProfileBuilder{}.build(
+        hexa_patch.value(), skewed_profile_input);
+    if (!skewed_profiles.hasValue()) return 24;
+    RegularLayerGrowthOptions strict_options;
+    strict_options.cell_quality.maximum_skewness = 0.05;
+    const auto stopped = RegularLayerStepper{}.step(
+        hexa_front.value(), skewed_profiles.value(), strict_options);
+    if (!stopped.hasValue() ||
+        stopped.value().stopped_faces.size() != 1 ||
+        stopped.value().stopped_faces[0].reason !=
+            FaceStopReason::SkewnessExceeded ||
+        !stopped.value().next_front.vertices.empty() ||
+        !stopped.value().next_front.faces.empty() ||
+        !stopped.value().previous_front_vertex_indices.empty() ||
+        !stopped.value().previous_front_face_indices.empty())
+    {
+        return 25;
     }
 
     return 0;
