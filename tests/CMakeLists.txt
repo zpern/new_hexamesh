@@ -192,3 +192,17 @@ add_test(
     NAME boundary_mesh_volume_cell_types_test
     COMMAND boundary_mesh_volume_cell_types_test
 )
+
+# 18: Prism 候选单元质量评价
+add_executable(
+    boundary_mesh_prism_evaluator_test
+    unit/quality/prism_evaluator_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_prism_evaluator_test
+    PRIVATE BoundaryMesh::Quality
+)
+add_test(
+    NAME boundary_mesh_prism_evaluator_test
+    COMMAND boundary_mesh_prism_evaluator_test
+)

@@ -60,21 +60,26 @@ target_link_libraries(
         BoundaryMesh::Core
 )
 
-add_library(boundary_mesh_quality INTERFACE)
+add_library(
+    boundary_mesh_quality
+    STATIC
+        src/quality/volume_cell_evaluator_common.cpp
+        src/quality/prism_evaluator.cpp
+)
 add_library(BoundaryMesh::Quality ALIAS boundary_mesh_quality)
 
-target_compile_features(boundary_mesh_quality INTERFACE cxx_std_17)
+target_compile_features(boundary_mesh_quality PUBLIC cxx_std_17)
 
 target_include_directories(
     boundary_mesh_quality
-    INTERFACE
+    PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
 
 target_link_libraries(
     boundary_mesh_quality
-    INTERFACE
+    PUBLIC
         BoundaryMesh::Core
         BoundaryMesh::Surface
 )
