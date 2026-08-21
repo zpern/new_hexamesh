@@ -759,11 +759,11 @@ git commit -m "feat: generate regular prism and hexa layers"
 - Consumes: completed Task 5 generator.
 - Produces: verified no-orphan and no-half-layer guarantees plus complete diagnostic propagation.
 
-- [ ] **Step 1: Add a RED no-orphan local-stop test**
+- [x] **Step 1: Add a RED no-orphan local-stop test**
 
 Construct two disconnected source faces: one valid Triangle and one Quad rejected by strict skewness. Generate one requested layer. Assert that the output contains only the valid Triangle's three layer-1 points and one Prism, while the stopped Quad contributes neither a cell nor its four unshared candidate points. Assert the Triangle face is `Completed`, the Quad face is `Stopped`, and their accepted counts are `1` and `0`.
 
-- [ ] **Step 2: Add RED program-error tests**
+- [x] **Step 2: Add RED program-error tests**
 
 Cover these observable failures:
 
@@ -775,11 +775,11 @@ Cover these observable failures:
 
 For each failure, retain copies of the input Patch, Front, and profiles and assert they remain unchanged. The API returns no partial `RegularLayerGrowthResult`, so no failed layer is externally observable.
 
-- [ ] **Step 3: Add deterministic mapping checks**
+- [x] **Step 3: Add deterministic mapping checks**
 
 Run the same input twice and compare all output coordinates, cell variants and vertex IDs, metadata, layer tables, and records. Verify source-ID sorting does not change face winding or right-hand growth direction.
 
-- [ ] **Step 4: Correct transaction ordering and diagnostics**
+- [x] **Step 4: Correct transaction ordering and diagnostics**
 
 Move any result mutation found before a fallible operation into temporary buffers. Ensure the operation order is:
 
@@ -796,7 +796,7 @@ validate current state
 
 Never append a candidate point while candidate faces are still being evaluated.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and commit**
 
 Register `boundary_mesh_regular_layer_growth_failure_test`, run it, then run full Debug CTest. Commit:
 

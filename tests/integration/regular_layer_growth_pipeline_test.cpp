@@ -72,6 +72,19 @@ namespace
             mesh.face_tags.end(), hexa_tags.begin(), hexa_tags.end());
         return mesh;
     }
+
+    bool sameCell(const VolumeCell &first, const VolumeCell &second)
+    {
+        return std::visit(
+            [&](const auto &value)
+            {
+                using Cell = std::decay_t<decltype(value)>;
+                const Cell *other = std::get_if<Cell>(&second);
+                return other != nullptr &&
+                    other->vertex_ids == value.vertex_ids;
+            },
+            first);
+    }
 }
 
 int main()
@@ -153,6 +166,35 @@ int main()
             record.stop_layer != 3)
         {
             return 10;
+        }
+    }
+
+    const auto repeated = generateRegularLayers(
+        patch.value(), front.value(), profiles);
+    if (!repeated.hasValue() ||
+        repeated.value().mesh.vertices.size() != growth.mesh.vertices.size() ||
+        repeated.value().mesh.cells.size() != growth.mesh.cells.size())
+    {
+        return 11;
+    }
+    for (std::size_t index = 0; index < growth.mesh.vertices.size(); ++index)
+    {
+        if ((repeated.value().mesh.vertices[index] -
+             growth.mesh.vertices[index]).norm() != 0.0)
+        {
+            return 12;
+        }
+    }
+    for (std::size_t index = 0; index < growth.mesh.cells.size(); ++index)
+    {
+        if (!sameCell(growth.mesh.cells[index],
+                      repeated.value().mesh.cells[index]) ||
+            growth.mesh.metadata[index].source_face_id !=
+                repeated.value().mesh.metadata[index].source_face_id ||
+            growth.mesh.metadata[index].layer !=
+                repeated.value().mesh.metadata[index].layer)
+        {
+            return 13;
         }
     }
 

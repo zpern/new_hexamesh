@@ -330,3 +330,17 @@ add_test(
     NAME boundary_mesh_regular_layer_growth_pipeline_test
     COMMAND boundary_mesh_regular_layer_growth_pipeline_test
 )
+
+# 27：规则层程序级错误传播和输入事务保护
+add_executable(
+    boundary_mesh_regular_layer_growth_failure_test
+    integration/regular_layer_growth_failure_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_regular_layer_growth_failure_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_regular_layer_growth_failure_test
+    COMMAND boundary_mesh_regular_layer_growth_failure_test
+)

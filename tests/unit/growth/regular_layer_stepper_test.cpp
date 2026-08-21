@@ -1,5 +1,6 @@
 #include <array>
 #include <cmath>
+#include <limits>
 #include <type_traits>
 #include <variant>
 #include <vector>
@@ -281,6 +282,25 @@ int main()
         {
             return 33;
         }
+    }
+
+    const std::vector<SourceVertexGrowthProfile> overflow_profile_input{
+        {VertexId{3}, {std::numeric_limits<Scalar>::max(), 2.0, 2}},
+        {VertexId{4}, {0.25, 1.0, 2}},
+        {VertexId{5}, {0.25, 1.0, 2}}};
+    const auto overflow_profiles = GrowthProfileBuilder{}.build(
+        patch.value(), overflow_profile_input);
+    if (!overflow_profiles.hasValue()) return 34;
+    const auto overflow_step = RegularLayerStepper{}.step(
+        layer1, overflow_profiles.value());
+    const auto *overflow_error = overflow_step.hasValue()
+        ? nullptr
+        : std::get_if<NonFiniteLayerHeight>(&overflow_step.error());
+    if (overflow_error == nullptr ||
+        overflow_error->source_vertex_id != VertexId{3} ||
+        overflow_error->layer != 2)
+    {
+        return 35;
     }
 
     const std::vector<SourceVertexGrowthProfile> limited_profiles_input{
