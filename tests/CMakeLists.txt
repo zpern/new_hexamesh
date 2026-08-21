@@ -234,3 +234,17 @@ add_test(
     NAME boundary_mesh_volume_cell_error_test
     COMMAND boundary_mesh_volume_cell_error_test
 )
+
+# 21：固定子四面体有向体积分类与确定性诊断
+add_executable(
+    boundary_mesh_volume_cell_validity_test
+    unit/quality/volume_cell_validity_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_volume_cell_validity_test
+    PRIVATE BoundaryMesh::Quality
+)
+add_test(
+    NAME boundary_mesh_volume_cell_validity_test
+    COMMAND boundary_mesh_volume_cell_validity_test
+)
