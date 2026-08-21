@@ -164,3 +164,17 @@ add_test(
     NAME boundary_mesh_growth_front_pipeline_test
     COMMAND boundary_mesh_growth_front_pipeline_test
 )
+
+# 16：三角形和四边形 equiangular skewness
+add_executable(
+    boundary_mesh_surface_face_skewness_test
+    unit/surface/face_skewness_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_surface_face_skewness_test
+    PRIVATE BoundaryMesh::Surface
+)
+add_test(
+    NAME boundary_mesh_surface_face_skewness_test
+    COMMAND boundary_mesh_surface_face_skewness_test
+)

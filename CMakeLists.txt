@@ -34,6 +34,7 @@ add_library(
     boundary_mesh_surface
     STATIC
         src/surface/face_evaluation.cpp
+        src/surface/face_skewness.cpp
 )
 add_library(
     BoundaryMesh::Surface
