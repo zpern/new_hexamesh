@@ -1,4 +1,5 @@
 #include <cmath>
+#include <limits>
 
 #include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
@@ -145,6 +146,25 @@ int main()
         !near(skewed_result.value().skewness, 0.25))
     {
         return 7;
+    }
+
+    VolumeCellQualityOptions overflowing_tolerance_options;
+    overflowing_tolerance_options.relative_length_tolerance =
+        std::numeric_limits<Scalar>::max();
+    const auto overflowing_tolerance_result = evaluatePrism(
+        standard_prism,
+        overflowing_tolerance_options);
+
+    if (overflowing_tolerance_result.hasValue() ||
+        overflowing_tolerance_result.error().category !=
+            VolumeCellEvaluationErrorCategory::NonFiniteIntermediateResult ||
+        overflowing_tolerance_result.error().cell_kind !=
+            VolumeCellKind::Prism ||
+        overflowing_tolerance_result.error().local_vertex_index.has_value() ||
+        overflowing_tolerance_result.error()
+            .jacobian_sample_location.has_value())
+    {
+        return 8;
     }
 
     return 0;

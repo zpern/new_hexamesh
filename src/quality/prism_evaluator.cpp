@@ -111,7 +111,17 @@ namespace boundary_mesh
                               : std::optional<Scalar>{skewness};
         }
 
-        VolumeCellEvaluationError intermediateError(
+        VolumeCellEvaluationError intermediateError()
+        {
+            return VolumeCellEvaluationError{
+                VolumeCellEvaluationErrorCategory::NonFiniteIntermediateResult,
+                VolumeCellKind::Prism,
+                0.0,
+                std::nullopt,
+                std::nullopt};
+        }
+
+        VolumeCellEvaluationError intermediateErrorAt(
             JacobianSampleLocation location)
         {
             return VolumeCellEvaluationError{
@@ -145,7 +155,7 @@ namespace boundary_mesh
                 points.data(), points.size());
         if (!characteristic_length)
         {
-            return EvaluationResult::failure(intermediateError(
+            return EvaluationResult::failure(intermediateErrorAt(
                 {JacobianSampleKind::Center, 0}));
         }
 
@@ -169,25 +179,32 @@ namespace boundary_mesh
                     sample.location))
             {
                 return EvaluationResult::failure(
-                    intermediateError(sample.location));
+                    intermediateErrorAt(sample.location));
             }
 
             signed_volume += sample.volume_weight * determinant;
             if (!std::isfinite(signed_volume))
             {
                 return EvaluationResult::failure(
-                    intermediateError(sample.location));
+                    intermediateErrorAt(sample.location));
             }
         }
 
         bool face_degenerate = *characteristic_length == 0.0;
+        const Scalar length_tolerance =
+            *characteristic_length * options.relative_length_tolerance;
+        if (!std::isfinite(length_tolerance))
+        {
+            return EvaluationResult::failure(intermediateError());
+        }
+
         const auto skewness = prismSkewness(
             points,
-            *characteristic_length * options.relative_length_tolerance,
+            length_tolerance,
             face_degenerate);
         if (!skewness || !std::isfinite(*skewness))
         {
-            return EvaluationResult::failure(intermediateError(
+            return EvaluationResult::failure(intermediateErrorAt(
                 {JacobianSampleKind::Center, 0}));
         }
 
