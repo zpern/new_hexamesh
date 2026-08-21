@@ -819,7 +819,7 @@ git commit -m "test: cover regular growth failure transactions"
 - Consumes: all stage 05 implementation and tests.
 - Produces: verified branch ready for user review and merge.
 
-- [ ] **Step 1: Run formatting and stale-name scans**
+- [x] **Step 1: Run formatting and stale-name scans**
 
 ```powershell
 git diff --check
@@ -830,7 +830,7 @@ Get-ChildItem include,src,tests -Recurse -File |
 
 Expected: `git diff --check` prints nothing; the stage 05 symmetry scan prints nothing.
 
-- [ ] **Step 2: Run full Debug verification**
+- [x] **Step 2: Run full Debug verification**
 
 ```powershell
 cmake --build build --config Debug
@@ -839,7 +839,7 @@ ctest --test-dir build -C Debug --output-on-failure
 
 Expected: all existing 22 tests plus all five stage 05 tests pass.
 
-- [ ] **Step 3: Run full Release verification**
+- [x] **Step 3: Run full Release verification**
 
 ```powershell
 cmake --build build --config Release
@@ -848,11 +848,11 @@ ctest --test-dir build -C Release --output-on-failure
 
 Expected: the same complete test set passes in Release.
 
-- [ ] **Step 4: Update roadmap completion status**
+- [x] **Step 4: Update roadmap completion status**
 
 Change stage 05 status from `设计完成，待实施` to `已完成`. Keep the documented exclusions for symmetry, collision, stop propagation, coordination, and transition cells.
 
-- [ ] **Step 5: Commit stage completion documentation**
+- [x] **Step 5: Commit stage completion documentation**
 
 ```powershell
 git add docs/design/roadmap.md docs/design/modules/regular-layer-growth.md docs/plans/05-regular-layer-growth.md
@@ -860,6 +860,6 @@ git diff --cached --check
 git commit -m "docs: complete regular layer growth stage"
 ```
 
-- [ ] **Step 6: Report final evidence for review**
+- [x] **Step 6: Report final evidence for review**
 
 Report the branch name, all stage 05 commits, Debug/Release passed-test counts, `git status --short --branch`, and the exact scope intentionally deferred to later stages. Do not merge into `master` until the user reviews the implementation.
