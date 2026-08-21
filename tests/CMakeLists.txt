@@ -206,3 +206,17 @@ add_test(
     NAME boundary_mesh_prism_evaluator_test
     COMMAND boundary_mesh_prism_evaluator_test
 )
+
+# 19: Hexa 候选单元质量评价
+add_executable(
+    boundary_mesh_hexa_evaluator_test
+    unit/quality/hexa_evaluator_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_hexa_evaluator_test
+    PRIVATE BoundaryMesh::Quality
+)
+add_test(
+    NAME boundary_mesh_hexa_evaluator_test
+    COMMAND boundary_mesh_hexa_evaluator_test
+)

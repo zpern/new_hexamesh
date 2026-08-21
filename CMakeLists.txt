@@ -65,6 +65,7 @@ add_library(
     STATIC
         src/quality/volume_cell_evaluator_common.cpp
         src/quality/prism_evaluator.cpp
+        src/quality/hexa_evaluator.cpp
 )
 add_library(BoundaryMesh::Quality ALIAS boundary_mesh_quality)
 
