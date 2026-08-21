@@ -248,3 +248,27 @@ add_test(
     NAME boundary_mesh_volume_cell_validity_test
     COMMAND boundary_mesh_volume_cell_validity_test
 )
+
+# 22：阶段 05 预推出候选接受与停止决策模拟
+add_executable(
+    boundary_mesh_volume_cell_quality_pipeline_test
+    integration/volume_cell_quality_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_volume_cell_quality_pipeline_test
+    PRIVATE BoundaryMesh::Quality
+)
+add_test(
+    NAME boundary_mesh_volume_cell_quality_pipeline_test
+    COMMAND boundary_mesh_volume_cell_quality_pipeline_test
+)
+
+# Release 性能程序不注册为 CTest，避免机器相关时间阈值。
+add_executable(
+    boundary_mesh_volume_cell_quality_benchmark
+    ../benchmarks/volume_cell_quality_benchmark.cpp
+)
+target_link_libraries(
+    boundary_mesh_volume_cell_quality_benchmark
+    PRIVATE BoundaryMesh::Quality
+)
