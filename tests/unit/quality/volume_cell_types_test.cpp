@@ -1,5 +1,6 @@
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <type_traits>
 
 #include <boundary_mesh/mesh/mesh_volume.hpp>
@@ -23,8 +24,63 @@ namespace
                   decltype(VolumeCellQualityOptions{}.maximum_skewness),
                   Scalar>);
     static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluation{}.validity),
+                  VolumeCellValidity>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluation{}.signed_volume),
+                  Scalar>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluation{}.minimum_jacobian),
+                  Scalar>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluation{}.maximum_jacobian),
+                  Scalar>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluation{}.minimum_normalized_jacobian),
+                  Scalar>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluation{}.maximum_normalized_jacobian),
+                  Scalar>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluation{}.skewness),
+                  Scalar>);
+    static_assert(std::is_same_v<
                   decltype(VolumeCellEvaluation{}.worst_jacobian_location),
                   JacobianSampleLocation>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluation{}.acceptable),
+                  bool>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluationError{}.category),
+                  VolumeCellEvaluationErrorCategory>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluationError{}.cell_kind),
+                  VolumeCellKind>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluationError{}.configuration_value),
+                  Scalar>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluationError{}.local_vertex_index),
+                  std::optional<std::size_t>>);
+    static_assert(std::is_same_v<
+                  decltype(VolumeCellEvaluationError{}.jacobian_sample_location),
+                  std::optional<JacobianSampleLocation>>);
+
+    using EvaluationResult =
+        Result<VolumeCellEvaluation, VolumeCellEvaluationError>;
+    using PrismEvaluator = EvaluationResult (*)(
+        const PrismPoints &,
+        const VolumeCellQualityOptions &);
+    using HexaEvaluator = EvaluationResult (*)(
+        const HexaPoints &,
+        const VolumeCellQualityOptions &);
+
+    static_assert(std::is_same_v<
+                  decltype(&evaluatePrism),
+                  PrismEvaluator>);
+    static_assert(std::is_same_v<
+                  decltype(&evaluateHexa),
+                  HexaEvaluator>);
 }
 
 int main()

@@ -46,41 +46,40 @@ namespace boundary_mesh
             {inverse_root_three, inverse_root_three, inverse_root_three, {JacobianSampleKind::IntegrationPoint, 6}, 1.0},
             {-inverse_root_three, inverse_root_three, inverse_root_three, {JacobianSampleKind::IntegrationPoint, 7}, 1.0}}};
 
-        constexpr std::array<Scalar, 8> reference_r{
-            -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0};
-        constexpr std::array<Scalar, 8> reference_s{
-            -1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0};
-        constexpr std::array<Scalar, 8> reference_t{
-            -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0};
-
         Eigen::Matrix<Scalar, 3, 3> hexaJacobian(
             const HexaPoints &points,
             Scalar r,
             Scalar s,
             Scalar t)
         {
-            Eigen::Matrix<Scalar, 3, 3> jacobian =
-                Eigen::Matrix<Scalar, 3, 3>::Zero();
-
-            for (std::size_t index = 0; index < points.size(); ++index)
-            {
-                const Scalar derivative_r = Scalar{0.125} *
-                    reference_r[index] *
-                    (Scalar{1} + s * reference_s[index]) *
-                    (Scalar{1} + t * reference_t[index]);
-                const Scalar derivative_s = Scalar{0.125} *
-                    reference_s[index] *
-                    (Scalar{1} + r * reference_r[index]) *
-                    (Scalar{1} + t * reference_t[index]);
-                const Scalar derivative_t = Scalar{0.125} *
-                    reference_t[index] *
-                    (Scalar{1} + r * reference_r[index]) *
-                    (Scalar{1} + s * reference_s[index]);
-
-                jacobian.col(0) += derivative_r * points[index];
-                jacobian.col(1) += derivative_s * points[index];
-                jacobian.col(2) += derivative_t * points[index];
-            }
+            Eigen::Matrix<Scalar, 3, 3> jacobian;
+            jacobian.col(0) = Scalar{0.125} * (
+                (Scalar{1} - s) * (Scalar{1} - t) *
+                    (points[1] - points[0]) +
+                (Scalar{1} + s) * (Scalar{1} - t) *
+                    (points[2] - points[3]) +
+                (Scalar{1} - s) * (Scalar{1} + t) *
+                    (points[5] - points[4]) +
+                (Scalar{1} + s) * (Scalar{1} + t) *
+                    (points[6] - points[7]));
+            jacobian.col(1) = Scalar{0.125} * (
+                (Scalar{1} - r) * (Scalar{1} - t) *
+                    (points[3] - points[0]) +
+                (Scalar{1} + r) * (Scalar{1} - t) *
+                    (points[2] - points[1]) +
+                (Scalar{1} - r) * (Scalar{1} + t) *
+                    (points[7] - points[4]) +
+                (Scalar{1} + r) * (Scalar{1} + t) *
+                    (points[6] - points[5]));
+            jacobian.col(2) = Scalar{0.125} * (
+                (Scalar{1} - r) * (Scalar{1} - s) *
+                    (points[4] - points[0]) +
+                (Scalar{1} + r) * (Scalar{1} - s) *
+                    (points[5] - points[1]) +
+                (Scalar{1} + r) * (Scalar{1} + s) *
+                    (points[6] - points[2]) +
+                (Scalar{1} - r) * (Scalar{1} + s) *
+                    (points[7] - points[3]));
 
             return jacobian;
         }
@@ -150,8 +149,7 @@ namespace boundary_mesh
                 points.data(), points.size());
         if (!characteristic_length)
         {
-            return EvaluationResult::failure(intermediateError(
-                JacobianSampleLocation{JacobianSampleKind::Center, 0}));
+            return EvaluationResult::failure(intermediateError());
         }
 
         quality_internal::JacobianAccumulator accumulator{

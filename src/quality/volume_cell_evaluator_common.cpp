@@ -156,32 +156,39 @@ namespace boundary_mesh::quality_internal
         const Point3 *points,
         std::size_t point_count) noexcept
     {
-        Scalar maximum_squared_distance = 0.0;
+        Scalar maximum_distance = 0.0;
         for (std::size_t first = 0; first < point_count; ++first)
         {
             for (std::size_t second = first + 1;
                  second < point_count;
                  ++second)
             {
-                const Scalar squared_distance =
-                    (points[second] - points[first]).squaredNorm();
-                if (!std::isfinite(squared_distance))
+                const Vector3 difference =
+                    points[second] - points[first];
+                const Scalar largest_component =
+                    difference.cwiseAbs().maxCoeff();
+                if (!std::isfinite(largest_component))
                 {
                     return std::nullopt;
                 }
 
-                maximum_squared_distance = std::max(
-                    maximum_squared_distance,
-                    squared_distance);
+                Scalar distance = 0.0;
+                if (largest_component > 0.0)
+                {
+                    distance = largest_component *
+                        (difference / largest_component).norm();
+                    if (!std::isfinite(distance))
+                    {
+                        return std::nullopt;
+                    }
+                }
+
+                maximum_distance = std::max(
+                    maximum_distance,
+                    distance);
             }
         }
 
-        const Scalar length = std::sqrt(maximum_squared_distance);
-        if (!std::isfinite(length))
-        {
-            return std::nullopt;
-        }
-
-        return length;
+        return maximum_distance;
     }
 }

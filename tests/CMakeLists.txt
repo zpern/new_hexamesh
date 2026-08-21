@@ -220,3 +220,17 @@ add_test(
     NAME boundary_mesh_hexa_evaluator_test
     COMMAND boundary_mesh_hexa_evaluator_test
 )
+
+# 20: 体单元质量错误模型、尺度稳定性与确定性诊断
+add_executable(
+    boundary_mesh_volume_cell_error_test
+    unit/quality/volume_cell_error_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_volume_cell_error_test
+    PRIVATE BoundaryMesh::Quality
+)
+add_test(
+    NAME boundary_mesh_volume_cell_error_test
+    COMMAND boundary_mesh_volume_cell_error_test
+)

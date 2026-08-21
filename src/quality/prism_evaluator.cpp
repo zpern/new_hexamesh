@@ -155,8 +155,7 @@ namespace boundary_mesh
                 points.data(), points.size());
         if (!characteristic_length)
         {
-            return EvaluationResult::failure(intermediateErrorAt(
-                {JacobianSampleKind::Center, 0}));
+            return EvaluationResult::failure(intermediateError());
         }
 
         quality_internal::JacobianAccumulator accumulator{
