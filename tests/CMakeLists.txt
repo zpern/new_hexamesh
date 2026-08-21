@@ -300,3 +300,19 @@ add_test(
     NAME boundary_mesh_regular_layer_growth_types_test
     COMMAND boundary_mesh_regular_layer_growth_types_test
 )
+
+# 25：单层规则前沿预推出、质量检查与紧凑映射
+add_executable(
+    boundary_mesh_regular_layer_stepper_test
+    unit/growth/regular_layer_stepper_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_regular_layer_stepper_test
+    PRIVATE
+        BoundaryMesh::BoundaryLayer
+        BoundaryMesh::Quality
+)
+add_test(
+    NAME boundary_mesh_regular_layer_stepper_test
+    COMMAND boundary_mesh_regular_layer_stepper_test
+)

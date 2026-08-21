@@ -94,6 +94,7 @@ add_library(
         src/growth/growth_direction.cpp
         src/growth/symmetry_constraint_builder.cpp
         src/growth/growth_profile_builder.cpp
+        src/growth/regular_layer_stepper.cpp
 )
 add_library(
     BoundaryMesh::BoundaryLayer
@@ -115,6 +116,7 @@ target_link_libraries(
     PUBLIC
         BoundaryMesh::Core
         BoundaryMesh::Surface
+        BoundaryMesh::Quality
 )
 
 include(CTest)

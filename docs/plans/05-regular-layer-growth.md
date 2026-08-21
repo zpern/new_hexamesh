@@ -451,7 +451,7 @@ git commit -m "feat: define regular layer growth state"
 - Consumes: current `GrowthFront`, validated `GrowthProfileTable`, and `RegularLayerGrowthOptions`.
 - Produces: `RegularLayerStepper::step(...) -> Result<LayerStepResult, RegularLayerGrowthError>`.
 
-- [ ] **Step 1: Write a RED single-Triangle test**
+- [x] **Step 1: Write a RED single-Triangle test**
 
 Use a layer-0 Triangle wound so its right-hand normal is `+Z`, with all three profiles `{0.25, 1.0, 2}`. Check:
 
@@ -493,11 +493,11 @@ const auto quality = evaluatePrism(points);
 if (!quality.hasValue() || !quality.value().acceptable) return 4;
 ```
 
-- [ ] **Step 2: Register dependencies and verify RED**
+- [x] **Step 2: Register dependencies and verify RED**
 
 Add `src/growth/regular_layer_stepper.cpp` to `boundary_mesh_boundary_layer`. Add `BoundaryMesh::Quality` to that target's public links. Register `boundary_mesh_regular_layer_stepper_test`. Build the target. Expected: missing stepper header or unresolved method.
 
-- [ ] **Step 3: Declare the stepper**
+- [x] **Step 3: Declare the stepper**
 
 ```cpp
 class RegularLayerStepper
@@ -511,7 +511,7 @@ public:
 };
 ```
 
-- [ ] **Step 4: Implement eligibility before direction evaluation**
+- [x] **Step 4: Implement eligibility before direction evaluation**
 
 Validate all Front parallel arrays and face indices. Set `target_layer = current_front.layer + 1` with checked `std::uint32_t` arithmetic. For each face, visit its vertex IDs and require every source vertex profile to satisfy:
 
@@ -521,7 +521,7 @@ current_front.layer < profile->layer_count
 
 Put ineligible faces into `completed_faces` with `VertexLayerLimit`. Build a compact `eligible_front` from eligible faces only. If no face is eligible, return a successful empty `next_front` without calling `FrontEvaluator`.
 
-- [ ] **Step 5: Compute current active directions and candidates**
+- [x] **Step 5: Compute current active directions and candidates**
 
 Call:
 
@@ -539,7 +539,7 @@ candidate = current + height * direction;
 
 If the height result fails, return `NonFiniteLayerHeight`. Verify candidate coordinates are finite; otherwise return the same program-level error for that source point and target layer.
 
-- [ ] **Step 6: Evaluate the candidate Prism and compact accepted output**
+- [x] **Step 6: Evaluate the candidate Prism and compact accepted output**
 
 For a Triangle, assemble `PrismPoints` in fixed bottom/top order and call `evaluatePrism`. Wrap evaluator failure as `CellEvaluationFailure`. Convert successful rejection to a `FaceStopEvent` with this exact priority:
 
@@ -563,7 +563,7 @@ case VolumeCellValidity::Valid:
 
 Only after all faces have been evaluated, collect vertices referenced by accepted faces, assign compact next-front IDs in previous-front vertex order, and populate both mapping arrays. Copy source IDs and `vertex_boundaries` for committed candidates. This guarantees no stopped-only candidate survives.
 
-- [ ] **Step 7: Run tests and commit**
+- [x] **Step 7: Run tests and commit**
 
 Run the focused stepper test and full Debug CTest. Expected: Triangle step succeeds and all regressions pass. Commit:
 
