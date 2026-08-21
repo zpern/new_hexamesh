@@ -38,6 +38,31 @@ namespace
             {SurfaceBoundaryKind::Symmetry, 32}};
         return mesh;
     }
+
+    SurfaceMesh makeHexaWithTopWall()
+    {
+        SurfaceMesh mesh;
+        mesh.vertices = {
+            Point3{0.0, 0.0, 0.0}, Point3{1.0, 0.0, 0.0},
+            Point3{1.0, 1.0, 0.0}, Point3{0.0, 1.0, 0.0},
+            Point3{0.0, 0.0, 1.0}, Point3{1.0, 0.0, 1.0},
+            Point3{1.0, 1.0, 1.0}, Point3{0.0, 1.0, 1.0}};
+        mesh.faces = {
+            Quad{{VertexId{0}, VertexId{3}, VertexId{2}, VertexId{1}}},
+            Quad{{VertexId{4}, VertexId{5}, VertexId{6}, VertexId{7}}},
+            Quad{{VertexId{0}, VertexId{1}, VertexId{5}, VertexId{4}}},
+            Quad{{VertexId{1}, VertexId{2}, VertexId{6}, VertexId{5}}},
+            Quad{{VertexId{2}, VertexId{3}, VertexId{7}, VertexId{6}}},
+            Quad{{VertexId{3}, VertexId{0}, VertexId{4}, VertexId{7}}}};
+        mesh.face_tags = {
+            {SurfaceBoundaryKind::Farfield, 20},
+            {SurfaceBoundaryKind::Wall, 10},
+            {SurfaceBoundaryKind::Farfield, 21},
+            {SurfaceBoundaryKind::Farfield, 22},
+            {SurfaceBoundaryKind::Farfield, 23},
+            {SurfaceBoundaryKind::Farfield, 24}};
+        return mesh;
+    }
 }
 
 int main()
@@ -103,6 +128,52 @@ int main()
         quality.value().validity != VolumeCellValidity::Valid)
     {
         return 9;
+    }
+
+    const SurfaceMesh hexa_mesh = makeHexaWithTopWall();
+    const auto hexa_topology = SurfaceTopologyBuilder{}.build(hexa_mesh);
+    if (!hexa_topology.hasValue()) return 10;
+    const auto hexa_patch = GrowthPatchBuilder{}.build(
+        hexa_mesh, hexa_topology.value());
+    if (!hexa_patch.hasValue()) return 11;
+    const auto hexa_front = GrowthFrontBuilder{}.buildInitial(
+        hexa_mesh, hexa_patch.value());
+    if (!hexa_front.hasValue()) return 12;
+    const std::vector<SourceVertexGrowthProfile> hexa_input_profiles{
+        {VertexId{4}, {0.5, 1.0, 1}},
+        {VertexId{5}, {0.5, 1.0, 1}},
+        {VertexId{6}, {0.5, 1.0, 1}},
+        {VertexId{7}, {0.5, 1.0, 1}}};
+    const auto hexa_profiles = GrowthProfileBuilder{}.build(
+        hexa_patch.value(), hexa_input_profiles);
+    if (!hexa_profiles.hasValue()) return 13;
+    const auto hexa_step = RegularLayerStepper{}.step(
+        hexa_front.value(), hexa_profiles.value());
+    if (!hexa_step.hasValue() ||
+        hexa_step.value().next_front.vertices.size() != 4 ||
+        hexa_step.value().next_front.faces.size() != 1)
+    {
+        return 14;
+    }
+    const auto *hexa_bottom = std::get_if<Quad>(
+        &hexa_front.value().faces[0]);
+    const auto *hexa_top = std::get_if<Quad>(
+        &hexa_step.value().next_front.faces[0]);
+    if (hexa_bottom == nullptr || hexa_top == nullptr) return 15;
+    HexaPoints hexa_points;
+    for (std::size_t local = 0; local < 4; ++local)
+    {
+        hexa_points[local] = hexa_front.value().vertices[
+            hexa_bottom->vertex_ids[local]];
+        hexa_points[local + 4] = hexa_step.value().next_front.vertices[
+            hexa_top->vertex_ids[local]];
+    }
+    const auto hexa_quality = evaluateHexa(hexa_points);
+    if (!hexa_quality.hasValue() ||
+        !hexa_quality.value().acceptable ||
+        hexa_quality.value().validity != VolumeCellValidity::Valid)
+    {
+        return 16;
     }
 
     return 0;

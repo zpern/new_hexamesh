@@ -257,26 +257,44 @@ namespace boundary_mesh
              eligible_face_index < eligible.front.faces.size();
              ++eligible_face_index)
         {
-            const auto *triangle = std::get_if<Triangle>(
-                &eligible.front.faces[eligible_face_index]);
-            if (triangle == nullptr)
-            {
-                return StepResult::failure(
-                    InvalidLayerFrontMapping{current_front.layer});
-            }
-
-            PrismPoints points;
-            for (std::size_t local = 0; local < 3; ++local)
-            {
-                const std::size_t vertex_index =
-                    static_cast<std::size_t>(
-                        triangle->vertex_ids[local]);
-                points[local] = eligible.front.vertices[vertex_index];
-                points[local + 3] =
-                    candidate_front.vertices[vertex_index];
-            }
-            const auto quality = evaluatePrism(
-                points, options.cell_quality);
+            const auto quality = std::visit(
+                [&](const auto &face)
+                    -> Result<VolumeCellEvaluation,
+                              VolumeCellEvaluationError>
+                {
+                    using Face = std::decay_t<decltype(face)>;
+                    if constexpr (std::is_same_v<Face, Triangle>)
+                    {
+                        PrismPoints points;
+                        for (std::size_t local = 0; local < 3; ++local)
+                        {
+                            const std::size_t vertex_index =
+                                static_cast<std::size_t>(
+                                    face.vertex_ids[local]);
+                            points[local] =
+                                eligible.front.vertices[vertex_index];
+                            points[local + 3] =
+                                candidate_front.vertices[vertex_index];
+                        }
+                        return evaluatePrism(points, options.cell_quality);
+                    }
+                    else
+                    {
+                        HexaPoints points;
+                        for (std::size_t local = 0; local < 4; ++local)
+                        {
+                            const std::size_t vertex_index =
+                                static_cast<std::size_t>(
+                                    face.vertex_ids[local]);
+                            points[local] =
+                                eligible.front.vertices[vertex_index];
+                            points[local + 4] =
+                                candidate_front.vertices[vertex_index];
+                        }
+                        return evaluateHexa(points, options.cell_quality);
+                    }
+                },
+                eligible.front.faces[eligible_face_index]);
             const std::size_t previous_face_index =
                 eligible.previous_face_indices[eligible_face_index];
             if (!quality.hasValue())
