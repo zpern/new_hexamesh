@@ -272,3 +272,17 @@ target_link_libraries(
     boundary_mesh_volume_cell_quality_benchmark
     PRIVATE BoundaryMesh::Quality
 )
+
+# 23：逐源顶点生长参数验证和层步长计算
+add_executable(
+    boundary_mesh_growth_profile_test
+    unit/growth/growth_profile_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_growth_profile_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_growth_profile_test
+    COMMAND boundary_mesh_growth_profile_test
+)

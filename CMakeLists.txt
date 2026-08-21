@@ -93,6 +93,7 @@ add_library(
         src/growth/front_evaluator.cpp
         src/growth/growth_direction.cpp
         src/growth/symmetry_constraint_builder.cpp
+        src/growth/growth_profile_builder.cpp
 )
 add_library(
     BoundaryMesh::BoundaryLayer

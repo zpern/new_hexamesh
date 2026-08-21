@@ -71,7 +71,7 @@
 - Consumes: `GrowthPatch::vertices()` and external `std::vector<SourceVertexGrowthProfile>`.
 - Produces: `VertexGrowthProfile`, `SourceVertexGrowthProfile`, `GrowthProfileTable::find(VertexId)`, `GrowthProfileTable::height(VertexId, std::uint32_t)`, and `GrowthProfileBuilder::build(...)`.
 
-- [ ] **Step 1: Add a failing profile validation test**
+- [x] **Step 1: Add a failing profile validation test**
 
 Create a test with a small helper that obtains a real `GrowthPatch`, then check one valid table plus every input error:
 
@@ -126,7 +126,7 @@ if (bad_ratio_result.hasValue() ||
 
 Also use `first_height = NaN`, `first_height = Inf`, `growth_ratio = 0`, and `growth_ratio = NaN` in separate checks. Check that a very large finite ratio produces `NonFiniteLayerHeight` when `height` evaluates a later layer.
 
-- [ ] **Step 2: Register and run the RED test**
+- [x] **Step 2: Register and run the RED test**
 
 Add source and test targets:
 
@@ -157,7 +157,7 @@ cmake --build build --config Debug --target boundary_mesh_growth_profile_test
 
 Expected: compilation fails because `growth_profile_builder.hpp` does not exist.
 
-- [ ] **Step 3: Define profile types and errors**
+- [x] **Step 3: Define profile types and errors**
 
 Add these exact public contracts:
 
@@ -218,7 +218,7 @@ using GrowthProfileError = std::variant<
 
 Keep `NonFiniteLayerHeight` outside `GrowthProfileError` because it can arise during a later layer rather than while validating raw input.
 
-- [ ] **Step 4: Implement deterministic lookup and height calculation**
+- [x] **Step 4: Implement deterministic lookup and height calculation**
 
 Expose:
 
@@ -268,7 +268,7 @@ return HeightResult::success(value);
 
 Require `layer >= 1`; the stepper only asks for a target layer. Validate unknown lookup before dereferencing and represent it as `NonFiniteLayerHeight` only if the table invariant is already broken; the builder must prevent that state in normal use.
 
-- [ ] **Step 5: Run focused and full tests**
+- [x] **Step 5: Run focused and full tests**
 
 Run:
 
@@ -280,7 +280,7 @@ ctest --test-dir build -C Debug --output-on-failure
 
 Expected: the focused test and all existing 22 tests pass.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```powershell
 git add CMakeLists.txt tests/CMakeLists.txt include/boundary_mesh/growth/growth_profile.hpp include/boundary_mesh/growth/growth_profile_error.hpp include/boundary_mesh/growth/growth_profile_builder.hpp src/growth/growth_profile_builder.cpp tests/unit/growth/growth_profile_test.cpp
