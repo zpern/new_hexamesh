@@ -8,27 +8,25 @@
 
 namespace boundary_mesh::quality_internal
 {
-    struct JacobianAccumulator
+    struct SubtetVolumeAccumulator
     {
-        explicit JacobianAccumulator(Scalar tolerance) noexcept;
-
         bool add(
-            Scalar determinant,
-            Scalar local_scale,
-            JacobianSampleLocation location) noexcept;
+            const Point3 &a,
+            const Point3 &b,
+            const Point3 &c,
+            const Point3 &d,
+            std::size_t subtet_index) noexcept;
 
-        VolumeCellValidity validity(bool force_degenerate) const noexcept;
+        VolumeCellValidity validity() const noexcept;
 
-        Scalar tolerance{};
-        Scalar minimum_jacobian{};
-        Scalar maximum_jacobian{};
-        Scalar minimum_normalized_jacobian{};
-        Scalar maximum_normalized_jacobian{};
-        JacobianSampleLocation worst_location{};
+        Scalar signed_volume{};
+        Scalar minimum_signed_volume{};
+        Scalar maximum_signed_volume{};
+        std::size_t worst_subtet_index{};
         bool initialized{};
         bool has_positive{};
         bool has_negative{};
-        bool has_degenerate{};
+        bool has_zero{};
     };
 
     std::optional<VolumeCellEvaluationError> validateQualityInput(
@@ -36,8 +34,4 @@ namespace boundary_mesh::quality_internal
         std::size_t point_count,
         VolumeCellKind cell_kind,
         const VolumeCellQualityOptions &options) noexcept;
-
-    std::optional<Scalar> characteristicLength(
-        const Point3 *points,
-        std::size_t point_count) noexcept;
 }

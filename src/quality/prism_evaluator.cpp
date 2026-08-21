@@ -1,10 +1,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <optional>
-
-#include <Eigen/Core>
-#include <Eigen/LU>
 
 #include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 #include <boundary_mesh/surface/face_skewness.hpp>
@@ -15,77 +13,71 @@ namespace boundary_mesh
 {
     namespace
     {
-        struct ReferenceSample
+        using Subtet = std::array<std::size_t, 4>;
+
+        constexpr std::array<Subtet, 3> prism_subtets{{
+            {0, 1, 2, 3},
+            {1, 2, 3, 4},
+            {2, 3, 4, 5}}}; // Prism 固定子四面体按公共诊断下标排列
+
+        template <std::size_t VertexCount>
+        bool checkFaceEdges(
+            const std::array<Point3, VertexCount> &face,
+            bool &degenerate)
         {
-            Scalar r;
-            Scalar s;
-            Scalar t;
-            JacobianSampleLocation location;
-            Scalar volume_weight;
-        };
+            for (std::size_t index = 0;
+                 index < VertexCount;
+                 ++index)
+            {
+                const Vector3 edge =
+                    face[(index + 1) % VertexCount] - face[index];
+                if (!edge.allFinite())
+                {
+                    return false;
+                }
 
-        constexpr Scalar inverse_root_three =
-            0.577350269189625764509148780501957456;
+                const Scalar length = edge.norm();
+                if (!std::isfinite(length))
+                {
+                    return false;
+                }
+                if (length == Scalar{0})
+                {
+                    degenerate = true;
+                }
+            }
 
-        constexpr std::array<ReferenceSample, 13> samples{{
-            {0.0, 0.0, -1.0, {JacobianSampleKind::Vertex, 0}, 0.0},
-            {1.0, 0.0, -1.0, {JacobianSampleKind::Vertex, 1}, 0.0},
-            {0.0, 1.0, -1.0, {JacobianSampleKind::Vertex, 2}, 0.0},
-            {0.0, 0.0, 1.0, {JacobianSampleKind::Vertex, 3}, 0.0},
-            {1.0, 0.0, 1.0, {JacobianSampleKind::Vertex, 4}, 0.0},
-            {0.0, 1.0, 1.0, {JacobianSampleKind::Vertex, 5}, 0.0},
-            {1.0 / 3.0, 1.0 / 3.0, 0.0, {JacobianSampleKind::Center, 0}, 0.0},
-            {1.0 / 6.0, 1.0 / 6.0, -inverse_root_three, {JacobianSampleKind::IntegrationPoint, 0}, 1.0 / 6.0},
-            {1.0 / 6.0, 1.0 / 6.0, inverse_root_three, {JacobianSampleKind::IntegrationPoint, 1}, 1.0 / 6.0},
-            {2.0 / 3.0, 1.0 / 6.0, -inverse_root_three, {JacobianSampleKind::IntegrationPoint, 2}, 1.0 / 6.0},
-            {2.0 / 3.0, 1.0 / 6.0, inverse_root_three, {JacobianSampleKind::IntegrationPoint, 3}, 1.0 / 6.0},
-            {1.0 / 6.0, 2.0 / 3.0, -inverse_root_three, {JacobianSampleKind::IntegrationPoint, 4}, 1.0 / 6.0},
-            {1.0 / 6.0, 2.0 / 3.0, inverse_root_three, {JacobianSampleKind::IntegrationPoint, 5}, 1.0 / 6.0}}};
-
-        Eigen::Matrix<Scalar, 3, 3> prismJacobian(
-            const PrismPoints &points,
-            Scalar r,
-            Scalar s,
-            Scalar t)
-        {
-            const Scalar lower = (Scalar{1} - t) / Scalar{2};
-            const Scalar upper = (Scalar{1} + t) / Scalar{2};
-            const Scalar first_triangle_coordinate =
-                Scalar{1} - r - s;
-
-            Eigen::Matrix<Scalar, 3, 3> jacobian;
-            jacobian.col(0) =
-                lower * (points[1] - points[0]) +
-                upper * (points[4] - points[3]);
-            jacobian.col(1) =
-                lower * (points[2] - points[0]) +
-                upper * (points[5] - points[3]);
-            jacobian.col(2) = Scalar{0.5} * (
-                first_triangle_coordinate * (points[3] - points[0]) +
-                r * (points[4] - points[1]) +
-                s * (points[5] - points[2]));
-            return jacobian;
+            return true;
         }
 
         std::optional<Scalar> prismSkewness(
             const PrismPoints &points,
-            Scalar length_tolerance,
             bool &degenerate)
         {
-            Scalar skewness = 0.0;
+            Scalar skewness = Scalar{0};
 
             const std::array<std::array<Point3, 3>, 2> triangles{{
                 {points[0], points[1], points[2]},
                 {points[3], points[4], points[5]}}};
             for (const auto &triangle : triangles)
             {
-                const auto result = triangleEquiangularSkewness(
-                    triangle,
-                    length_tolerance);
-                if (!result.hasValue())
+                bool face_degenerate = false;
+                if (!checkFaceEdges(triangle, face_degenerate))
+                {
+                    return std::nullopt;
+                }
+                if (face_degenerate)
                 {
                     degenerate = true;
                     continue;
+                }
+
+                const auto result = triangleEquiangularSkewness(
+                    triangle,
+                    Scalar{0});
+                if (!result.hasValue())
+                {
+                    return std::nullopt;
                 }
                 skewness = std::max(skewness, result.value());
             }
@@ -96,13 +88,23 @@ namespace boundary_mesh
                 {points[2], points[0], points[3], points[5]}}};
             for (const auto &quad : quads)
             {
-                const auto result = quadEquiangularSkewness(
-                    quad,
-                    length_tolerance);
-                if (!result.hasValue())
+                bool face_degenerate = false;
+                if (!checkFaceEdges(quad, face_degenerate))
+                {
+                    return std::nullopt;
+                }
+                if (face_degenerate)
                 {
                     degenerate = true;
                     continue;
+                }
+
+                const auto result = quadEquiangularSkewness(
+                    quad,
+                    Scalar{0});
+                if (!result.hasValue())
+                {
+                    return std::nullopt;
                 }
                 skewness = std::max(skewness, result.value());
             }
@@ -111,25 +113,15 @@ namespace boundary_mesh
                               : std::optional<Scalar>{skewness};
         }
 
-        VolumeCellEvaluationError intermediateError()
+        VolumeCellEvaluationError intermediateError(
+            std::optional<std::size_t> subtet_index = std::nullopt)
         {
             return VolumeCellEvaluationError{
                 VolumeCellEvaluationErrorCategory::NonFiniteIntermediateResult,
                 VolumeCellKind::Prism,
-                0.0,
+                Scalar{0},
                 std::nullopt,
-                std::nullopt};
-        }
-
-        VolumeCellEvaluationError intermediateErrorAt(
-            JacobianSampleLocation location)
-        {
-            return VolumeCellEvaluationError{
-                VolumeCellEvaluationErrorCategory::NonFiniteIntermediateResult,
-                VolumeCellKind::Prism,
-                0.0,
-                std::nullopt,
-                location};
+                subtet_index};
         }
     }
 
@@ -150,74 +142,43 @@ namespace boundary_mesh
             return EvaluationResult::failure(*error);
         }
 
-        const auto characteristic_length =
-            quality_internal::characteristicLength(
-                points.data(), points.size());
-        if (!characteristic_length)
+        quality_internal::SubtetVolumeAccumulator accumulator;
+        for (std::size_t index = 0;
+             index < prism_subtets.size();
+             ++index)
         {
-            return EvaluationResult::failure(intermediateError());
-        }
-
-        quality_internal::JacobianAccumulator accumulator{
-            options.relative_jacobian_tolerance};
-        Scalar signed_volume = 0.0;
-
-        for (const ReferenceSample &sample : samples)
-        {
-            const Eigen::Matrix<Scalar, 3, 3> jacobian =
-                prismJacobian(points, sample.r, sample.s, sample.t);
-            const Scalar determinant = jacobian.determinant();
-            const Scalar local_scale =
-                jacobian.col(0).norm() *
-                jacobian.col(1).norm() *
-                jacobian.col(2).norm();
-
+            const Subtet &subtet = prism_subtets[index];
             if (!accumulator.add(
-                    determinant,
-                    local_scale,
-                    sample.location))
+                    points[subtet[0]],
+                    points[subtet[1]],
+                    points[subtet[2]],
+                    points[subtet[3]],
+                    index))
             {
                 return EvaluationResult::failure(
-                    intermediateErrorAt(sample.location));
-            }
-
-            signed_volume += sample.volume_weight * determinant;
-            if (!std::isfinite(signed_volume))
-            {
-                return EvaluationResult::failure(
-                    intermediateErrorAt(sample.location));
+                    intermediateError(index));
             }
         }
 
-        bool face_degenerate = *characteristic_length == 0.0;
-        const Scalar length_tolerance =
-            *characteristic_length * options.relative_length_tolerance;
-        if (!std::isfinite(length_tolerance))
-        {
-            return EvaluationResult::failure(intermediateError());
-        }
-
+        bool face_degenerate = false;
         const auto skewness = prismSkewness(
             points,
-            length_tolerance,
             face_degenerate);
         if (!skewness || !std::isfinite(*skewness))
         {
-            return EvaluationResult::failure(intermediateErrorAt(
-                {JacobianSampleKind::Center, 0}));
+            return EvaluationResult::failure(intermediateError());
         }
 
         VolumeCellEvaluation evaluation;
-        evaluation.validity = accumulator.validity(face_degenerate);
-        evaluation.signed_volume = signed_volume;
-        evaluation.minimum_jacobian = accumulator.minimum_jacobian;
-        evaluation.maximum_jacobian = accumulator.maximum_jacobian;
-        evaluation.minimum_normalized_jacobian =
-            accumulator.minimum_normalized_jacobian;
-        evaluation.maximum_normalized_jacobian =
-            accumulator.maximum_normalized_jacobian;
+        evaluation.validity = accumulator.validity();
+        evaluation.signed_volume = accumulator.signed_volume;
+        evaluation.minimum_subtet_signed_volume =
+            accumulator.minimum_signed_volume;
+        evaluation.maximum_subtet_signed_volume =
+            accumulator.maximum_signed_volume;
+        evaluation.worst_subtet_index =
+            accumulator.worst_subtet_index;
         evaluation.skewness = *skewness;
-        evaluation.worst_jacobian_location = accumulator.worst_location;
         evaluation.acceptable =
             evaluation.validity == VolumeCellValidity::Valid &&
             evaluation.skewness <= options.maximum_skewness;

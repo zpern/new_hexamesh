@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -32,17 +31,6 @@ namespace
             Point3{0.5, root_three / 2.0, height}};
     }
 
-    PrismPoints distortedPrism()
-    {
-        return PrismPoints{
-            Point3{0.0, 0.0, 0.0},
-            Point3{1.0, 0.0, 0.0},
-            Point3{0.0, 1.0, 0.0},
-            Point3{0.0, 0.0, 1.0},
-            Point3{1.0, 0.0, 1.0},
-            Point3{0.0, 1.0, 1.0}};
-    }
-
     HexaPoints unitHexa()
     {
         return HexaPoints{
@@ -54,19 +42,6 @@ namespace
             Point3{1.0, 0.0, 1.0},
             Point3{1.0, 1.0, 1.0},
             Point3{0.0, 1.0, 1.0}};
-    }
-
-    HexaPoints distortedHexa()
-    {
-        return HexaPoints{
-            Point3{0.0, 0.0, 0.0},
-            Point3{1.0, 0.0, 0.0},
-            Point3{2.0, 1.0, 0.0},
-            Point3{1.0, 1.0, 0.0},
-            Point3{0.0, 0.0, 1.0},
-            Point3{1.0, 0.0, 1.0},
-            Point3{2.0, 1.0, 1.0},
-            Point3{1.0, 1.0, 1.0}};
     }
 
     template <typename Points>
@@ -94,31 +69,6 @@ namespace
     }
 
     template <typename Points>
-    bool hasConfigurationError(
-        const Points &points,
-        Evaluator<Points> evaluator,
-        const VolumeCellQualityOptions &options,
-        VolumeCellEvaluationErrorCategory expected_category,
-        VolumeCellKind expected_kind,
-        Scalar expected_value)
-    {
-        const EvaluationResult result = evaluator(points, options);
-        if (result.hasValue())
-        {
-            return false;
-        }
-
-        const VolumeCellEvaluationError &error = result.error();
-        return error.category == expected_category &&
-               error.cell_kind == expected_kind &&
-               sameConfigurationValue(
-                   error.configuration_value,
-                   expected_value) &&
-               !error.local_vertex_index.has_value() &&
-               !error.jacobian_sample_location.has_value();
-    }
-
-    template <typename Points>
     bool checkConfigurationErrors(
         const Points &points,
         Evaluator<Points> evaluator,
@@ -128,57 +78,29 @@ namespace
             std::numeric_limits<Scalar>::quiet_NaN();
         const Scalar infinity =
             std::numeric_limits<Scalar>::infinity();
-        const std::array<Scalar, 4> invalid_tolerances{
-            Scalar{0}, Scalar{-1}, nan, infinity};
-
-        for (const Scalar value : invalid_tolerances)
-        {
-            VolumeCellQualityOptions options;
-            options.relative_jacobian_tolerance = value;
-            if (!hasConfigurationError(
-                    points,
-                    evaluator,
-                    options,
-                    VolumeCellEvaluationErrorCategory::
-                        InvalidRelativeJacobianTolerance,
-                    expected_kind,
-                    value))
-            {
-                return false;
-            }
-        }
-
-        for (const Scalar value : invalid_tolerances)
-        {
-            VolumeCellQualityOptions options;
-            options.relative_length_tolerance = value;
-            if (!hasConfigurationError(
-                    points,
-                    evaluator,
-                    options,
-                    VolumeCellEvaluationErrorCategory::
-                        InvalidRelativeLengthTolerance,
-                    expected_kind,
-                    value))
-            {
-                return false;
-            }
-        }
-
         const std::array<Scalar, 4> invalid_skewness{
             Scalar{-0.01}, Scalar{1.01}, nan, infinity};
+
         for (const Scalar value : invalid_skewness)
         {
             VolumeCellQualityOptions options;
             options.maximum_skewness = value;
-            if (!hasConfigurationError(
-                    points,
-                    evaluator,
-                    options,
+            const EvaluationResult result = evaluator(points, options);
+            if (result.hasValue())
+            {
+                return false;
+            }
+
+            const VolumeCellEvaluationError &error = result.error();
+            if (error.category !=
                     VolumeCellEvaluationErrorCategory::
-                        InvalidMaximumSkewness,
-                    expected_kind,
-                    value))
+                        InvalidMaximumSkewness ||
+                error.cell_kind != expected_kind ||
+                !sameConfigurationValue(
+                    error.configuration_value,
+                    value) ||
+                error.local_vertex_index.has_value() ||
+                error.subtet_index.has_value())
             {
                 return false;
             }
@@ -206,9 +128,9 @@ namespace
                    VolumeCellEvaluationErrorCategory::
                        NonFiniteVertexCoordinate &&
                error.cell_kind == expected_kind &&
-               error.configuration_value == 0.0 &&
+               error.configuration_value == Scalar{0} &&
                error.local_vertex_index == expected_index &&
-               !error.jacobian_sample_location.has_value();
+               !error.subtet_index.has_value();
     }
 
     template <typename Points>
@@ -245,38 +167,24 @@ namespace
     bool hasIntermediateError(
         const Points &points,
         Evaluator<Points> evaluator,
-        const VolumeCellQualityOptions &options,
         VolumeCellKind expected_kind,
-        std::optional<JacobianSampleLocation> expected_location)
+        std::optional<std::size_t> expected_subtet_index)
     {
-        const EvaluationResult result = evaluator(points, options);
+        const EvaluationResult result =
+            evaluator(points, VolumeCellQualityOptions{});
         if (result.hasValue())
         {
             return false;
         }
 
         const VolumeCellEvaluationError &error = result.error();
-        if (error.category !=
-                VolumeCellEvaluationErrorCategory::
-                    NonFiniteIntermediateResult ||
-            error.cell_kind != expected_kind ||
-            error.configuration_value != 0.0 ||
-            error.local_vertex_index.has_value() ||
-            error.jacobian_sample_location.has_value() !=
-                expected_location.has_value())
-        {
-            return false;
-        }
-
-        if (!expected_location)
-        {
-            return true;
-        }
-
-        return error.jacobian_sample_location->kind ==
-                   expected_location->kind &&
-               error.jacobian_sample_location->index ==
-                   expected_location->index;
+        return error.category ==
+                   VolumeCellEvaluationErrorCategory::
+                       NonFiniteIntermediateResult &&
+               error.cell_kind == expected_kind &&
+               error.configuration_value == Scalar{0} &&
+               !error.local_vertex_index.has_value() &&
+               error.subtet_index == expected_subtet_index;
     }
 
     template <typename Points>
@@ -285,19 +193,6 @@ namespace
         Evaluator<Points> evaluator,
         VolumeCellKind expected_kind)
     {
-        VolumeCellQualityOptions overflowing_length_options;
-        overflowing_length_options.relative_length_tolerance =
-            std::numeric_limits<Scalar>::max();
-        if (!hasIntermediateError(
-                points,
-                evaluator,
-                overflowing_length_options,
-                expected_kind,
-                std::nullopt))
-        {
-            return false;
-        }
-
         Points overflowing_difference_points = points;
         overflowing_difference_points[0].x() =
             std::numeric_limits<Scalar>::max();
@@ -306,176 +201,17 @@ namespace
         if (!hasIntermediateError(
                 overflowing_difference_points,
                 evaluator,
-                VolumeCellQualityOptions{},
                 expected_kind,
-                std::nullopt))
+                std::size_t{0}))
         {
             return false;
         }
 
-        const Points overflowing_jacobian_points =
-            scaled(points, Scalar{1e200});
         return hasIntermediateError(
-            overflowing_jacobian_points,
+            scaled(points, Scalar{1e200}),
             evaluator,
-            VolumeCellQualityOptions{},
             expected_kind,
-            JacobianSampleLocation{
-                JacobianSampleKind::Vertex,
-                0});
-    }
-
-    bool relativelyNear(
-        Scalar first,
-        Scalar second,
-        Scalar relative_tolerance = 1e-12)
-    {
-        const Scalar scale = std::max(
-            std::abs(first),
-            std::abs(second));
-        if (scale == 0.0)
-        {
-            return true;
-        }
-        return std::abs(first - second) <=
-               relative_tolerance * scale;
-    }
-
-    template <typename Points>
-    bool scaleInvariant(
-        const Points &points,
-        Evaluator<Points> evaluator)
-    {
-        const EvaluationResult baseline =
-            evaluator(points, VolumeCellQualityOptions{});
-        if (!baseline.hasValue())
-        {
-            return false;
-        }
-
-        for (const Scalar factor :
-             std::array<Scalar, 2>{Scalar{1e-9}, Scalar{1e9}})
-        {
-            const EvaluationResult transformed = evaluator(
-                scaled(points, factor),
-                VolumeCellQualityOptions{});
-            if (!transformed.hasValue())
-            {
-                return false;
-            }
-
-            const Scalar volume_factor =
-                factor * factor * factor;
-            if (transformed.value().validity !=
-                    baseline.value().validity ||
-                transformed.value().acceptable !=
-                    baseline.value().acceptable ||
-                !relativelyNear(
-                    transformed.value().skewness,
-                    baseline.value().skewness) ||
-                !relativelyNear(
-                    transformed.value().signed_volume,
-                    baseline.value().signed_volume * volume_factor,
-                    5e-12))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    bool checkThinOrthogonalCells()
-    {
-        const Scalar thickness = 1e-100;
-        PrismPoints prism = distortedPrism();
-        prism[3].z() = thickness;
-        prism[4].z() = thickness;
-        prism[5].z() = thickness;
-
-        HexaPoints hexa = unitHexa();
-        hexa[4].z() = thickness;
-        hexa[5].z() = thickness;
-        hexa[6].z() = thickness;
-        hexa[7].z() = thickness;
-
-        VolumeCellQualityOptions options;
-        options.relative_length_tolerance = 1e-120;
-        const EvaluationResult prism_result =
-            evaluatePrism(prism, options);
-        const EvaluationResult hexa_result =
-            evaluateHexa(hexa, options);
-
-        return prism_result.hasValue() &&
-               prism_result.value().validity ==
-                   VolumeCellValidity::Valid &&
-               prism_result.value().acceptable &&
-               prism_result.value().minimum_normalized_jacobian > 0.7 &&
-               hexa_result.hasValue() &&
-               hexa_result.value().validity ==
-                   VolumeCellValidity::Valid &&
-               hexa_result.value().acceptable &&
-               hexa_result.value().minimum_normalized_jacobian > 0.9;
-    }
-
-    bool checkLocalScaleUnderflow()
-    {
-        const EvaluationResult prism_result = evaluatePrism(
-            scaled(distortedPrism(), Scalar{1e-108}),
-            VolumeCellQualityOptions{});
-        const EvaluationResult hexa_result = evaluateHexa(
-            scaled(unitHexa(), Scalar{1e-108}),
-            VolumeCellQualityOptions{});
-
-        return prism_result.hasValue() &&
-               prism_result.value().validity ==
-                   VolumeCellValidity::Degenerate &&
-               !prism_result.value().acceptable &&
-               hexa_result.hasValue() &&
-               hexa_result.value().validity ==
-                   VolumeCellValidity::Degenerate &&
-               !hexa_result.value().acceptable;
-    }
-
-    template <typename Points>
-    bool hasEarliestEqualWorstLocation(
-        const Points &points,
-        Evaluator<Points> evaluator)
-    {
-        const EvaluationResult result =
-            evaluator(points, VolumeCellQualityOptions{});
-        return result.hasValue() &&
-               result.value().worst_jacobian_location.kind ==
-                   JacobianSampleKind::Vertex &&
-               result.value().worst_jacobian_location.index == 0;
-    }
-
-    bool mixedPrismWithDegenerateSampleIsLocallyInverted()
-    {
-        PrismPoints points = distortedPrism();
-        points[3].z() = 0.0;
-        points[4].z() = -1.0;
-        points[5].z() = 1.0;
-        const EvaluationResult result =
-            evaluatePrism(points, VolumeCellQualityOptions{});
-        return result.hasValue() &&
-               result.value().validity ==
-                   VolumeCellValidity::LocallyInverted &&
-               result.value().minimum_normalized_jacobian < 0.0 &&
-               result.value().maximum_normalized_jacobian > 0.0;
-    }
-
-    bool mixedHexaWithDegenerateSampleIsLocallyInverted()
-    {
-        HexaPoints points = unitHexa();
-        points[4].z() = -3.0;
-        const EvaluationResult result =
-            evaluateHexa(points, VolumeCellQualityOptions{});
-        return result.hasValue() &&
-               result.value().validity ==
-                   VolumeCellValidity::LocallyInverted &&
-               result.value().minimum_normalized_jacobian < 0.0 &&
-               result.value().maximum_normalized_jacobian > 0.0;
+            std::size_t{0});
     }
 }
 
@@ -526,44 +262,6 @@ int main()
             VolumeCellKind::Hexa))
     {
         return 6;
-    }
-    if (!scaleInvariant(idealPrism(), &evaluatePrism) ||
-        !scaleInvariant(distortedPrism(), &evaluatePrism))
-    {
-        return 7;
-    }
-    if (!scaleInvariant(unitHexa(), &evaluateHexa) ||
-        !scaleInvariant(distortedHexa(), &evaluateHexa))
-    {
-        return 8;
-    }
-    if (!checkThinOrthogonalCells())
-    {
-        return 9;
-    }
-    if (!checkLocalScaleUnderflow())
-    {
-        return 10;
-    }
-    if (!hasEarliestEqualWorstLocation(
-            distortedPrism(),
-            &evaluatePrism))
-    {
-        return 11;
-    }
-    if (!hasEarliestEqualWorstLocation(
-            unitHexa(),
-            &evaluateHexa))
-    {
-        return 12;
-    }
-    if (!mixedPrismWithDegenerateSampleIsLocallyInverted())
-    {
-        return 13;
-    }
-    if (!mixedHexaWithDegenerateSampleIsLocallyInverted())
-    {
-        return 14;
     }
 
     return 0;

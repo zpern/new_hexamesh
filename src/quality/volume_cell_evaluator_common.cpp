@@ -1,89 +1,97 @@
-#include <algorithm>
 #include <cmath>
+
+#include <Eigen/Geometry>
 
 #include "volume_cell_evaluator_internal.hpp"
 
 namespace boundary_mesh::quality_internal
 {
-    JacobianAccumulator::JacobianAccumulator(
-        Scalar sample_tolerance) noexcept
-        : tolerance(sample_tolerance)
+    bool SubtetVolumeAccumulator::add(
+        const Point3 &a,
+        const Point3 &b,
+        const Point3 &c,
+        const Point3 &d,
+        std::size_t subtet_index) noexcept
     {
-    }
-
-    bool JacobianAccumulator::add(
-        Scalar determinant,
-        Scalar local_scale,
-        JacobianSampleLocation location) noexcept
-    {
-        if (!std::isfinite(determinant) ||
-            !std::isfinite(local_scale))
+        const Vector3 b_minus_a = b - a;
+        const Vector3 c_minus_a = c - a;
+        const Vector3 d_minus_a = d - a;
+        if (!b_minus_a.allFinite() ||
+            !c_minus_a.allFinite() ||
+            !d_minus_a.allFinite())
         {
             return false;
         }
 
-        Scalar normalized = 0.0;
-        if (local_scale > 0.0)
+        const Vector3 cross_product =
+            c_minus_a.cross(d_minus_a);
+        if (!cross_product.allFinite())
         {
-            normalized = determinant / local_scale;
-            if (!std::isfinite(normalized))
-            {
-                return false;
-            }
+            return false;
+        }
+
+        const Scalar signed_volume_6 =
+            b_minus_a.dot(cross_product);
+        if (!std::isfinite(signed_volume_6))
+        {
+            return false;
+        }
+
+        const Scalar subtet_signed_volume =
+            signed_volume_6 / Scalar{6};
+        const Scalar accumulated_volume =
+            signed_volume + subtet_signed_volume;
+        if (!std::isfinite(subtet_signed_volume) ||
+            !std::isfinite(accumulated_volume))
+        {
+            return false;
         }
 
         if (!initialized)
         {
-            minimum_jacobian = determinant;
-            maximum_jacobian = determinant;
-            minimum_normalized_jacobian = normalized;
-            maximum_normalized_jacobian = normalized;
-            worst_location = location;
+            minimum_signed_volume = subtet_signed_volume;
+            maximum_signed_volume = subtet_signed_volume;
+            worst_subtet_index = subtet_index;
             initialized = true;
         }
         else
         {
-            minimum_jacobian = std::min(minimum_jacobian, determinant);
-            maximum_jacobian = std::max(maximum_jacobian, determinant);
-            maximum_normalized_jacobian =
-                std::max(maximum_normalized_jacobian, normalized);
-
-            if (normalized < minimum_normalized_jacobian)
+            if (subtet_signed_volume < minimum_signed_volume)
             {
-                minimum_normalized_jacobian = normalized;
-                worst_location = location;
+                minimum_signed_volume = subtet_signed_volume;
+                worst_subtet_index = subtet_index;
+            }
+            if (subtet_signed_volume > maximum_signed_volume)
+            {
+                maximum_signed_volume = subtet_signed_volume;
             }
         }
 
-        if (local_scale <= 0.0)
-        {
-            has_degenerate = true;
-        }
-        else if (normalized > tolerance)
+        signed_volume = accumulated_volume;
+        if (subtet_signed_volume > Scalar{0})
         {
             has_positive = true;
         }
-        else if (normalized < -tolerance)
+        else if (subtet_signed_volume < Scalar{0})
         {
             has_negative = true;
         }
         else
         {
-            has_degenerate = true;
+            has_zero = true;
         }
 
         return true;
     }
 
-    VolumeCellValidity JacobianAccumulator::validity(
-        bool force_degenerate) const noexcept
+    VolumeCellValidity SubtetVolumeAccumulator::validity() const noexcept
     {
         if (has_positive && has_negative)
         {
             return VolumeCellValidity::LocallyInverted;
         }
 
-        if (has_degenerate || force_degenerate)
+        if (has_zero || !initialized)
         {
             return VolumeCellValidity::Degenerate;
         }
@@ -102,31 +110,9 @@ namespace boundary_mesh::quality_internal
         VolumeCellKind cell_kind,
         const VolumeCellQualityOptions &options) noexcept
     {
-        if (!std::isfinite(options.relative_jacobian_tolerance) ||
-            options.relative_jacobian_tolerance <= 0.0)
-        {
-            return VolumeCellEvaluationError{
-                VolumeCellEvaluationErrorCategory::InvalidRelativeJacobianTolerance,
-                cell_kind,
-                options.relative_jacobian_tolerance,
-                std::nullopt,
-                std::nullopt};
-        }
-
-        if (!std::isfinite(options.relative_length_tolerance) ||
-            options.relative_length_tolerance <= 0.0)
-        {
-            return VolumeCellEvaluationError{
-                VolumeCellEvaluationErrorCategory::InvalidRelativeLengthTolerance,
-                cell_kind,
-                options.relative_length_tolerance,
-                std::nullopt,
-                std::nullopt};
-        }
-
         if (!std::isfinite(options.maximum_skewness) ||
-            options.maximum_skewness < 0.0 ||
-            options.maximum_skewness > 1.0)
+            options.maximum_skewness < Scalar{0} ||
+            options.maximum_skewness > Scalar{1})
         {
             return VolumeCellEvaluationError{
                 VolumeCellEvaluationErrorCategory::InvalidMaximumSkewness,
@@ -143,52 +129,12 @@ namespace boundary_mesh::quality_internal
                 return VolumeCellEvaluationError{
                     VolumeCellEvaluationErrorCategory::NonFiniteVertexCoordinate,
                     cell_kind,
-                    0.0,
+                    Scalar{0},
                     index,
                     std::nullopt};
             }
         }
 
         return std::nullopt;
-    }
-
-    std::optional<Scalar> characteristicLength(
-        const Point3 *points,
-        std::size_t point_count) noexcept
-    {
-        Scalar maximum_distance = 0.0;
-        for (std::size_t first = 0; first < point_count; ++first)
-        {
-            for (std::size_t second = first + 1;
-                 second < point_count;
-                 ++second)
-            {
-                const Vector3 difference =
-                    points[second] - points[first];
-                const Scalar largest_component =
-                    difference.cwiseAbs().maxCoeff();
-                if (!std::isfinite(largest_component))
-                {
-                    return std::nullopt;
-                }
-
-                Scalar distance = 0.0;
-                if (largest_component > 0.0)
-                {
-                    distance = largest_component *
-                        (difference / largest_component).norm();
-                    if (!std::isfinite(distance))
-                    {
-                        return std::nullopt;
-                    }
-                }
-
-                maximum_distance = std::max(
-                    maximum_distance,
-                    distance);
-            }
-        }
-
-        return maximum_distance;
     }
 }
