@@ -68,11 +68,11 @@ namespace boundary_mesh::quality_internal
         }
 
         signed_volume = accumulated_volume;
-        if (subtet_signed_volume > Scalar{0})
+        if (signed_volume_6 > Scalar{0})
         {
             has_positive = true;
         }
-        else if (subtet_signed_volume < Scalar{0})
+        else if (signed_volume_6 < Scalar{0})
         {
             has_negative = true;
         }

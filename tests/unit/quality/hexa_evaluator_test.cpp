@@ -1,4 +1,5 @@
 #include <cmath>
+#include <limits>
 
 #include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
@@ -45,6 +46,37 @@ int main()
         !near(evaluation.skewness, 0.0))
     {
         return 2;
+    }
+
+    const Scalar minimum_positive_height =
+        std::numeric_limits<Scalar>::denorm_min();
+    HexaPoints minimum_positive_hexa = unit_hexa;
+    minimum_positive_hexa[4].z() = minimum_positive_height;
+    minimum_positive_hexa[5].z() = minimum_positive_height;
+    minimum_positive_hexa[6].z() = minimum_positive_height;
+    minimum_positive_hexa[7].z() = minimum_positive_height;
+
+    const auto minimum_positive_result =
+        evaluateHexa(minimum_positive_hexa);
+    if (!minimum_positive_result.hasValue())
+    {
+        return 3;
+    }
+
+    const VolumeCellEvaluation &minimum_positive_evaluation =
+        minimum_positive_result.value();
+    if (minimum_positive_evaluation.validity !=
+            VolumeCellValidity::Valid ||
+        minimum_positive_evaluation.acceptable ||
+        minimum_positive_evaluation.signed_volume != Scalar{0} ||
+        minimum_positive_evaluation.minimum_subtet_signed_volume !=
+            Scalar{0} ||
+        minimum_positive_evaluation.maximum_subtet_signed_volume !=
+            Scalar{0} ||
+        minimum_positive_evaluation.worst_subtet_index != 0 ||
+        minimum_positive_evaluation.skewness != Scalar{1})
+    {
+        return 4;
     }
 
     return 0;
