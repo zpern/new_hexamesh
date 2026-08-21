@@ -10,6 +10,12 @@
 
 namespace boundary_mesh
 {
+    inline constexpr std::array<std::size_t, 6> PrismVertexOrder{
+        0, 1, 2, 3, 4, 5}; // Prism 顶点顺序：底面 0-1-2、顶面 3-4-5、生长边 0-3/1-4/2-5
+
+    inline constexpr std::array<std::size_t, 8> HexaVertexOrder{
+        0, 1, 2, 3, 4, 5, 6, 7}; // Hexa 顶点顺序：底面 0-1-2-3、顶面 4-5-6-7、生长边 0-4/1-5/2-6/3-7
+
     struct Tetra
     {
         std::array<VertexId, 4> vertex_ids{}; // 四面体的四个顶点编号

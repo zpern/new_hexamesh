@@ -178,3 +178,17 @@ add_test(
     NAME boundary_mesh_surface_face_skewness_test
     COMMAND boundary_mesh_surface_face_skewness_test
 )
+
+# 17: Prism/Hexa 体单元质量公共类型与顶点顺序
+add_executable(
+    boundary_mesh_volume_cell_types_test
+    unit/quality/volume_cell_types_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_volume_cell_types_test
+    PRIVATE BoundaryMesh::Quality
+)
+add_test(
+    NAME boundary_mesh_volume_cell_types_test
+    COMMAND boundary_mesh_volume_cell_types_test
+)

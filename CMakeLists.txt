@@ -60,6 +60,25 @@ target_link_libraries(
         BoundaryMesh::Core
 )
 
+add_library(boundary_mesh_quality INTERFACE)
+add_library(BoundaryMesh::Quality ALIAS boundary_mesh_quality)
+
+target_compile_features(boundary_mesh_quality INTERFACE cxx_std_17)
+
+target_include_directories(
+    boundary_mesh_quality
+    INTERFACE
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(
+    boundary_mesh_quality
+    INTERFACE
+        BoundaryMesh::Core
+        BoundaryMesh::Surface
+)
+
 add_library(
     boundary_mesh_boundary_layer
     STATIC
