@@ -1,4 +1,6 @@
 #include <cassert>
+#include <cstddef>
+#include <utility>
 
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
 
@@ -35,6 +37,42 @@ namespace
         step.previous_front_vertex_indices = {0, 1, 2};
         step.previous_front_face_indices = {0};
         return step;
+    }
+
+    LayerStepResult liftedStep(const GrowthFront &current, Scalar height)
+    {
+        LayerStepResult step;
+        step.layer = current.layer + 1;
+        step.next_front = current;
+        step.next_front.layer = step.layer;
+        for (Point3 &point : step.next_front.vertices)
+        {
+            point.z() += height;
+        }
+        for (std::size_t index = 0;
+             index < current.vertices.size();
+             ++index)
+        {
+            step.previous_front_vertex_indices.push_back(index);
+        }
+        for (std::size_t index = 0;
+             index < current.faces.size();
+             ++index)
+        {
+            step.previous_front_face_indices.push_back(index);
+        }
+        return step;
+    }
+
+    void assertAdjacentCandidatesRemainActive(const GrowthFront &front)
+    {
+        const auto filtered = LayerCollisionChecker{}.filterSelfCollisions(
+            front,
+            liftedStep(front, Scalar{0.1}));
+        assert(filtered.hasValue());
+        assert(filtered.value().next_front.faces.size() ==
+               front.faces.size());
+        assert(filtered.value().stopped_faces.empty());
     }
 }
 
@@ -125,4 +163,42 @@ int main()
     {
         return 1;
     }
+
+    GrowthFront vertex_adjacent;
+    vertex_adjacent.vertices = {
+        {0, 0, 0}, {1, 0, 0}, {0, 1, 0},
+        {0, 0, 0}, {-1, 0, 0}, {0, -1, 0}};
+    vertex_adjacent.faces = {
+        Triangle{{0, 1, 2}}, Triangle{{3, 4, 5}}};
+    vertex_adjacent.source_vertex_ids = {20, 21, 22, 20, 23, 24};
+    vertex_adjacent.source_face_ids = {20, 21};
+    vertex_adjacent.vertex_boundaries.resize(6);
+    assertAdjacentCandidatesRemainActive(vertex_adjacent);
+
+    GrowthFront mixed_adjacent;
+    mixed_adjacent.vertices = {
+        {0, 0, 0}, {1, 0, 0}, {0, 1, 0},
+        {1, 0, 0}, {0, 0, 0}, {0, -1, 0}, {1, -1, 0}};
+    mixed_adjacent.faces = {
+        Triangle{{0, 1, 2}}, Quad{{3, 4, 5, 6}}};
+    mixed_adjacent.source_vertex_ids = {
+        30, 31, 32, 31, 30, 33, 34};
+    mixed_adjacent.source_face_ids = {30, 31};
+    mixed_adjacent.vertex_boundaries.resize(7);
+    assertAdjacentCandidatesRemainActive(mixed_adjacent);
+
+    GrowthFront reordered = double_current;
+    std::swap(reordered.faces[0], reordered.faces[1]);
+    std::swap(
+        reordered.source_face_ids[0],
+        reordered.source_face_ids[1]);
+    const auto reordered_filtered =
+        LayerCollisionChecker{}.filterSelfCollisions(
+            reordered,
+            liftedStep(reordered, Scalar{1.0}));
+    assert(reordered_filtered.hasValue());
+    assert(reordered_filtered.value().next_front.faces.empty());
+    assert(reordered_filtered.value().stopped_faces.size() == 2);
+    assert(reordered_filtered.value().stopped_faces[0].source_face_id == 4);
+    assert(reordered_filtered.value().stopped_faces[1].source_face_id == 5);
 }
