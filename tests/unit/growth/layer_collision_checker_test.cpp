@@ -92,4 +92,37 @@ int main()
     assert(self_filtered.hasValue());
     assert(self_filtered.value().next_front.faces.empty());
     assert(self_filtered.value().stopped_faces.size() == 2);
+
+    GrowthFront adjacent;
+    adjacent.layer = 0;
+    adjacent.vertices = {
+        {0, 0, 1}, {1, 0, 1}, {2, 0, 1},
+        {0, 1, 1}, {1, 1, 1}, {2, 1, 1}};
+    adjacent.faces = {
+        Quad{{0, 1, 4, 3}},
+        Quad{{1, 2, 5, 4}}};
+    adjacent.source_vertex_ids = {6, 7, 8, 9, 10, 11};
+    adjacent.source_face_ids = {2, 3};
+    adjacent.vertex_boundaries.resize(6);
+
+    LayerStepResult adjacent_step;
+    adjacent_step.layer = 1;
+    adjacent_step.next_front = adjacent;
+    adjacent_step.next_front.layer = 1;
+    for (Point3 &point : adjacent_step.next_front.vertices)
+    {
+        point.z() = 1.1;
+    }
+    adjacent_step.previous_front_vertex_indices = {0, 1, 2, 3, 4, 5};
+    adjacent_step.previous_front_face_indices = {0, 1};
+    const auto adjacent_filtered =
+        LayerCollisionChecker{}.filterSelfCollisions(
+            adjacent,
+            adjacent_step);
+    if (!adjacent_filtered.hasValue() ||
+        adjacent_filtered.value().next_front.faces.size() != 2 ||
+        !adjacent_filtered.value().stopped_faces.empty())
+    {
+        return 1;
+    }
 }

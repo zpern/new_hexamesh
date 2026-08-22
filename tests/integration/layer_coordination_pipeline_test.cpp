@@ -172,6 +172,74 @@ namespace
         output = result.value();
         return true;
     }
+
+    bool runLayerDifference(RegularLayerGrowthResult &output)
+    {
+        const SurfaceMesh mesh = makeQualityPair();
+        const auto topology = SurfaceTopologyBuilder{}.build(mesh);
+        if (!topology.hasValue()) return false;
+        const auto patch = GrowthPatchBuilder{}.build(mesh, topology.value());
+        if (!patch.hasValue()) return false;
+        const auto front = GrowthFrontBuilder{}.buildInitial(
+            mesh, patch.value());
+        if (!front.hasValue()) return false;
+
+        std::vector<SourceVertexGrowthProfile> profiles;
+        for (const PatchVertex &vertex : patch.value().vertices())
+        {
+            const bool left_unique =
+                vertex.source_vertex_id == VertexId{6} ||
+                vertex.source_vertex_id == VertexId{9};
+            profiles.push_back({
+                vertex.source_vertex_id,
+                {0.1, 1.0, left_unique ? 1u : 2u}});
+        }
+        const auto result = generateRegularLayers(
+            mesh,
+            topology.value(),
+            patch.value(),
+            front.value(),
+            profiles);
+        if (!result.hasValue()) return false;
+        output = result.value();
+        return true;
+    }
+
+    std::size_t countKind(
+        const SurfaceMesh &mesh,
+        SurfaceBoundaryKind kind)
+    {
+        return static_cast<std::size_t>(std::count_if(
+            mesh.face_tags.begin(),
+            mesh.face_tags.end(),
+            [&](const SurfaceBoundaryTag &tag)
+            {
+                return tag.kind == kind;
+            }));
+    }
+
+    bool hasNoUnreferencedVertices(const SurfaceMesh &mesh)
+    {
+        std::vector<bool> used(mesh.vertices.size(), false);
+        for (const SurfaceFace &face : mesh.faces)
+        {
+            std::visit(
+                [&](const auto &value)
+                {
+                    for (const VertexId vertex_id : value.vertex_ids)
+                    {
+                        const std::size_t index =
+                            static_cast<std::size_t>(vertex_id);
+                        if (index < used.size()) used[index] = true;
+                    }
+                },
+                face);
+        }
+        return std::all_of(used.begin(), used.end(), [](bool value)
+        {
+            return value;
+        });
+    }
 }
 
 int main()
@@ -254,5 +322,59 @@ int main()
         quality_one.mesh.cells.size() != 1)
     {
         return 23;
+    }
+
+    RegularLayerGrowthResult layer_difference;
+    if (!runLayerDifference(layer_difference)) return 24;
+    const FaceGrowthRecord *left = faceRecord(
+        layer_difference, SurfaceFaceId{2});
+    const FaceGrowthRecord *right = faceRecord(
+        layer_difference, SurfaceFaceId{3});
+    if (left == nullptr || right == nullptr ||
+        left->accepted_layer_count != 1 ||
+        right->accepted_layer_count != 2 ||
+        layer_difference.mesh.cells.size() != 3)
+    {
+        std::cerr << "layer difference left="
+                  << (left == nullptr ? 999u : left->accepted_layer_count)
+                  << " left_reason="
+                  << (left == nullptr
+                          ? 999
+                          : static_cast<int>(left->stop_reason))
+                  << " right="
+                  << (right == nullptr ? 999u : right->accepted_layer_count)
+                  << " right_reason="
+                  << (right == nullptr
+                          ? 999
+                          : static_cast<int>(right->stop_reason))
+                  << " cells=" << layer_difference.mesh.cells.size()
+                  << '\n';
+        return 25;
+    }
+    const SurfaceMesh &boundary = layer_difference.farfield_boundary;
+    if (boundary.faces.size() != boundary.face_tags.size() ||
+        countKind(boundary, SurfaceBoundaryKind::Farfield) != 8 ||
+        countKind(
+            boundary,
+            SurfaceBoundaryKind::BoundaryLayerInterface) != 12 ||
+        !hasNoUnreferencedVertices(boundary))
+    {
+        std::cerr << "farfield="
+                  << countKind(boundary, SurfaceBoundaryKind::Farfield)
+                  << " interface="
+                  << countKind(
+                         boundary,
+                         SurfaceBoundaryKind::BoundaryLayerInterface)
+                  << " vertices=" << boundary.vertices.size()
+                  << " faces=" << boundary.faces.size() << '\n';
+        return 26;
+    }
+    for (const SurfaceBoundaryTag &tag : boundary.face_tags)
+    {
+        if (tag.kind == SurfaceBoundaryKind::BoundaryLayerInterface &&
+            tag.region_id != 10 && tag.region_id != 11)
+        {
+            return 27;
+        }
     }
 }

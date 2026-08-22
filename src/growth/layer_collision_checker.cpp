@@ -1,7 +1,9 @@
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -182,6 +184,131 @@ namespace boundary_mesh
                     return !index.queryIllegalContacts(triangle).empty();
                 });
         }
+
+        bool sameKey(
+            const CollisionVertexKey &left,
+            const CollisionVertexKey &right)
+        {
+            return left.source_vertex_id == right.source_vertex_id &&
+                   left.layer == right.layer;
+        }
+
+        bool containsKey(
+            const std::vector<CollisionVertexKey> &keys,
+            const CollisionVertexKey &key)
+        {
+            return std::any_of(
+                keys.begin(),
+                keys.end(),
+                [&](const CollisionVertexKey &value)
+                {
+                    return sameKey(value, key);
+                });
+        }
+
+        bool adjacentKeys(
+            const std::vector<CollisionVertexKey> &keys,
+            const CollisionVertexKey &first,
+            const CollisionVertexKey &second)
+        {
+            for (std::size_t index = 0; index < keys.size(); ++index)
+            {
+                if (!sameKey(keys[index], first)) continue;
+                const std::size_t previous =
+                    (index + keys.size() - 1) % keys.size();
+                const std::size_t next = (index + 1) % keys.size();
+                return sameKey(keys[previous], second) ||
+                       sameKey(keys[next], second);
+            }
+            return false;
+        }
+
+        std::optional<std::array<CollisionVertexKey, 4>> sharedSideKeys(
+            const LayerBoundaryCandidate &first,
+            const LayerBoundaryCandidate &second)
+        {
+            std::vector<CollisionVertexKey> shared_bottom;
+            for (const CollisionVertexKey &key : first.bottom.vertex_keys)
+            {
+                if (containsKey(second.bottom.vertex_keys, key))
+                {
+                    shared_bottom.push_back(key);
+                }
+            }
+            if (shared_bottom.size() != 2 ||
+                !adjacentKeys(
+                    first.bottom.vertex_keys,
+                    shared_bottom[0],
+                    shared_bottom[1]) ||
+                !adjacentKeys(
+                    second.bottom.vertex_keys,
+                    shared_bottom[0],
+                    shared_bottom[1]))
+            {
+                return std::nullopt;
+            }
+
+            std::array<CollisionVertexKey, 4> side{
+                shared_bottom[0],
+                shared_bottom[1],
+                CollisionVertexKey{},
+                CollisionVertexKey{}};
+            for (std::size_t endpoint = 0; endpoint < 2; ++endpoint)
+            {
+                const auto found = std::find_if(
+                    first.top.vertex_keys.begin(),
+                    first.top.vertex_keys.end(),
+                    [&](const CollisionVertexKey &key)
+                    {
+                        return key.source_vertex_id ==
+                            shared_bottom[endpoint].source_vertex_id;
+                    });
+                if (found == first.top.vertex_keys.end() ||
+                    !containsKey(second.top.vertex_keys, *found))
+                {
+                    return std::nullopt;
+                }
+                side[endpoint + 2] = *found;
+            }
+            return side;
+        }
+
+        bool triangleUsesOnly(
+            const CollisionTriangle &triangle,
+            const std::array<CollisionVertexKey, 4> &side)
+        {
+            return std::all_of(
+                triangle.vertex_keys.begin(),
+                triangle.vertex_keys.end(),
+                [&](const CollisionVertexKey &key)
+                {
+                    return std::any_of(
+                        side.begin(),
+                        side.end(),
+                        [&](const CollisionVertexKey &side_key)
+                        {
+                            return sameKey(key, side_key);
+                        });
+                });
+        }
+
+        bool legalSharedSideContact(
+            const std::vector<LayerBoundaryCandidate> &candidates,
+            const CollisionTriangle &first,
+            const CollisionTriangle &second)
+        {
+            if (first.owner_id >= candidates.size() ||
+                second.owner_id >= candidates.size())
+            {
+                return false;
+            }
+            const auto side = sharedSideKeys(
+                candidates[first.owner_id],
+                candidates[second.owner_id]);
+            return side.has_value() &&
+                   triangleUsesOnly(first, *side) &&
+                   triangleUsesOnly(second, *side);
+        }
     }
 
     Result<std::vector<LayerBoundaryCandidate>, SpatialError>
@@ -339,7 +466,11 @@ namespace boundary_mesh
             {
                 const std::uint32_t other =
                     index.value().primitive(hit).owner_id;
-                if (owner != other)
+                if (owner != other &&
+                    !legalSharedSideContact(
+                        candidates.value(),
+                        all[primitive],
+                        index.value().primitive(hit)))
                 {
                     stopped[owner] = true;
                     stopped[other] = true;
