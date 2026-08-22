@@ -90,6 +90,7 @@ add_library(
     STATIC
         src/spatial/aabb.cpp
         src/spatial/binary_aabb_tree.cpp
+        src/spatial/triangle_contact.cpp
 )
 add_library(BoundaryMesh::Spatial ALIAS boundary_mesh_spatial)
 
