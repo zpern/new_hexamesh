@@ -42,4 +42,9 @@ namespace boundary_mesh::test
 
     void writeTwoBaseCgns(
         const std::filesystem::path &path);
+
+    void writeTwoZoneConnectedSurface(
+        const std::filesystem::path &path,
+        bool reverse_point_order = false,
+        bool mismatch_coordinate = false);
 }

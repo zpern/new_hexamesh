@@ -138,4 +138,90 @@ namespace boundary_mesh::test
         requireCgns(cg_base_write(file, "Second", 2, 3, &base));
         requireCgns(cg_close(file));
     }
+
+    void writeTwoZoneConnectedSurface(
+        const std::filesystem::path &path,
+        bool reverse_point_order,
+        bool mismatch_coordinate)
+    {
+        int file{};
+        requireCgns(cg_open(
+            path.string().c_str(), CG_MODE_WRITE, &file));
+        int base{};
+        requireCgns(cg_base_write(file, "Surface", 2, 3, &base));
+
+        const cgsize_t size[3]{4, 1, 0};
+        int zone1{};
+        int zone2{};
+        requireCgns(cg_zone_write(
+            file, base, "1", size,
+            CGNS_ENUMV(Unstructured), &zone1));
+        requireCgns(cg_zone_write(
+            file, base, "2", size,
+            CGNS_ENUMV(Unstructured), &zone2));
+
+        const double x1[4]{0.0, 1.0, 1.0, 0.0};
+        const double y1[4]{0.0, 0.0, 1.0, 1.0};
+        const double x2[4]{
+            mismatch_coordinate ? 1.25 : 1.0,
+            2.0,
+            2.0,
+            1.0};
+        const double y2[4]{0.0, 0.0, 1.0, 1.0};
+        const double z[4]{0.0, 0.0, 0.0, 0.0};
+        const auto write_coordinates =
+            [&](int zone, const double *x, const double *y)
+            {
+                int coordinate{};
+                requireCgns(cg_coord_write(
+                    file, base, zone, CGNS_ENUMV(RealDouble),
+                    "CoordinateX", x, &coordinate));
+                requireCgns(cg_coord_write(
+                    file, base, zone, CGNS_ENUMV(RealDouble),
+                    "CoordinateY", y, &coordinate));
+                requireCgns(cg_coord_write(
+                    file, base, zone, CGNS_ENUMV(RealDouble),
+                    "CoordinateZ", z, &coordinate));
+            };
+        write_coordinates(zone1, x1, y1);
+        write_coordinates(zone2, x2, y2);
+
+        const cgsize_t quad[4]{1, 2, 3, 4};
+        int section{};
+        requireCgns(cg_section_write(
+            file, base, zone1, "Quad", CGNS_ENUMV(QUAD_4),
+            1, 1, 0, quad, &section));
+        requireCgns(cg_section_write(
+            file, base, zone2, "Quad", CGNS_ENUMV(QUAD_4),
+            1, 1, 0, quad, &section));
+
+        const cgsize_t points_forward[2]{2, 3};
+        const cgsize_t donors_forward[2]{1, 4};
+        const cgsize_t points_reverse[2]{3, 2};
+        const cgsize_t donors_reverse[2]{4, 1};
+        int connection{};
+        requireCgns(cg_conn_write(
+            file,
+            base,
+            zone1,
+            "to-2",
+            CGNS_ENUMV(Vertex),
+            CGNS_ENUMV(Abutting1to1),
+            CGNS_ENUMV(PointList),
+            2,
+            reverse_point_order
+                ? points_reverse
+                : points_forward,
+            "2",
+            CGNS_ENUMV(Unstructured),
+            CGNS_ENUMV(PointListDonor),
+            CGNS_ENUMV(LongInteger),
+            2,
+            reverse_point_order
+                ? donors_reverse
+                : donors_forward,
+            &connection));
+
+        requireCgns(cg_close(file));
+    }
 }

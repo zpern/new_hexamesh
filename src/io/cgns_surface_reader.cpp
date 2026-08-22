@@ -26,6 +26,7 @@ namespace boundary_mesh
             int index{}; // CGNS 内部 1-based Zone 下标
             std::uint32_t id{}; // 数字 Zone 名
             cgsize_t vertex_count{}; // Zone 局部顶点数量
+            std::size_t vertex_offset{}; // 读取后在临时全局顶点数组中的起点
         };
 
         struct PendingFace
@@ -34,6 +35,46 @@ namespace boundary_mesh
             cgsize_t element_id{}; // CGNS 1-based 元素编号
             SurfaceFace face; // 尚未加入输出数组的面
             SurfaceBoundaryTag tag; // 与面对应的边界标签
+        };
+
+        class DisjointSet
+        {
+        public:
+            explicit DisjointSet(std::size_t size)
+                : parents_(size)
+            {
+                for (std::size_t index = 0; index < size; ++index)
+                {
+                    parents_[index] = index;
+                }
+            }
+
+            std::size_t find(std::size_t value)
+            {
+                while (parents_[value] != value)
+                {
+                    parents_[value] = parents_[parents_[value]];
+                    value = parents_[value];
+                }
+                return value;
+            }
+
+            void merge(std::size_t first, std::size_t second)
+            {
+                first = find(first);
+                second = find(second);
+                if (first == second)
+                {
+                    return;
+                }
+
+                const auto representative = std::min(first, second);
+                parents_[first] = representative;
+                parents_[second] = representative;
+            }
+
+        private:
+            std::vector<std::size_t> parents_; // 每个临时顶点的并查集父节点
         };
 
         CgnsSurfaceError makeError(
@@ -251,7 +292,8 @@ namespace boundary_mesh
             zones.push_back(ZoneInfo{
                 zone_index,
                 zone_id,
-                size[0]});
+                size[0],
+                0});
         }
 
         std::sort(
@@ -283,7 +325,7 @@ namespace boundary_mesh
 
         SurfaceMesh mesh;
         std::vector<PendingFace> pending_faces;
-        for (const auto &zone : zones)
+        for (auto &zone : zones)
         {
             if (zone.vertex_count < 0 ||
                 static_cast<unsigned long long>(zone.vertex_count) >
@@ -351,6 +393,7 @@ namespace boundary_mesh
             }
 
             const auto vertex_offset = mesh.vertices.size();
+            zone.vertex_offset = vertex_offset;
             for (std::size_t vertex = 0;
                  vertex < count;
                  ++vertex)
@@ -513,6 +556,202 @@ namespace boundary_mesh
                 }
             }
         }
+
+        DisjointSet connected_vertices(mesh.vertices.size());
+        const auto find_zone =
+            [&](std::uint32_t zone_id) -> const ZoneInfo *
+            {
+                const auto found = std::lower_bound(
+                    zones.begin(),
+                    zones.end(),
+                    zone_id,
+                    [](const ZoneInfo &zone, std::uint32_t id)
+                    {
+                        return zone.id < id;
+                    });
+                if (found == zones.end() || found->id != zone_id)
+                {
+                    return nullptr;
+                }
+                return &*found;
+            };
+
+        for (const auto &zone : zones)
+        {
+            int connection_count{};
+            if (cg_nconns(
+                    file.number(),
+                    1,
+                    zone.index,
+                    &connection_count) != CG_OK)
+            {
+                return CgnsSurfaceResult::failure(
+                    libraryError(cgns_path, zone.id));
+            }
+
+            for (int connection = 1;
+                 connection <= connection_count;
+                 ++connection)
+            {
+                char connection_name[cgns_name_buffer_size]{};
+                char donor_name[cgns_name_buffer_size]{};
+                CGNS_ENUMT(GridLocation_t) location{};
+                CGNS_ENUMT(GridConnectivityType_t) connectivity_type{};
+                CGNS_ENUMT(PointSetType_t) point_set_type{};
+                CGNS_ENUMT(ZoneType_t) donor_zone_type{};
+                CGNS_ENUMT(PointSetType_t) donor_point_set_type{};
+                CGNS_ENUMT(DataType_t) donor_data_type{};
+                cgsize_t point_count{};
+                cgsize_t donor_count{};
+                if (cg_conn_info(
+                        file.number(),
+                        1,
+                        zone.index,
+                        connection,
+                        connection_name,
+                        &location,
+                        &connectivity_type,
+                        &point_set_type,
+                        &point_count,
+                        donor_name,
+                        &donor_zone_type,
+                        &donor_point_set_type,
+                        &donor_data_type,
+                        &donor_count) != CG_OK)
+                {
+                    return CgnsSurfaceResult::failure(
+                        libraryError(cgns_path, zone.id));
+                }
+
+                std::uint32_t donor_zone_id{};
+                const auto *donor_zone =
+                    parseZoneId(donor_name, donor_zone_id)
+                        ? find_zone(donor_zone_id)
+                        : nullptr;
+                if (location != CGNS_ENUMV(Vertex) ||
+                    connectivity_type != CGNS_ENUMV(Abutting1to1) ||
+                    point_set_type != CGNS_ENUMV(PointList) ||
+                    donor_zone_type != CGNS_ENUMV(Unstructured) ||
+                    donor_point_set_type != CGNS_ENUMV(PointListDonor) ||
+                    donor_zone == nullptr ||
+                    point_count <= 0 ||
+                    point_count != donor_count)
+                {
+                    return CgnsSurfaceResult::failure(
+                        makeError(
+                            CgnsSurfaceErrorCode::InvalidConnectivity,
+                            cgns_path,
+                            zone.id,
+                            0,
+                            connection_name));
+                }
+
+                const auto count =
+                    static_cast<std::size_t>(point_count);
+                std::vector<cgsize_t> points(count);
+                std::vector<cgsize_t> donor_points(count);
+                if (cg_conn_read(
+                        file.number(),
+                        1,
+                        zone.index,
+                        connection,
+                        points.data(),
+                        donor_data_type,
+                        donor_points.data()) != CG_OK)
+                {
+                    return CgnsSurfaceResult::failure(
+                        libraryError(cgns_path, zone.id));
+                }
+
+                for (std::size_t index = 0; index < count; ++index)
+                {
+                    const auto local_id = points[index];
+                    const auto donor_local_id = donor_points[index];
+                    if (local_id < 1 ||
+                        local_id > zone.vertex_count ||
+                        donor_local_id < 1 ||
+                        donor_local_id > donor_zone->vertex_count)
+                    {
+                        return CgnsSurfaceResult::failure(
+                            makeError(
+                                CgnsSurfaceErrorCode::InvalidConnectivity,
+                                cgns_path,
+                                zone.id,
+                                0,
+                                connection_name));
+                    }
+
+                    const auto first =
+                        zone.vertex_offset +
+                        static_cast<std::size_t>(local_id - 1);
+                    const auto second =
+                        donor_zone->vertex_offset +
+                        static_cast<std::size_t>(donor_local_id - 1);
+                    const auto &first_point = mesh.vertices[first];
+                    const auto &second_point = mesh.vertices[second];
+                    if (first_point.x() != second_point.x() ||
+                        first_point.y() != second_point.y() ||
+                        first_point.z() != second_point.z())
+                    {
+                        return CgnsSurfaceResult::failure(
+                            makeError(
+                                CgnsSurfaceErrorCode::ConnectivityCoordinateMismatch,
+                                cgns_path,
+                                zone.id,
+                                0,
+                                connection_name));
+                    }
+                    connected_vertices.merge(first, second);
+                }
+            }
+        }
+
+        std::vector<VertexId> compact_ids(mesh.vertices.size());
+        std::vector<Point3> compact_vertices;
+        compact_vertices.reserve(mesh.vertices.size());
+        std::vector<VertexId> representative_ids(
+            mesh.vertices.size(),
+            std::numeric_limits<VertexId>::max());
+        for (std::size_t vertex = 0;
+             vertex < mesh.vertices.size();
+             ++vertex)
+        {
+            const auto representative =
+                connected_vertices.find(vertex);
+            auto &compact_id = representative_ids[representative];
+            if (compact_id == std::numeric_limits<VertexId>::max())
+            {
+                if (compact_vertices.size() >
+                    static_cast<std::size_t>(
+                        std::numeric_limits<VertexId>::max()))
+                {
+                    return CgnsSurfaceResult::failure(
+                        makeError(
+                            CgnsSurfaceErrorCode::VertexIdOverflow,
+                            cgns_path));
+                }
+                compact_id = static_cast<VertexId>(
+                    compact_vertices.size());
+                compact_vertices.push_back(
+                    mesh.vertices[representative]);
+            }
+            compact_ids[vertex] = compact_id;
+        }
+
+        for (auto &pending : pending_faces)
+        {
+            std::visit(
+                [&](auto &face)
+                {
+                    for (auto &vertex_id : face.vertex_ids)
+                    {
+                        vertex_id = compact_ids[
+                            static_cast<std::size_t>(vertex_id)];
+                    }
+                },
+                pending.face);
+        }
+        mesh.vertices = std::move(compact_vertices);
 
         if (pending_faces.size() >
             static_cast<std::size_t>(

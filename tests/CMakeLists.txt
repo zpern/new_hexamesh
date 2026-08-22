@@ -576,4 +576,24 @@ if(BOUNDARY_MESH_ENABLE_CGNS_IO)
         NAME boundary_mesh_cgns_surface_reader_test
         COMMAND boundary_mesh_cgns_surface_reader_test
     )
+
+    add_executable(
+        boundary_mesh_cgns_zone_merge_test
+        helpers/cgns_fixture.cpp
+        unit/io/cgns_zone_merge_test.cpp
+    )
+    target_include_directories(
+        boundary_mesh_cgns_zone_merge_test
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(
+        boundary_mesh_cgns_zone_merge_test
+        PRIVATE
+            BoundaryMesh::IO
+            BoundaryMesh::CGNS
+    )
+    add_test(
+        NAME boundary_mesh_cgns_zone_merge_test
+        COMMAND boundary_mesh_cgns_zone_merge_test
+    )
 endif()
