@@ -344,3 +344,17 @@ add_test(
     NAME boundary_mesh_regular_layer_growth_failure_test
     COMMAND boundary_mesh_regular_layer_growth_failure_test
 )
+
+# 28：闭区间 AABB 分离、重叠及面/边/点接触语义
+add_executable(
+    boundary_mesh_spatial_aabb_test
+    unit/spatial/aabb_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_spatial_aabb_test
+    PRIVATE BoundaryMesh::Spatial
+)
+add_test(
+    NAME boundary_mesh_spatial_aabb_test
+    COMMAND boundary_mesh_spatial_aabb_test
+)

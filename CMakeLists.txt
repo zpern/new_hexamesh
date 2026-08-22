@@ -86,6 +86,32 @@ target_link_libraries(
 )
 
 add_library(
+    boundary_mesh_spatial
+    STATIC
+        src/spatial/aabb.cpp
+)
+add_library(BoundaryMesh::Spatial ALIAS boundary_mesh_spatial)
+
+target_compile_features(boundary_mesh_spatial PUBLIC cxx_std_17)
+
+target_include_directories(
+    boundary_mesh_spatial
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        "${TIGER_DEPENDENCIES_DIR}/geom"
+)
+
+target_link_libraries(
+    boundary_mesh_spatial
+    PUBLIC
+        BoundaryMesh::Core
+    PRIVATE
+        tiger_geom
+)
+
+add_library(
     boundary_mesh_boundary_layer
     STATIC
         src/growth/growth_patch_builder.cpp
@@ -118,6 +144,7 @@ target_link_libraries(
         BoundaryMesh::Core
         BoundaryMesh::Surface
         BoundaryMesh::Quality
+        BoundaryMesh::Spatial
 )
 
 include(CTest)

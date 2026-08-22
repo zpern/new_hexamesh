@@ -1,3 +1,7 @@
 [submodule "third/eigen"]
 	path = third/eigen
 	url = https://github.com/mySharedsource/eigen.git
+[submodule "third/geom"]
+	path = third/geom
+	url = https://github.com/mySharedsource/geom.git
+	branch = main
