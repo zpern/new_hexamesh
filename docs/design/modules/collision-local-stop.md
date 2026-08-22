@@ -273,7 +273,7 @@ FaceStopEvent{
 - Triangle/Quad 混合生成；
 - Debug、Release 完整 CTest 回归。
 
-真实 PLY 案例、规模性能和内存回归属于阶段 10。
+真实 CGNS 案例、规模性能和内存回归属于阶段 10。
 
 ### 12.5 远场边界物化测试
 
@@ -289,3 +289,31 @@ FaceStopEvent{
 阶段 06 完成后，规则生长流程能够在提交前确定性地拒绝发生碰撞的候选 Prism/Hexa，并保留停止区域形成的外露障碍。
 
 阶段 06 不协调相邻源面的层数差，也不修补停止后产生的开口。上述职责分别留给阶段 07、08 和 09。
+
+## 14. 实施结果
+
+阶段 06 已实现以下公共入口：
+
+- `BoundaryMesh::Spatial`、`Aabb` 与 `BinaryAabbTree`；
+- `classifyTriangleContact(...)` 与合法分层拓扑接触过滤；
+- `CollisionIndex` 与原始 Wall/Farfield 索引；
+- `ExposedBoundaryTracker` 与 `buildFarfieldBoundary(...)`；
+- `LayerCollisionChecker::filterAgainstObstacles(...)`；
+- `LayerCollisionChecker::filterSelfCollisions(...)`；
+- 显式接收完整表面及拓扑的 `generateRegularLayers(...)`。
+
+最终实现保持以下依赖边界：`geom_func.h` 和
+`TiGER_GEOM_FUNC` 只出现在 `src/spatial/triangle_contact.cpp`；
+Growth、Surface、Quality 及全部公共头文件均不包含第三方几何头文件。
+
+完成验证命令为：
+
+```powershell
+cmake --build build --config Debug
+ctest --test-dir build -C Debug --output-on-failure
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
+```
+
+Debug 与 Release 均为 36/36 通过。第三方 `tiger_geom` 在 MSVC
+下仍报告其自身源码编码和既有返回路径警告；BoundaryMesh 目标无新增警告。

@@ -927,3 +927,29 @@ Symmetry、包含检测、最大安全步长没有进入实现
 无碰撞孤立顶点、半层单元或未提交映射
 Debug 和 Release 全量 CTest 均为 0 failed
 ```
+
+## Implementation Record
+
+阶段 06 已于 `feature/collision-local-stop` 分支完成。主要提交如下：
+
+```text
+e6131de build: add spatial geometry foundation
+94c7109 feat: add shared binary AABB tree
+3a71fb5 feat: classify triangle contacts
+5ae1215 feat: index collision surface triangles
+5f710da feat: build exposed farfield boundary
+bef61ed feat: filter colliding layer candidates
+4a80e7e fix: classify coplanar vertex contacts
+44aafad feat: stop colliding regular layer faces
+```
+
+最终验证结果：
+
+```text
+Debug   36/36 passed
+Release 36/36 passed
+```
+
+依赖扫描确认 `geom_func.h`/`TiGER_GEOM_FUNC` 只存在于
+`src/spatial/triangle_contact.cpp`，没有实现 Symmetry 碰撞、体包含、
+最近点、最大安全步长或碰撞后缩短重试。
