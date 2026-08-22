@@ -43,7 +43,7 @@ docs/plans/
         ↓
 09 Pyramid/Tetra 共形过渡
         ↓
-10 PLY/VTK、命令行与真实案例
+10 CGNS/VTK、命令行与真实案例
         ↓
 11 TiGER 集成与旧工程回归验证
 ```
@@ -63,7 +63,7 @@ docs/plans/
 | 07 | 层数协调与停止传播 | 设计完成，待实施 |
 | 08 | 过渡区域检测 | 未开始 |
 | 09 | Pyramid/Tetra 共形过渡 | 未开始 |
-| 10 | PLY/VTK、命令行与真实案例 | 未开始 |
+| 10 | CGNS/VTK、命令行与真实案例 | 设计完成，待实施 |
 | 11 | TiGER 集成与旧工程回归验证 | 未开始 |
 
 ## 4. 01：工程基础与混合网格类型
@@ -252,7 +252,7 @@ docs/plans/
 
 本阶段不负责文件格式和命令行交互。
 
-## 13. 10：PLY/VTK、命令行与真实案例
+## 13. 10：CGNS/VTK、命令行与真实案例
 
 ### 目标
 
@@ -260,16 +260,19 @@ docs/plans/
 
 ### 主要交付物
 
-- PLY 混合表面读取；
-- 边界标签映射；
-- VTK 混合体网格输出；
+- CGNS Triangle/Quad 混合表面读取；
+- 同名 `.bc.txt` 数字 Zone 边界映射；
+- 基于 CGNS 显式连接的跨 Zone 顶点合并；
+- ASCII Legacy VTK 混合体网格与最终远场边界输出；
 - 命令行参数和诊断输出适配；
-- `2dot5_cf_gmsh_recombine.ply` 集成测试；
+- `2dot5_cf.cgns` 一层端到端真实案例测试；
 - 可控规模的性能和内存回归测试。
 
 ### 完成边界
 
 IO 只转换数据和展示诊断，不参与拓扑、几何或生长算法。
+
+详细设计见 `docs/design/modules/cgns-io-and-real-case.md`。
 
 ## 14. 11：TiGER 集成与旧工程回归验证
 
