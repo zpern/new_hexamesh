@@ -386,3 +386,17 @@ add_test(
     NAME boundary_mesh_spatial_triangle_contact_test
     COMMAND boundary_mesh_spatial_triangle_contact_test
 )
+
+# 31：原始 Wall/Farfield 图元选择、Quad 拆分和碰撞查询
+add_executable(
+    boundary_mesh_spatial_collision_index_test
+    unit/spatial/collision_index_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_spatial_collision_index_test
+    PRIVATE BoundaryMesh::Spatial
+)
+add_test(
+    NAME boundary_mesh_spatial_collision_index_test
+    COMMAND boundary_mesh_spatial_collision_index_test
+)
