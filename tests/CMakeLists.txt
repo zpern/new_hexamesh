@@ -498,3 +498,29 @@ add_test(
     NAME boundary_mesh_termination_propagator_test
     COMMAND boundary_mesh_termination_propagator_test
 )
+
+add_executable(
+    boundary_mesh_layer_coordination_pipeline_test
+    integration/layer_coordination_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_layer_coordination_pipeline_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_layer_coordination_pipeline_test
+    COMMAND boundary_mesh_layer_coordination_pipeline_test
+)
+
+add_executable(
+    boundary_mesh_layer_coordination_failure_test
+    integration/layer_coordination_failure_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_layer_coordination_failure_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_layer_coordination_failure_test
+    COMMAND boundary_mesh_layer_coordination_failure_test
+)

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <type_traits>
 #include <utility>
@@ -14,6 +15,7 @@
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
+#include <boundary_mesh/growth/termination_propagator.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
 
 namespace boundary_mesh
@@ -83,6 +85,52 @@ namespace boundary_mesh
                     return record.source_face_id == source_face_id;
                 });
             return found == records.end() ? nullptr : &*found;
+        }
+
+        std::vector<FaceStopEvent> directQualityStops(
+            const std::vector<FaceStopEvent> &events)
+        {
+            std::vector<FaceStopEvent> output;
+            std::copy_if(
+                events.begin(),
+                events.end(),
+                std::back_inserter(output),
+                [](const FaceStopEvent &event)
+                {
+                    return event.reason != FaceStopReason::None &&
+                           event.reason != FaceStopReason::VertexLayerLimit &&
+                           event.reason !=
+                               FaceStopReason::NeighborLayerConstraint &&
+                           event.reason != FaceStopReason::Collision;
+                });
+            return output;
+        }
+
+        std::vector<FaceStopEvent> addedCollisionStops(
+            const std::vector<FaceStopEvent> &after,
+            const std::vector<FaceStopEvent> &before)
+        {
+            std::vector<FaceStopEvent> output;
+            for (const FaceStopEvent &event : after)
+            {
+                if (event.reason != FaceStopReason::Collision)
+                {
+                    continue;
+                }
+                const bool existed = std::any_of(
+                    before.begin(),
+                    before.end(),
+                    [&](const FaceStopEvent &previous)
+                    {
+                        return previous.source_face_id ==
+                            event.source_face_id;
+                    });
+                if (!existed)
+                {
+                    output.push_back(event);
+                }
+            }
+            return output;
         }
 
         bool appendCandidateCell(
@@ -174,8 +222,22 @@ namespace boundary_mesh
         {
             return GrowthResult::failure(constraint_result.error());
         }
-        const FaceLayerConstraintTable &constraints =
+        FaceLayerConstraintTable constraints =
             constraint_result.value();
+        const auto propagator_result = TerminationPropagator::build(
+            patch, topology);
+        if (!propagator_result.hasValue())
+        {
+            return GrowthResult::failure(propagator_result.error());
+        }
+        const TerminationPropagator &propagator =
+            propagator_result.value();
+        const auto initial_propagation = propagator.propagateInitial(
+            constraints, options.max_neighbor_layer_difference);
+        if (!initial_propagation.hasValue())
+        {
+            return GrowthResult::failure(initial_propagation.error());
+        }
 
         RegularLayerGrowthResult result;
         result.mesh.vertices = initial_front.vertices;
@@ -227,12 +289,28 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(step_result.error());
             }
+            const auto quality_propagation = propagator.applyDirectStops(
+                constraints,
+                directQualityStops(step_result.value().stopped_faces),
+                options.max_neighbor_layer_difference);
+            if (!quality_propagation.hasValue())
+            {
+                return GrowthResult::failure(quality_propagation.error());
+            }
+            const auto quality_step = propagator.filterCandidates(
+                current_front,
+                step_result.value(),
+                constraints);
+            if (!quality_step.hasValue())
+            {
+                return GrowthResult::failure(quality_step.error());
+            }
             const auto obstacle_step =
                 LayerCollisionChecker{}.filterAgainstObstacles(
                     original_collision.value(),
                     exposed_boundary,
                     current_front,
-                    step_result.value());
+                    quality_step.value());
             if (!obstacle_step.hasValue())
             {
                 return GrowthResult::failure(
@@ -240,10 +318,30 @@ namespace boundary_mesh
                         step_result.value().layer,
                         obstacle_step.error()});
             }
+            const auto obstacle_propagation = propagator.applyDirectStops(
+                constraints,
+                addedCollisionStops(
+                    obstacle_step.value().stopped_faces,
+                    quality_step.value().stopped_faces),
+                options.max_neighbor_layer_difference);
+            if (!obstacle_propagation.hasValue())
+            {
+                return GrowthResult::failure(obstacle_propagation.error());
+            }
+            const auto propagated_obstacle_step =
+                propagator.filterCandidates(
+                    current_front,
+                    obstacle_step.value(),
+                    constraints);
+            if (!propagated_obstacle_step.hasValue())
+            {
+                return GrowthResult::failure(
+                    propagated_obstacle_step.error());
+            }
             const auto collision_step =
                 LayerCollisionChecker{}.filterSelfCollisions(
                     current_front,
-                    obstacle_step.value());
+                    propagated_obstacle_step.value());
             if (!collision_step.hasValue())
             {
                 return GrowthResult::failure(
@@ -251,7 +349,25 @@ namespace boundary_mesh
                         step_result.value().layer,
                         collision_step.error()});
             }
-            const LayerStepResult &step = collision_step.value();
+            const auto self_propagation = propagator.applyDirectStops(
+                constraints,
+                addedCollisionStops(
+                    collision_step.value().stopped_faces,
+                    propagated_obstacle_step.value().stopped_faces),
+                options.max_neighbor_layer_difference);
+            if (!self_propagation.hasValue())
+            {
+                return GrowthResult::failure(self_propagation.error());
+            }
+            const auto final_step = propagator.filterCandidates(
+                current_front,
+                collision_step.value(),
+                constraints);
+            if (!final_step.hasValue())
+            {
+                return GrowthResult::failure(final_step.error());
+            }
+            const LayerStepResult &step = final_step.value();
             if (step.next_front.vertices.size() !=
                     step.previous_front_vertex_indices.size() ||
                 step.next_front.faces.size() !=
