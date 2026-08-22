@@ -5,3 +5,9 @@
 	path = third/geom
 	url = https://github.com/mySharedsource/geom.git
 	branch = main
+[submodule "third/hdf5"]
+	path = third/hdf5
+	url = https://github.com/HDFGroup/hdf5.git
+[submodule "third/cgns"]
+	path = third/cgns
+	url = https://github.com/CGNS/CGNS.git

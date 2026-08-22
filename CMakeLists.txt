@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(BoundaryMesh VERSION 1.0.0 LANGUAGES CXX)
+project(BoundaryMesh VERSION 1.0.0 LANGUAGES C CXX)
+
+option(
+    BOUNDARY_MESH_ENABLE_CGNS_IO
+    "Build CGNS IO, CLI, and CGNS tests"
+    ON
+)
 
 message(STATUS "##############################")
 MESSAGE(STATUS "CMake config files are writtern by zpern")
@@ -155,26 +161,30 @@ target_link_libraries(
         BoundaryMesh::Spatial
 )
 
-add_library(
-    boundary_mesh_io
-    STATIC
-        src/io/boundary_condition_map.cpp
-        src/io/legacy_vtk_writer.cpp
-)
-add_library(BoundaryMesh::IO ALIAS boundary_mesh_io)
-target_compile_features(boundary_mesh_io PUBLIC cxx_std_17)
-target_include_directories(
-    boundary_mesh_io
-    PUBLIC
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/src"
-)
-target_link_libraries(
-    boundary_mesh_io
-    PUBLIC BoundaryMesh::Core
-)
+if(BOUNDARY_MESH_ENABLE_CGNS_IO)
+    add_library(
+        boundary_mesh_io
+        STATIC
+            src/io/boundary_condition_map.cpp
+            src/io/cgns_surface_reader.cpp
+            src/io/legacy_vtk_writer.cpp
+    )
+    add_library(BoundaryMesh::IO ALIAS boundary_mesh_io)
+    target_compile_features(boundary_mesh_io PUBLIC cxx_std_17)
+    target_include_directories(
+        boundary_mesh_io
+        PUBLIC
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+        PRIVATE
+            "${PROJECT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(
+        boundary_mesh_io
+        PUBLIC BoundaryMesh::Core
+        PRIVATE BoundaryMesh::CGNS
+    )
+endif()
 
 include(CTest)
 

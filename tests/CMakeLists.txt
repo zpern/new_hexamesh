@@ -525,32 +525,55 @@ add_test(
     COMMAND boundary_mesh_layer_coordination_failure_test
 )
 
-add_executable(
-    boundary_mesh_boundary_condition_map_test
-    unit/io/boundary_condition_map_test.cpp
-)
-target_include_directories(
-    boundary_mesh_boundary_condition_map_test
-    PRIVATE "${PROJECT_SOURCE_DIR}/src"
-)
-target_link_libraries(
-    boundary_mesh_boundary_condition_map_test
-    PRIVATE BoundaryMesh::IO
-)
-add_test(
-    NAME boundary_mesh_boundary_condition_map_test
-    COMMAND boundary_mesh_boundary_condition_map_test
-)
+if(BOUNDARY_MESH_ENABLE_CGNS_IO)
+    add_executable(
+        boundary_mesh_boundary_condition_map_test
+        unit/io/boundary_condition_map_test.cpp
+    )
+    target_include_directories(
+        boundary_mesh_boundary_condition_map_test
+        PRIVATE "${PROJECT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(
+        boundary_mesh_boundary_condition_map_test
+        PRIVATE BoundaryMesh::IO
+    )
+    add_test(
+        NAME boundary_mesh_boundary_condition_map_test
+        COMMAND boundary_mesh_boundary_condition_map_test
+    )
 
-add_executable(
-    boundary_mesh_legacy_vtk_writer_test
-    unit/io/legacy_vtk_writer_test.cpp
-)
-target_link_libraries(
-    boundary_mesh_legacy_vtk_writer_test
-    PRIVATE BoundaryMesh::IO
-)
-add_test(
-    NAME boundary_mesh_legacy_vtk_writer_test
-    COMMAND boundary_mesh_legacy_vtk_writer_test
-)
+    add_executable(
+        boundary_mesh_legacy_vtk_writer_test
+        unit/io/legacy_vtk_writer_test.cpp
+    )
+    target_link_libraries(
+        boundary_mesh_legacy_vtk_writer_test
+        PRIVATE BoundaryMesh::IO
+    )
+    add_test(
+        NAME boundary_mesh_legacy_vtk_writer_test
+        COMMAND boundary_mesh_legacy_vtk_writer_test
+    )
+
+    add_executable(
+        boundary_mesh_cgns_surface_reader_test
+        helpers/cgns_fixture.cpp
+        unit/io/cgns_surface_reader_test.cpp
+    )
+    target_include_directories(
+        boundary_mesh_cgns_surface_reader_test
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(
+        boundary_mesh_cgns_surface_reader_test
+        PRIVATE
+            BoundaryMesh::IO
+            BoundaryMesh::CGNS
+    )
+    add_test(
+        NAME boundary_mesh_cgns_surface_reader_test
+        COMMAND boundary_mesh_cgns_surface_reader_test
+    )
+endif()
