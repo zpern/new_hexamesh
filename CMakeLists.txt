@@ -211,6 +211,23 @@ if(BOUNDARY_MESH_ENABLE_CGNS_IO)
         boundary_mesh_cli
         PRIVATE BoundaryMesh::CLI
     )
+
+    add_executable(
+        boundary_mesh_cgns_pipeline_benchmark
+        benchmarks/cgns_pipeline_benchmark.cpp
+    )
+    target_link_libraries(
+        boundary_mesh_cgns_pipeline_benchmark
+        PRIVATE
+            BoundaryMesh::IO
+            BoundaryMesh::BoundaryLayer
+    )
+    if(WIN32)
+        target_link_libraries(
+            boundary_mesh_cgns_pipeline_benchmark
+            PRIVATE Psapi
+        )
+    endif()
 endif()
 
 include(CTest)

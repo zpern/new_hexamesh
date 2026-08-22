@@ -618,4 +618,16 @@ if(BOUNDARY_MESH_ENABLE_CGNS_IO)
         NAME boundary_mesh_cgns_cli_pipeline_test
         COMMAND boundary_mesh_cgns_cli_pipeline_test
     )
+
+    # 真实案例由调用者传入外部数据路径，不注册为默认 CTest。
+    add_executable(
+        boundary_mesh_cgns_real_case_test
+        integration/cgns_real_case_test.cpp
+    )
+    target_link_libraries(
+        boundary_mesh_cgns_real_case_test
+        PRIVATE
+            BoundaryMesh::IO
+            BoundaryMesh::CGNS
+    )
 endif()

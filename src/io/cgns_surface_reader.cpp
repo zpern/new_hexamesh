@@ -7,6 +7,7 @@
 #include <limits>
 #include <string>
 #include <unordered_set>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,9 @@ namespace boundary_mesh
             std::uint32_t id{}; // 数字 Zone 名
             cgsize_t vertex_count{}; // Zone 局部顶点数量
             std::size_t vertex_offset{}; // 读取后在临时全局顶点数组中的起点
+            std::unordered_map<
+                cgsize_t,
+                std::array<cgsize_t, 2>> boundary_edges; // BAR_2 元素 ID 到局部端点
         };
 
         struct PendingFace
@@ -106,6 +110,13 @@ namespace boundary_mesh
                 cg_get_error());
         }
 
+        bool samePoint(const Point3 &first, const Point3 &second)
+        {
+            return first.x() == second.x() &&
+                   first.y() == second.y() &&
+                   first.z() == second.z();
+        }
+
         bool parseZoneId(
             const char *name,
             std::uint32_t &zone_id)
@@ -180,8 +191,9 @@ namespace boundary_mesh
         const std::filesystem::path &cgns_path)
     {
         int file_number{};
+        const auto cgns_path_utf8 = cgns_path.u8string();
         if (cg_open(
-                cgns_path.string().c_str(),
+                cgns_path_utf8.c_str(),
                 CG_MODE_READ,
                 &file_number) != CG_OK)
         {
@@ -293,7 +305,8 @@ namespace boundary_mesh
                 zone_index,
                 zone_id,
                 size[0],
-                0});
+                0,
+                {}});
         }
 
         std::sort(
@@ -462,6 +475,49 @@ namespace boundary_mesh
                 }
 
                 int vertices_per_face{};
+                if (element_type == CGNS_ENUMV(BAR_2))
+                {
+                    // EdgeCenter 连接通过 BAR_2 元素 ID 指向接口边。
+                    const auto edge_count =
+                        static_cast<std::size_t>(end - start + 1);
+                    std::vector<cgsize_t> edge_connectivity(
+                        edge_count * 2);
+                    if (cg_elements_read(
+                            file.number(),
+                            1,
+                            zone.index,
+                            section,
+                            edge_connectivity.data(),
+                            nullptr) != CG_OK)
+                    {
+                        return CgnsSurfaceResult::failure(
+                            libraryError(cgns_path, zone.id));
+                    }
+                    for (std::size_t edge = 0;
+                         edge < edge_count;
+                         ++edge)
+                    {
+                        const auto first = edge_connectivity[edge * 2];
+                        const auto second = edge_connectivity[edge * 2 + 1];
+                        if (first < 1 || first > zone.vertex_count ||
+                            second < 1 || second > zone.vertex_count ||
+                            !zone.boundary_edges.emplace(
+                                start + static_cast<cgsize_t>(edge),
+                                std::array<cgsize_t, 2>{first, second})
+                                 .second)
+                        {
+                            return CgnsSurfaceResult::failure(
+                                makeError(
+                                    CgnsSurfaceErrorCode::InvalidConnectivity,
+                                    cgns_path,
+                                    zone.id,
+                                    static_cast<std::uint64_t>(
+                                        start +
+                                        static_cast<cgsize_t>(edge))));
+                        }
+                    }
+                    continue;
+                }
                 if (element_type == CGNS_ENUMV(TRI_3))
                 {
                     vertices_per_face = 3;
@@ -628,7 +684,9 @@ namespace boundary_mesh
                     parseZoneId(donor_name, donor_zone_id)
                         ? find_zone(donor_zone_id)
                         : nullptr;
-                if (location != CGNS_ENUMV(Vertex) ||
+                if ((location != CGNS_ENUMV(Vertex) &&
+                     location != CGNS_ENUMV(FaceCenter) &&
+                     location != CGNS_ENUMV(EdgeCenter)) ||
                     connectivity_type != CGNS_ENUMV(Abutting1to1) ||
                     point_set_type != CGNS_ENUMV(PointList) ||
                     donor_zone_type != CGNS_ENUMV(Unstructured) ||
@@ -667,10 +725,50 @@ namespace boundary_mesh
                 {
                     const auto local_id = points[index];
                     const auto donor_local_id = donor_points[index];
-                    if (local_id < 1 ||
-                        local_id > zone.vertex_count ||
-                        donor_local_id < 1 ||
-                        donor_local_id > donor_zone->vertex_count)
+                    if (location == CGNS_ENUMV(Vertex))
+                    {
+                        if (local_id < 1 ||
+                            local_id > zone.vertex_count ||
+                            donor_local_id < 1 ||
+                            donor_local_id > donor_zone->vertex_count)
+                        {
+                            return CgnsSurfaceResult::failure(
+                                makeError(
+                                    CgnsSurfaceErrorCode::InvalidConnectivity,
+                                    cgns_path,
+                                    zone.id,
+                                    0,
+                                    connection_name));
+                        }
+
+                        const auto first =
+                            zone.vertex_offset +
+                            static_cast<std::size_t>(local_id - 1);
+                        const auto second =
+                            donor_zone->vertex_offset +
+                            static_cast<std::size_t>(donor_local_id - 1);
+                        if (!samePoint(
+                                mesh.vertices[first],
+                                mesh.vertices[second]))
+                        {
+                            return CgnsSurfaceResult::failure(
+                                makeError(
+                                    CgnsSurfaceErrorCode::ConnectivityCoordinateMismatch,
+                                    cgns_path,
+                                    zone.id,
+                                    0,
+                                    connection_name));
+                        }
+                        connected_vertices.merge(first, second);
+                        continue;
+                    }
+
+                    const auto edge =
+                        zone.boundary_edges.find(local_id);
+                    const auto donor_edge =
+                        donor_zone->boundary_edges.find(donor_local_id);
+                    if (edge == zone.boundary_edges.end() ||
+                        donor_edge == donor_zone->boundary_edges.end())
                     {
                         return CgnsSurfaceResult::failure(
                             makeError(
@@ -681,17 +779,33 @@ namespace boundary_mesh
                                 connection_name));
                     }
 
-                    const auto first =
+                    const std::array<std::size_t, 2> first_vertices{
                         zone.vertex_offset +
-                        static_cast<std::size_t>(local_id - 1);
-                    const auto second =
+                            static_cast<std::size_t>(edge->second[0] - 1),
+                        zone.vertex_offset +
+                            static_cast<std::size_t>(edge->second[1] - 1)};
+                    const std::array<std::size_t, 2> second_vertices{
                         donor_zone->vertex_offset +
-                        static_cast<std::size_t>(donor_local_id - 1);
-                    const auto &first_point = mesh.vertices[first];
-                    const auto &second_point = mesh.vertices[second];
-                    if (first_point.x() != second_point.x() ||
-                        first_point.y() != second_point.y() ||
-                        first_point.z() != second_point.z())
+                            static_cast<std::size_t>(
+                                donor_edge->second[0] - 1),
+                        donor_zone->vertex_offset +
+                            static_cast<std::size_t>(
+                                donor_edge->second[1] - 1)};
+                    const bool same_direction =
+                        samePoint(
+                            mesh.vertices[first_vertices[0]],
+                            mesh.vertices[second_vertices[0]]) &&
+                        samePoint(
+                            mesh.vertices[first_vertices[1]],
+                            mesh.vertices[second_vertices[1]]);
+                    const bool reverse_direction =
+                        samePoint(
+                            mesh.vertices[first_vertices[0]],
+                            mesh.vertices[second_vertices[1]]) &&
+                        samePoint(
+                            mesh.vertices[first_vertices[1]],
+                            mesh.vertices[second_vertices[0]]);
+                    if (!same_direction && !reverse_direction)
                     {
                         return CgnsSurfaceResult::failure(
                             makeError(
@@ -701,7 +815,14 @@ namespace boundary_mesh
                                 0,
                                 connection_name));
                     }
-                    connected_vertices.merge(first, second);
+                    connected_vertices.merge(
+                        first_vertices[0],
+                        second_vertices[
+                            same_direction ? 0 : 1]);
+                    connected_vertices.merge(
+                        first_vertices[1],
+                        second_vertices[
+                            same_direction ? 1 : 0]);
                 }
             }
         }

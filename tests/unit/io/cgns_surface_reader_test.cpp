@@ -40,6 +40,22 @@ int main()
     assert(mesh.face_tags[1].kind == SurfaceBoundaryKind::Wall);
     assert(mesh.face_tags[1].region_id == 1);
 
+    const auto unicode_directory = directory / "中文路径";
+    std::filesystem::create_directories(unicode_directory);
+    const auto unicode_cgns = unicode_directory / "case.cgns";
+    const auto unicode_map = unicode_directory / "case.bc.txt";
+    std::filesystem::copy_file(
+        cgns_path,
+        unicode_cgns,
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(
+        map_path,
+        unicode_map,
+        std::filesystem::copy_options::overwrite_existing);
+    const auto unicode_result = readCgnsSurface(unicode_cgns);
+    assert(unicode_result.hasValue());
+    assert(unicode_result.value().vertices.size() == 5);
+
     const auto expect_error =
         [&](const std::string &name,
             const boundary_mesh::test::SingleZoneFixtureOptions &options,
@@ -127,10 +143,13 @@ int main()
     {
         auto options = boundary_mesh::test::SingleZoneFixtureOptions{};
         options.element_kind = boundary_mesh::test::FixtureElementKind::Line;
-        expect_error(
-            "line",
-            options,
-            CgnsSurfaceErrorCode::UnsupportedElementType);
+        const auto line_path = directory / "line.cgns";
+        boundary_mesh::test::writeSingleZoneSurface(line_path, options);
+        std::ofstream(directory / "line.bc.txt") << "Wall:\n1\n";
+        const auto line = readCgnsSurface(line_path);
+        assert(line.hasValue());
+        assert(line.value().faces.empty());
+        assert(line.value().face_tags.empty());
     }
 
     {
