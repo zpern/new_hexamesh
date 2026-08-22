@@ -143,10 +143,6 @@ namespace boundary_mesh
                     output.next_front.vertices.size());
                 output.next_front.vertices.push_back(
                     input.next_front.vertices[vertex]);
-                output.next_front.source_vertex_ids.push_back(
-                    input.next_front.source_vertex_ids[vertex]);
-                output.next_front.vertex_boundaries.push_back(
-                    input.next_front.vertex_boundaries[vertex]);
                 output.previous_front_vertex_indices.push_back(
                     input.previous_front_vertex_indices[vertex]);
             }
@@ -251,13 +247,15 @@ namespace boundary_mesh
                     return Result<std::vector<LayerBoundaryCandidate>, SpatialError>::failure(
                         SpatialError::InvalidTopologyReference);
                 }
-                bottom.points.push_back(current_front.vertices[bottom_index]);
+                bottom.points.push_back(
+                    current_front.vertices[bottom_index].position);
                 bottom.vertex_keys.push_back(
-                    {current_front.source_vertex_ids[bottom_index],
+                    {current_front.vertices[bottom_index].source_vertex_id,
                      current_front.layer});
-                top.points.push_back(step.next_front.vertices[top_index]);
+                top.points.push_back(
+                    step.next_front.vertices[top_index].position);
                 top.vertex_keys.push_back(
-                    {step.next_front.source_vertex_ids[top_index],
+                    {step.next_front.vertices[top_index].source_vertex_id,
                      step.next_front.layer});
             }
             candidates.push_back({std::move(bottom), std::move(top)});

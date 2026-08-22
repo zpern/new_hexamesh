@@ -166,8 +166,10 @@ int main()
     for (std::size_t index = 0; index < 3; ++index)
     {
         const Point3 expected =
-            front.value().vertices[index] + Vector3{0.0, 0.0, 0.25};
-        if ((layer.next_front.vertices[index] - expected).norm() > 1e-12)
+            front.value().vertices[index].position +
+            Vector3{0.0, 0.0, 0.25};
+        if ((layer.next_front.vertices[index].position - expected).norm() >
+            1e-12)
         {
             return 7;
         }
@@ -177,12 +179,12 @@ int main()
     const auto *top = std::get_if<Triangle>(&layer.next_front.faces[0]);
     if (bottom == nullptr || top == nullptr) return 8;
     const PrismPoints points{
-        front.value().vertices[bottom->vertex_ids[0]],
-        front.value().vertices[bottom->vertex_ids[1]],
-        front.value().vertices[bottom->vertex_ids[2]],
-        layer.next_front.vertices[top->vertex_ids[0]],
-        layer.next_front.vertices[top->vertex_ids[1]],
-        layer.next_front.vertices[top->vertex_ids[2]]};
+        front.value().vertices[bottom->vertex_ids[0]].position,
+        front.value().vertices[bottom->vertex_ids[1]].position,
+        front.value().vertices[bottom->vertex_ids[2]].position,
+        layer.next_front.vertices[top->vertex_ids[0]].position,
+        layer.next_front.vertices[top->vertex_ids[1]].position,
+        layer.next_front.vertices[top->vertex_ids[2]].position};
     const auto quality = evaluatePrism(points);
     if (!quality.hasValue() || !quality.value().acceptable ||
         quality.value().validity != VolumeCellValidity::Valid)
@@ -229,9 +231,9 @@ int main()
     for (std::size_t local = 0; local < 4; ++local)
     {
         hexa_points[local] = hexa_front.value().vertices[
-            hexa_bottom->vertex_ids[local]];
+            hexa_bottom->vertex_ids[local]].position;
         hexa_points[local + 4] = hexa_step.value().next_front.vertices[
-            hexa_top->vertex_ids[local]];
+            hexa_top->vertex_ids[local]].position;
     }
     const auto hexa_quality = evaluateHexa(hexa_points);
     if (!hexa_quality.hasValue() ||
@@ -294,9 +296,9 @@ int main()
     for (std::size_t index = 0; index < 3; ++index)
     {
         const Point3 expected =
-            layer1.vertices[index] + Vector3{0.0, 0.0, 0.5};
-        if ((ratio_step.value().next_front.vertices[index] - expected).norm() >
-            1e-12)
+            layer1.vertices[index].position + Vector3{0.0, 0.0, 0.5};
+        if ((ratio_step.value().next_front.vertices[index].position -
+             expected).norm() > 1e-12)
         {
             return 33;
         }
@@ -369,7 +371,8 @@ int main()
     }
 
     GrowthFront degenerate_layer4 = layer4;
-    degenerate_layer4.vertices[1] = degenerate_layer4.vertices[0];
+    degenerate_layer4.vertices[1].position =
+        degenerate_layer4.vertices[0].position;
     const auto prefiltered = RegularLayerStepper{}.step(
         degenerate_layer4,
         limited_profiles.value(),
@@ -428,8 +431,12 @@ int main()
         tetra_step.value().next_front.faces.size() != 1 ||
         tetra_step.value().next_front.source_face_ids !=
             std::vector<SurfaceFaceId>{SurfaceFaceId{1}} ||
-        tetra_step.value().next_front.source_vertex_ids !=
-            std::vector<VertexId>{VertexId{0}, VertexId{1}, VertexId{3}})
+        tetra_step.value().next_front.vertices[0].source_vertex_id !=
+            VertexId{0} ||
+        tetra_step.value().next_front.vertices[1].source_vertex_id !=
+            VertexId{1} ||
+        tetra_step.value().next_front.vertices[2].source_vertex_id !=
+            VertexId{3})
     {
         return 23;
     }

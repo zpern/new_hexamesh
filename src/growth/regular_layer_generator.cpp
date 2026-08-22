@@ -27,10 +27,8 @@ namespace boundary_mesh
             const GrowthFront &front)
         {
             if (front.layer != 0 ||
-                front.vertices.size() != front.source_vertex_ids.size() ||
-                front.vertices.size() != front.vertex_boundaries.size() ||
                 front.faces.size() != front.source_face_ids.size() ||
-                front.source_vertex_ids.size() != patch.vertices().size() ||
+                front.vertices.size() != patch.vertices().size() ||
                 front.source_face_ids != patch.sourceFaceIds())
             {
                 return false;
@@ -39,7 +37,7 @@ namespace boundary_mesh
                  index < patch.vertices().size();
                  ++index)
             {
-                if (front.source_vertex_ids[index] !=
+                if (front.vertices[index].source_vertex_id !=
                     patch.vertices()[index].source_vertex_id)
                 {
                     return false;
@@ -240,7 +238,11 @@ namespace boundary_mesh
         }
 
         RegularLayerGrowthResult result;
-        result.mesh.vertices = initial_front.vertices;
+        result.mesh.vertices.reserve(initial_front.vertices.size());
+        for (const GrowthFrontVertex &vertex : initial_front.vertices)
+        {
+            result.mesh.vertices.push_back(vertex.position);
+        }
         std::vector<VertexId> current_global_ids;
         current_global_ids.reserve(initial_front.vertices.size());
         for (std::size_t index = 0;
@@ -257,10 +259,10 @@ namespace boundary_mesh
             current_global_ids.push_back(global_id);
             result.layer_vertices.push_back(
                 LayerVertexRecord{
-                    initial_front.source_vertex_ids[index],
+                    initial_front.vertices[index].source_vertex_id,
                     {global_id}});
             const VertexGrowthProfile *profile = profile_table.find(
-                initial_front.source_vertex_ids[index]);
+                initial_front.vertices[index].source_vertex_id);
             if (profile == nullptr)
             {
                 return GrowthResult::failure(
@@ -268,7 +270,7 @@ namespace boundary_mesh
             }
             result.vertices.push_back(
                 VertexGrowthRecord{
-                    initial_front.source_vertex_ids[index],
+                    initial_front.vertices[index].source_vertex_id,
                     *profile,
                     0});
         }
@@ -463,10 +465,10 @@ namespace boundary_mesh
                         boundary_update.error()});
             }
 
-            result.mesh.vertices.insert(
-                result.mesh.vertices.end(),
-                step.next_front.vertices.begin(),
-                step.next_front.vertices.end());
+            for (const GrowthFrontVertex &vertex : step.next_front.vertices)
+            {
+                result.mesh.vertices.push_back(vertex.position);
+            }
             result.mesh.cells.insert(
                 result.mesh.cells.end(),
                 new_cells.begin(),
@@ -478,11 +480,11 @@ namespace boundary_mesh
             exposed_boundary.apply(boundary_update.value());
 
             for (std::size_t index = 0;
-                 index < step.next_front.source_vertex_ids.size();
+                 index < step.next_front.vertices.size();
                  ++index)
             {
                 const VertexId source_id =
-                    step.next_front.source_vertex_ids[index];
+                    step.next_front.vertices[index].source_vertex_id;
                 LayerVertexRecord *layer_record = findLayerRecord(
                     result.layer_vertices, source_id);
                 VertexGrowthRecord *vertex_record = findVertexRecord(

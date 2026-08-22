@@ -159,8 +159,6 @@ namespace boundary_mesh
         const FrontEvaluation &evaluation) const
     {
         if (front.layer != evaluation.layer ||
-            front.vertices.size() != front.source_vertex_ids.size() ||
-            front.vertices.size() != front.vertex_boundaries.size() ||
             mesh.faces.size() != mesh.face_tags.size() ||
             !std::isfinite(evaluation.characteristic_length) ||
             evaluation.characteristic_length <= Scalar{0} ||
@@ -171,8 +169,9 @@ namespace boundary_mesh
         }
 
         std::vector<std::uint32_t> referenced_regions;
-        for (const FrontVertexBoundary &boundary : front.vertex_boundaries)
+        for (const GrowthFrontVertex &vertex : front.vertices)
         {
+            const FrontVertexBoundary &boundary = vertex.boundary;
             referenced_regions.insert(
                 referenced_regions.end(),
                 boundary.symmetry_region_ids.begin(),
@@ -259,13 +258,14 @@ namespace boundary_mesh
              ++vertex_index)
         {
             std::vector<std::uint32_t> regions =
-                front.vertex_boundaries[vertex_index].symmetry_region_ids;
+                front.vertices[vertex_index].boundary.symmetry_region_ids;
             std::sort(regions.begin(), regions.end());
             regions.erase(std::unique(regions.begin(), regions.end()), regions.end());
 
             VertexSymmetryConstraint constraint;
             constraint.front_vertex_index = vertex_index;
-            constraint.source_vertex_id = front.source_vertex_ids[vertex_index];
+            constraint.source_vertex_id =
+                front.vertices[vertex_index].source_vertex_id;
             std::vector<Vector3> orthonormal_basis;
 
             for (const std::uint32_t region_id : regions)
@@ -300,7 +300,7 @@ namespace boundary_mesh
                     return ConstraintResult::failure(
                         OverConstrainedGrowthVertex{
                             vertex_index,
-                            front.source_vertex_ids[vertex_index],
+                            front.vertices[vertex_index].source_vertex_id,
                             front.layer});
                 }
                 orthonormal_basis.push_back(residual / residual_length);

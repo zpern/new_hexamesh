@@ -1,6 +1,8 @@
 #include <cassert>
 #include <cstddef>
+#include <initializer_list>
 #include <utility>
+#include <vector>
 
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
 
@@ -8,6 +10,20 @@ using namespace boundary_mesh;
 
 namespace
 {
+    std::vector<GrowthFrontVertex> frontVertices(
+        std::initializer_list<Point3> points,
+        std::initializer_list<VertexId> source_ids)
+    {
+        assert(points.size() == source_ids.size());
+        std::vector<GrowthFrontVertex> result;
+        auto source = source_ids.begin();
+        for (const Point3 &point : points)
+        {
+            result.emplace_back(point, *source++);
+        }
+        return result;
+    }
+
     GrowthFront triangleFront(
         Scalar z,
         std::uint32_t layer,
@@ -16,14 +32,13 @@ namespace
     {
         GrowthFront front;
         front.layer = layer;
-        front.vertices = {{0, 0, z}, {1, 0, z}, {0, 1, z}};
+        front.vertices = frontVertices(
+            {{0, 0, z}, {1, 0, z}, {0, 1, z}},
+            {source_offset,
+             static_cast<VertexId>(source_offset + 1),
+             static_cast<VertexId>(source_offset + 2)});
         front.faces = {Triangle{{0, 1, 2}}};
-        front.source_vertex_ids = {
-            source_offset,
-            static_cast<VertexId>(source_offset + 1),
-            static_cast<VertexId>(source_offset + 2)};
         front.source_face_ids = {source_face_id};
-        front.vertex_boundaries.resize(3);
         return front;
     }
 
@@ -45,9 +60,9 @@ namespace
         step.layer = current.layer + 1;
         step.next_front = current;
         step.next_front.layer = step.layer;
-        for (Point3 &point : step.next_front.vertices)
+        for (GrowthFrontVertex &vertex : step.next_front.vertices)
         {
-            point.z() += height;
+            vertex.position.z() += height;
         }
         for (std::size_t index = 0;
              index < current.vertices.size();
@@ -108,18 +123,18 @@ int main()
         current.vertices.begin(),
         current.vertices.end());
     double_current.faces.push_back(Triangle{{3, 4, 5}});
-    double_current.source_vertex_ids.insert(
-        double_current.source_vertex_ids.end(), {10, 11, 12});
-    double_current.vertex_boundaries.resize(6);
+    double_current.vertices[3].source_vertex_id = 10;
+    double_current.vertices[4].source_vertex_id = 11;
+    double_current.vertices[5].source_vertex_id = 12;
     double_current.source_face_ids.push_back(5);
 
     LayerStepResult double_step;
     double_step.layer = 1;
     double_step.next_front = double_current;
     double_step.next_front.layer = 1;
-    for (Point3 &point : double_step.next_front.vertices)
+    for (GrowthFrontVertex &vertex : double_step.next_front.vertices)
     {
-        point.z() = 1.0;
+        vertex.position.z() = 1.0;
     }
     double_step.previous_front_vertex_indices = {0, 1, 2, 3, 4, 5};
     double_step.previous_front_face_indices = {0, 1};
@@ -133,23 +148,22 @@ int main()
 
     GrowthFront adjacent;
     adjacent.layer = 0;
-    adjacent.vertices = {
-        {0, 0, 1}, {1, 0, 1}, {2, 0, 1},
-        {0, 1, 1}, {1, 1, 1}, {2, 1, 1}};
+    adjacent.vertices = frontVertices(
+        {{0, 0, 1}, {1, 0, 1}, {2, 0, 1},
+         {0, 1, 1}, {1, 1, 1}, {2, 1, 1}},
+        {6, 7, 8, 9, 10, 11});
     adjacent.faces = {
         Quad{{0, 1, 4, 3}},
         Quad{{1, 2, 5, 4}}};
-    adjacent.source_vertex_ids = {6, 7, 8, 9, 10, 11};
     adjacent.source_face_ids = {2, 3};
-    adjacent.vertex_boundaries.resize(6);
 
     LayerStepResult adjacent_step;
     adjacent_step.layer = 1;
     adjacent_step.next_front = adjacent;
     adjacent_step.next_front.layer = 1;
-    for (Point3 &point : adjacent_step.next_front.vertices)
+    for (GrowthFrontVertex &vertex : adjacent_step.next_front.vertices)
     {
-        point.z() = 1.1;
+        vertex.position.z() = 1.1;
     }
     adjacent_step.previous_front_vertex_indices = {0, 1, 2, 3, 4, 5};
     adjacent_step.previous_front_face_indices = {0, 1};
@@ -165,26 +179,23 @@ int main()
     }
 
     GrowthFront vertex_adjacent;
-    vertex_adjacent.vertices = {
-        {0, 0, 0}, {1, 0, 0}, {0, 1, 0},
-        {0, 0, 0}, {-1, 0, 0}, {0, -1, 0}};
+    vertex_adjacent.vertices = frontVertices(
+        {{0, 0, 0}, {1, 0, 0}, {0, 1, 0},
+         {0, 0, 0}, {-1, 0, 0}, {0, -1, 0}},
+        {20, 21, 22, 20, 23, 24});
     vertex_adjacent.faces = {
         Triangle{{0, 1, 2}}, Triangle{{3, 4, 5}}};
-    vertex_adjacent.source_vertex_ids = {20, 21, 22, 20, 23, 24};
     vertex_adjacent.source_face_ids = {20, 21};
-    vertex_adjacent.vertex_boundaries.resize(6);
     assertAdjacentCandidatesRemainActive(vertex_adjacent);
 
     GrowthFront mixed_adjacent;
-    mixed_adjacent.vertices = {
-        {0, 0, 0}, {1, 0, 0}, {0, 1, 0},
-        {1, 0, 0}, {0, 0, 0}, {0, -1, 0}, {1, -1, 0}};
+    mixed_adjacent.vertices = frontVertices(
+        {{0, 0, 0}, {1, 0, 0}, {0, 1, 0},
+         {1, 0, 0}, {0, 0, 0}, {0, -1, 0}, {1, -1, 0}},
+        {30, 31, 32, 31, 30, 33, 34});
     mixed_adjacent.faces = {
         Triangle{{0, 1, 2}}, Quad{{3, 4, 5, 6}}};
-    mixed_adjacent.source_vertex_ids = {
-        30, 31, 32, 31, 30, 33, 34};
     mixed_adjacent.source_face_ids = {30, 31};
-    mixed_adjacent.vertex_boundaries.resize(7);
     assertAdjacentCandidatesRemainActive(mixed_adjacent);
 
     GrowthFront reordered = double_current;

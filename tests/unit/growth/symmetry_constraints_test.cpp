@@ -37,18 +37,13 @@ namespace
         GrowthFront front;
         front.layer = 2;
         front.vertices = {
-            Point3{0.0, 0.0, 0.0},
-            Point3{1.0, 0.0, 0.0},
-            Point3{0.0, 1.0, 0.0}};
+            {Point3{0.0, 0.0, 0.0}, VertexId{20},
+             FrontVertexBoundary{std::move(first_regions)}},
+            {Point3{1.0, 0.0, 0.0}, VertexId{21}},
+            {Point3{0.0, 1.0, 0.0}, VertexId{22}}};
         front.faces = {
             Triangle{{VertexId{0}, VertexId{1}, VertexId{2}}}};
-        front.source_vertex_ids = {
-            VertexId{20}, VertexId{21}, VertexId{22}};
         front.source_face_ids = {SurfaceFaceId{30}};
-        front.vertex_boundaries = {
-            FrontVertexBoundary{std::move(first_regions)},
-            FrontVertexBoundary{},
-            FrontVertexBoundary{}};
         return front;
     }
 

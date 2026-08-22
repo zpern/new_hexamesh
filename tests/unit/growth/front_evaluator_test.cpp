@@ -13,16 +13,16 @@ namespace
         GrowthFront front;
         front.layer = 4;
         front.vertices = {
-            Point3{0, 0, 0}, Point3{1, 0, 0}, Point3{1, 1, 0},
-            Point3{0, 1, 0}, Point3{2, 0, 0}, Point3{2, 1, 0}};
+            {Point3{0, 0, 0}, VertexId{10}},
+            {Point3{1, 0, 0}, VertexId{11}},
+            {Point3{1, 1, 0}, VertexId{12}},
+            {Point3{0, 1, 0}, VertexId{13}},
+            {Point3{2, 0, 0}, VertexId{14}},
+            {Point3{2, 1, 0}, VertexId{15}}};
         front.faces = {
             Triangle{{VertexId{0}, VertexId{1}, VertexId{2}}},
             Quad{{VertexId{1}, VertexId{4}, VertexId{5}, VertexId{2}}}};
-        front.source_vertex_ids = {
-            VertexId{10}, VertexId{11}, VertexId{12},
-            VertexId{13}, VertexId{14}, VertexId{15}};
         front.source_face_ids = {SurfaceFaceId{20}, SurfaceFaceId{21}};
-        front.vertex_boundaries.resize(front.vertices.size());
         return front;
     }
 }
@@ -43,7 +43,7 @@ int main()
     }
 
     GrowthFront non_finite = front;
-    non_finite.vertices[3].z() =
+    non_finite.vertices[3].position.z() =
         std::numeric_limits<Scalar>::quiet_NaN();
     const auto non_finite_result = FrontEvaluator{}.evaluate(non_finite);
     const auto *vertex_error = non_finite_result.hasValue() ? nullptr :
@@ -66,7 +66,7 @@ int main()
     }
 
     GrowthFront degenerate = front;
-    degenerate.vertices[2] = degenerate.vertices[1];
+    degenerate.vertices[2].position = degenerate.vertices[1].position;
     const auto degenerate_result = FrontEvaluator{}.evaluate(degenerate);
     const auto *face_error = degenerate_result.hasValue() ? nullptr :
         std::get_if<DegenerateFrontFace>(&degenerate_result.error());
@@ -78,7 +78,7 @@ int main()
     }
 
     GrowthFront mapping = front;
-    mapping.vertex_boundaries.pop_back();
+    mapping.source_face_ids.pop_back();
     const auto mapping_result = FrontEvaluator{}.evaluate(mapping);
     if (mapping_result.hasValue() ||
         !std::holds_alternative<FrontMappingMismatch>(mapping_result.error()))

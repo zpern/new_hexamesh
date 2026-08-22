@@ -253,10 +253,6 @@ namespace boundary_mesh
                 output.next_front.vertices.size());
             output.next_front.vertices.push_back(
                 step.next_front.vertices[vertex]);
-            output.next_front.source_vertex_ids.push_back(
-                step.next_front.source_vertex_ids[vertex]);
-            output.next_front.vertex_boundaries.push_back(
-                step.next_front.vertex_boundaries[vertex]);
             output.previous_front_vertex_indices.push_back(
                 step.previous_front_vertex_indices[vertex]);
         }

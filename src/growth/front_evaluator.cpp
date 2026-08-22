@@ -26,29 +26,29 @@ namespace boundary_mesh
         {
             return EvaluationResult::failure(EmptyGrowthFront{front.layer});
         }
-        if (front.vertices.size() != front.source_vertex_ids.size() ||
-            front.vertices.size() != front.vertex_boundaries.size() ||
-            front.faces.size() != front.source_face_ids.size())
+        if (front.faces.size() != front.source_face_ids.size())
         {
             return EvaluationResult::failure(FrontMappingMismatch{
-                front.vertices.size(), front.source_vertex_ids.size(),
-                front.vertex_boundaries.size(), front.faces.size(),
+                front.vertices.size(), front.vertices.size(),
+                front.vertices.size(), front.faces.size(),
                 front.source_face_ids.size(), front.layer});
         }
 
         for (std::size_t index = 0; index < front.vertices.size(); ++index)
         {
-            if (!front.vertices[index].allFinite())
+            if (!front.vertices[index].position.allFinite())
             {
                 return EvaluationResult::failure(NonFiniteFrontVertex{
-                    index, front.source_vertex_ids[index], front.layer});
+                    index, front.vertices[index].source_vertex_id,
+                    front.layer});
             }
         }
 
-        Point3 minimum = front.vertices.front();
-        Point3 maximum = front.vertices.front();
-        for (const Point3 &point : front.vertices)
+        Point3 minimum = front.vertices.front().position;
+        Point3 maximum = front.vertices.front().position;
+        for (const GrowthFrontVertex &vertex : front.vertices)
         {
+            const Point3 &point = vertex.position;
             minimum = minimum.cwiseMin(point);
             maximum = maximum.cwiseMax(point);
         }
@@ -109,18 +109,18 @@ namespace boundary_mesh
                     if constexpr (std::is_same_v<Face, Triangle>)
                     {
                         return evaluateTriangle(
-                            front.vertices[face.vertex_ids[0]],
-                            front.vertices[face.vertex_ids[1]],
-                            front.vertices[face.vertex_ids[2]],
+                            front.vertices[face.vertex_ids[0]].position,
+                            front.vertices[face.vertex_ids[1]].position,
+                            front.vertices[face.vertex_ids[2]].position,
                             effective_tolerance);
                     }
                     else
                     {
                         return evaluateQuad(
-                            front.vertices[face.vertex_ids[0]],
-                            front.vertices[face.vertex_ids[1]],
-                            front.vertices[face.vertex_ids[2]],
-                            front.vertices[face.vertex_ids[3]],
+                            front.vertices[face.vertex_ids[0]].position,
+                            front.vertices[face.vertex_ids[1]].position,
+                            front.vertices[face.vertex_ids[2]].position,
+                            front.vertices[face.vertex_ids[3]].position,
                             effective_tolerance);
                     }
                 }, front.faces[face_index]);

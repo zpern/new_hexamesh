@@ -45,22 +45,32 @@ int main()
 
     const GrowthFront &value = front.value();
     if (value.layer != 0 || value.vertices.size() != 3 ||
-        value.faces.size() != 1 || value.source_vertex_ids !=
-            std::vector<VertexId>{VertexId{0}, VertexId{1}, VertexId{2}} ||
-        value.source_face_ids !=
+        value.faces.size() != 1 || value.source_face_ids !=
             std::vector<SurfaceFaceId>{SurfaceFaceId{0}} ||
-        value.vertex_boundaries.size() != 3)
+        value.vertices[0].source_vertex_id != VertexId{0} ||
+        value.vertices[1].source_vertex_id != VertexId{1} ||
+        value.vertices[2].source_vertex_id != VertexId{2})
     {
         return 4;
     }
 
     for (std::size_t index = 0; index < value.vertices.size(); ++index)
     {
-        if ((value.vertices[index] - mesh.vertices[index]).norm() > 1e-12 ||
-            value.vertex_boundaries[index].symmetry_region_ids !=
+        const GrowthFrontVertex &vertex = value.vertices[index];
+        if ((vertex.position - mesh.vertices[index]).norm() > 1e-12 ||
+            (vertex.root_position - vertex.position).norm() > 1e-12 ||
+            vertex.source_vertex_id != static_cast<VertexId>(index) ||
+            vertex.boundary.symmetry_region_ids !=
                 patch.value().vertices()[index].symmetry_region_ids)
         {
             return 5;
+        }
+        if (vertex.direction.norm() != Scalar{0} ||
+            vertex.actual_height != Scalar{0} ||
+            vertex.visibility_cosine != Scalar{1} ||
+            vertex.complex_corner)
+        {
+            return 10;
         }
     }
 

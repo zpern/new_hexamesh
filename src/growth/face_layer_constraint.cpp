@@ -64,8 +64,6 @@ namespace boundary_mesh
         if (initial_front.layer != 0 ||
             initial_front.faces.size() !=
                 initial_front.source_face_ids.size() ||
-            initial_front.vertices.size() !=
-                initial_front.source_vertex_ids.size() ||
             initial_front.source_face_ids != patch.sourceFaceIds())
         {
             return ConstraintResult::failure({0, 0});
@@ -89,12 +87,12 @@ namespace boundary_mesh
             {
                 const std::size_t local_index =
                     static_cast<std::size_t>(local_id);
-                if (local_index >= initial_front.source_vertex_ids.size())
+                if (local_index >= initial_front.vertices.size())
                 {
                     return ConstraintResult::failure({source_face_id, 0});
                 }
                 const VertexGrowthProfile *profile = profiles.find(
-                    initial_front.source_vertex_ids[local_index]);
+                    initial_front.vertices[local_index].source_vertex_id);
                 if (profile == nullptr)
                 {
                     return ConstraintResult::failure({source_face_id, 0});

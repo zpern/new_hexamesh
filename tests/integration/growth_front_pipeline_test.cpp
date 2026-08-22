@@ -109,18 +109,21 @@ int main()
     const Scalar layer0_area = evaluation0.value().faces[0].value.area;
     const Vector3 layer0_normal =
         evaluation0.value().faces[0].value.unit_normal;
-    const std::vector<VertexId> source_vertices =
-        layer0.value().source_vertex_ids;
+    std::vector<VertexId> source_vertices;
+    std::vector<FrontVertexBoundary> source_boundaries;
+    for (const GrowthFrontVertex &vertex : layer0.value().vertices)
+    {
+        source_vertices.push_back(vertex.source_vertex_id);
+        source_boundaries.push_back(vertex.boundary);
+    }
     const std::vector<SurfaceFaceId> source_faces =
         layer0.value().source_face_ids;
-    const std::vector<FrontVertexBoundary> source_boundaries =
-        layer0.value().vertex_boundaries;
 
     // 阶段 03 不生成新层；这里只人工移动坐标，验证算法没有缓存第 0 层几何。
     GrowthFront layer1 = layer0.value();
     layer1.layer = 1;
-    layer1.vertices[1].z() += 0.20;
-    layer1.vertices[2].z() += 0.10;
+    layer1.vertices[1].position.z() += 0.20;
+    layer1.vertices[2].position.z() += 0.10;
 
     const auto evaluation1 = FrontEvaluator{}.evaluate(layer1);
     if (!evaluation1.hasValue())
@@ -149,9 +152,16 @@ int main()
     {
         return 11;
     }
-    if (layer1.source_vertex_ids != source_vertices ||
+    std::vector<VertexId> layer1_sources;
+    std::vector<FrontVertexBoundary> layer1_boundaries;
+    for (const GrowthFrontVertex &vertex : layer1.vertices)
+    {
+        layer1_sources.push_back(vertex.source_vertex_id);
+        layer1_boundaries.push_back(vertex.boundary);
+    }
+    if (layer1_sources != source_vertices ||
         layer1.source_face_ids != source_faces ||
-        !sameBoundaries(layer1.vertex_boundaries, source_boundaries))
+        !sameBoundaries(layer1_boundaries, source_boundaries))
     {
         return 12;
     }
@@ -170,8 +180,8 @@ int main()
     // 中间层面片折叠时必须报告当前层号、局部面和源 Wall 面。
     GrowthFront collapsed = layer1;
     const Triangle &first = std::get<Triangle>(collapsed.faces[0]);
-    collapsed.vertices[first.vertex_ids[1]] =
-        collapsed.vertices[first.vertex_ids[0]];
+    collapsed.vertices[first.vertex_ids[1]].position =
+        collapsed.vertices[first.vertex_ids[0]].position;
     const auto failure = FrontEvaluator{}.evaluate(collapsed);
     const auto *error = failure.hasValue()
         ? nullptr

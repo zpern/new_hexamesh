@@ -16,7 +16,6 @@ namespace boundary_mesh
         using DirectionResult = Result<GrowthDirections, GrowthDirectionError>;
         if (front.layer != evaluation.layer ||
             front.faces.size() != evaluation.faces.size() ||
-            front.vertices.size() != front.source_vertex_ids.size() ||
             front.faces.size() != front.source_face_ids.size())
         {
             return DirectionResult::failure(DirectionInputMismatch{
@@ -57,20 +56,22 @@ namespace boundary_mesh
                         {
                             return DirectionCornerFailure{
                                 center_index,
-                                center_index < front.source_vertex_ids.size()
-                                    ? front.source_vertex_ids[center_index] : VertexId{},
+                                center_index < front.vertices.size()
+                                    ? front.vertices[center_index].source_vertex_id
+                                    : VertexId{},
                                 face_index, front.source_face_ids[face_index],
                                 front.layer, FaceEvaluationError::DegenerateEdge};
                         }
                         const auto angle = cornerAngle(
-                            front.vertices[previous_id],
-                            front.vertices[center_id],
-                            front.vertices[next_id],
+                            front.vertices[previous_id].position,
+                            front.vertices[center_id].position,
+                            front.vertices[next_id].position,
                             evaluation.effective_length_tolerance);
                         if (!angle.hasValue())
                         {
                             return DirectionCornerFailure{
-                                center_index, front.source_vertex_ids[center_index],
+                                center_index,
+                                front.vertices[center_index].source_vertex_id,
                                 face_index, front.source_face_ids[face_index],
                                 front.layer, angle.error()};
                         }
@@ -89,7 +90,11 @@ namespace boundary_mesh
 
         GrowthDirections result;
         result.layer = front.layer;
-        result.source_vertex_ids = front.source_vertex_ids;
+        result.source_vertex_ids.reserve(front.vertices.size());
+        for (const GrowthFrontVertex &vertex : front.vertices)
+        {
+            result.source_vertex_ids.push_back(vertex.source_vertex_id);
+        }
         result.values.reserve(accumulated.size());
         for (std::size_t index = 0; index < accumulated.size(); ++index)
         {
@@ -98,7 +103,8 @@ namespace boundary_mesh
                 length <= evaluation.effective_length_tolerance)
             {
                 return DirectionResult::failure(UndefinedGrowthDirection{
-                    index, front.source_vertex_ids[index], front.layer});
+                    index, front.vertices[index].source_vertex_id,
+                    front.layer});
             }
             result.values.push_back(accumulated[index] / length);
         }

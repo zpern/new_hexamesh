@@ -38,9 +38,7 @@ namespace boundary_mesh
 
         bool validFrontShape(const GrowthFront &front)
         {
-            if (front.vertices.size() != front.source_vertex_ids.size() ||
-                front.vertices.size() != front.vertex_boundaries.size() ||
-                front.faces.size() != front.source_face_ids.size())
+            if (front.faces.size() != front.source_face_ids.size())
             {
                 return false;
             }
@@ -107,10 +105,6 @@ namespace boundary_mesh
                     result.front.vertices.size());
                 old_to_new[old_index] = new_id;
                 result.front.vertices.push_back(source.vertices[old_index]);
-                result.front.source_vertex_ids.push_back(
-                    source.source_vertex_ids[old_index]);
-                result.front.vertex_boundaries.push_back(
-                    source.vertex_boundaries[old_index]);
                 result.previous_vertex_indices.push_back(old_index);
             }
 
@@ -220,7 +214,7 @@ namespace boundary_mesh
                 const std::size_t local_index =
                     static_cast<std::size_t>(local_id);
                 const VertexGrowthProfile *profile = profiles.find(
-                    current_front.source_vertex_ids[local_index]);
+                    current_front.vertices[local_index].source_vertex_id);
                 if (profile == nullptr ||
                     current_front.layer >= profile->layer_count)
                 {
@@ -278,17 +272,17 @@ namespace boundary_mesh
              ++vertex_index)
         {
             const VertexId source_id =
-                candidate_front.source_vertex_ids[vertex_index];
+                candidate_front.vertices[vertex_index].source_vertex_id;
             const auto height_result = profiles.height(
                 source_id, target_layer);
             if (!height_result.hasValue())
             {
                 return StepResult::failure(height_result.error());
             }
-            candidate_front.vertices[vertex_index] +=
+            candidate_front.vertices[vertex_index].position +=
                 height_result.value() *
                 direction_result.value().values[vertex_index];
-            if (!candidate_front.vertices[vertex_index].allFinite())
+            if (!candidate_front.vertices[vertex_index].position.allFinite())
             {
                 return StepResult::failure(
                     NonFiniteLayerHeight{source_id, target_layer});
@@ -315,9 +309,9 @@ namespace boundary_mesh
                                 static_cast<std::size_t>(
                                     face.vertex_ids[local]);
                             points[local] =
-                                eligible.front.vertices[vertex_index];
+                                eligible.front.vertices[vertex_index].position;
                             points[local + 3] =
-                                candidate_front.vertices[vertex_index];
+                                candidate_front.vertices[vertex_index].position;
                         }
                         return evaluatePrism(points, options.cell_quality);
                     }
@@ -330,9 +324,9 @@ namespace boundary_mesh
                                 static_cast<std::size_t>(
                                     face.vertex_ids[local]);
                             points[local] =
-                                eligible.front.vertices[vertex_index];
+                                eligible.front.vertices[vertex_index].position;
                             points[local + 4] =
-                                candidate_front.vertices[vertex_index];
+                                candidate_front.vertices[vertex_index].position;
                         }
                         return evaluateHexa(points, options.cell_quality);
                     }

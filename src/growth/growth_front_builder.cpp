@@ -31,10 +31,13 @@ namespace boundary_mesh
             const VertexId local_id =
                 static_cast<VertexId>(front.vertices.size());
             local_ids.emplace(patch_vertex.source_vertex_id, local_id);
-            front.vertices.push_back(mesh.vertices[source_index]);
-            front.source_vertex_ids.push_back(patch_vertex.source_vertex_id);
-            front.vertex_boundaries.push_back(
-                FrontVertexBoundary{patch_vertex.symmetry_region_ids});
+            const Point3 &position = mesh.vertices[source_index];
+            front.vertices.push_back(
+                GrowthFrontVertex{
+                    position,
+                    patch_vertex.source_vertex_id,
+                    FrontVertexBoundary{
+                        patch_vertex.symmetry_region_ids}});
         }
 
         for (const SurfaceFaceId source_face_id : patch.sourceFaceIds())

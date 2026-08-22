@@ -36,17 +36,23 @@ namespace
         if (first.layer != second.layer ||
             first.vertices.size() != second.vertices.size() ||
             first.faces.size() != second.faces.size() ||
-            first.source_vertex_ids != second.source_vertex_ids ||
-            first.source_face_ids != second.source_face_ids ||
-            first.vertex_boundaries.size() != second.vertex_boundaries.size())
+            first.source_face_ids != second.source_face_ids)
         {
             return false;
         }
         for (std::size_t index = 0; index < first.vertices.size(); ++index)
         {
-            if ((first.vertices[index] - second.vertices[index]).norm() != 0.0 ||
-                first.vertex_boundaries[index].symmetry_region_ids !=
-                    second.vertex_boundaries[index].symmetry_region_ids)
+            const GrowthFrontVertex &left = first.vertices[index];
+            const GrowthFrontVertex &right = second.vertices[index];
+            if ((left.position - right.position).norm() != 0.0 ||
+                (left.root_position - right.root_position).norm() != 0.0 ||
+                left.source_vertex_id != right.source_vertex_id ||
+                left.boundary.symmetry_region_ids !=
+                    right.boundary.symmetry_region_ids ||
+                (left.direction - right.direction).norm() != 0.0 ||
+                left.actual_height != right.actual_height ||
+                left.visibility_cosine != right.visibility_cosine ||
+                left.complex_corner != right.complex_corner)
             {
                 return false;
             }
@@ -74,7 +80,7 @@ int main()
         {VertexId{5}, {0.1, 1.0, 1}}};
 
     GrowthFront malformed = front;
-    malformed.source_vertex_ids.pop_back();
+    malformed.vertices.back().source_vertex_id = VertexId{99};
     const auto mapping_failure = generateRegularLayers(
         mesh, topology.value(), patch.value(), malformed, profiles);
     const auto *mapping_error = mapping_failure.hasValue()
@@ -100,8 +106,8 @@ int main()
 
     GrowthFront degenerate = front;
     const Triangle &face = std::get<Triangle>(degenerate.faces[0]);
-    degenerate.vertices[face.vertex_ids[1]] =
-        degenerate.vertices[face.vertex_ids[0]];
+    degenerate.vertices[face.vertex_ids[1]].position =
+        degenerate.vertices[face.vertex_ids[0]].position;
     const GrowthFront degenerate_before = degenerate;
     const auto front_failure = generateRegularLayers(
         mesh, topology.value(), patch.value(), degenerate, profiles);
