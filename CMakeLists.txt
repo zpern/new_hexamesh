@@ -155,6 +155,26 @@ target_link_libraries(
         BoundaryMesh::Spatial
 )
 
+add_library(
+    boundary_mesh_io
+    STATIC
+        src/io/boundary_condition_map.cpp
+)
+add_library(BoundaryMesh::IO ALIAS boundary_mesh_io)
+target_compile_features(boundary_mesh_io PUBLIC cxx_std_17)
+target_include_directories(
+    boundary_mesh_io
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(
+    boundary_mesh_io
+    PUBLIC BoundaryMesh::Core
+)
+
 include(CTest)
 
 if(BUILD_TESTING)

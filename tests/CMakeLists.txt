@@ -524,3 +524,20 @@ add_test(
     NAME boundary_mesh_layer_coordination_failure_test
     COMMAND boundary_mesh_layer_coordination_failure_test
 )
+
+add_executable(
+    boundary_mesh_boundary_condition_map_test
+    unit/io/boundary_condition_map_test.cpp
+)
+target_include_directories(
+    boundary_mesh_boundary_condition_map_test
+    PRIVATE "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(
+    boundary_mesh_boundary_condition_map_test
+    PRIVATE BoundaryMesh::IO
+)
+add_test(
+    NAME boundary_mesh_boundary_condition_map_test
+    COMMAND boundary_mesh_boundary_condition_map_test
+)
