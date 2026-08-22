@@ -32,6 +32,10 @@ int main()
         {0.25, 0.25, 0.0},
         {1.0, 0.25, 0.0},
         {0.25, 1.0, 0.0}}};
+    const TrianglePoints coplanar_vertex_touch{{
+        {0.0, 0.0, 0.0},
+        {-1.0, 0.0, 0.0},
+        {0.0, -1.0, 0.0}}};
 
     assert(classifyTriangleContact(first, disjoint).value() ==
            TriangleContactKind::Disjoint);
@@ -43,6 +47,8 @@ int main()
            TriangleContactKind::EdgeTouch);
     assert(classifyTriangleContact(first, overlap).value() ==
            TriangleContactKind::CoplanarOverlap);
+    assert(classifyTriangleContact(first, coplanar_vertex_touch).value() ==
+           TriangleContactKind::VertexTouch);
 
     const std::array<CollisionVertexKey, 3> first_keys{{
         {0, 0}, {1, 0}, {2, 0}}};

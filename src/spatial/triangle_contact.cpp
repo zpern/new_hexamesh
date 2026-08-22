@@ -135,6 +135,27 @@ namespace boundary_mesh
             return std::abs(twice_area) * Scalar{0.5};
         }
 
+        std::size_t distinctPointCount(
+            const std::vector<Point2> &points)
+        {
+            std::vector<Point2> distinct;
+            for (const Point2 point : points)
+            {
+                const bool exists = std::any_of(
+                    distinct.begin(),
+                    distinct.end(),
+                    [&](const Point2 &value)
+                    {
+                        return value.x == point.x && value.y == point.y;
+                    });
+                if (!exists)
+                {
+                    distinct.push_back(point);
+                }
+            }
+            return distinct.size();
+        }
+
         bool pointInTriangle(
             const Point3 &point,
             const TrianglePoints &triangle,
@@ -293,7 +314,7 @@ namespace boundary_mesh
                     TriangleContactKind::CoplanarOverlap);
             }
             return Result<TriangleContactKind, SpatialError>::success(
-                polygon.size() >= 2
+                distinctPointCount(polygon) >= 2
                     ? TriangleContactKind::EdgeTouch
                     : TriangleContactKind::VertexTouch);
         }
