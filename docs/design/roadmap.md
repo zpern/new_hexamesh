@@ -60,7 +60,7 @@ docs/plans/
 | 04 | Prism/Hexa 候选单元有效性与质量评价 | 已完成 |
 | 05 | Prism/Hexa 等层规则生长 | 已完成 |
 | 06 | 空间查询、碰撞检测与局部停止 | 设计完成，待实施 |
-| 07 | 层数协调与停止传播 | 未开始 |
+| 07 | 层数协调与停止传播 | 设计完成，待实施 |
 | 08 | 过渡区域检测 | 未开始 |
 | 09 | Pyramid/Tetra 共形过渡 | 未开始 |
 | 10 | PLY/VTK、命令行与真实案例 | 未开始 |
@@ -203,16 +203,16 @@ docs/plans/
 
 ### 主要交付物
 
-- `FaceGrowthState`；
-- `TerminationPropagator`；
-- 可配置的最大相邻层数差；
-- 停止传播队列和确定性更新顺序；
-- 用户限制、质量失败、碰撞和邻接约束等停止原因；
-- 最终活动前沿与实际层数分布。
+- 逐源面 `FaceLayerConstraintTable`；
+- 只沿 GrowthPatch 共享源边工作的 `TerminationPropagator`；
+- 默认 1、允许外部配置为 0 或更大值的最大相邻层数差；
+- 已知请求预传播和运行时质量/碰撞动态传播；
+- `FaceStopReason::NeighborLayerConstraint` 与直接原因优先级；
+- 确定性的最终活动前沿与实际层数分布。
 
 ### 完成边界
 
-本阶段只协调规则生长结果，不生成过渡单元。
+本阶段只协调规则生长结果，不沿仅共享顶点的面传播，也不生成过渡单元。详细设计见 `docs/design/modules/layer-coordination.md`。
 
 ## 11. 08：过渡区域检测
 
