@@ -208,11 +208,12 @@ docs/plans/
 - 默认 1、允许外部配置为 0 或更大值的最大相邻层数差；
 - 已知请求预传播和运行时质量/碰撞动态传播；
 - `FaceStopReason::NeighborLayerConstraint` 与直接原因优先级；
-- 确定性的最终活动前沿与实际层数分布。
+- 确定性的最终活动前沿与实际层数分布；
+- 原始 Farfield 与边界层最终外露界面组成的 `farfield_boundary`。
 
 ### 完成边界
 
-本阶段只协调规则生长结果，不沿仅共享顶点的面传播，也不生成过渡单元。详细设计见 `docs/design/modules/layer-coordination.md`。
+本阶段只协调规则生长结果，不沿仅共享顶点的面传播，也不生成过渡单元。最终结果额外提供带 `BoundaryLayerInterface` 标签的远场边界表面；Symmetry 支持仍然延后。详细设计见 `docs/design/modules/layer-coordination.md`。
 
 ## 11. 08：过渡区域检测
 

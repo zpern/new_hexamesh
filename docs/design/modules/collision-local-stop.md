@@ -20,6 +20,7 @@
 8. 每层以事务方式提交，程序级错误不得留下孤立顶点或半提交单元；
 9. 空间索引由整层共享，不为每个源面建立独立树；
 10. Growth 业务代码不得直接依赖 `geom_func.h` 或旧 HexaMesh 类型。
+11. 外露边界能够物化为边界层与剩余远场区域之间的接口表面。
 
 ## 3. 非目标
 
@@ -77,6 +78,8 @@ TiGER_GEOM_FUNC::tri_tri_overlap_test_3d(...);
 `ExposedBoundaryTracker` 增量维护已提交边界层的外露顶面和侧面，只管理拓扑与几何记录，不执行碰撞判断。
 
 `LayerCollisionChecker` 接收一层中通过质量检查的所有候选，完成原始表面、历史外露边界和同层自碰撞检测，并输出碰撞停止的源面集合。
+
+`FarfieldBoundaryBuilder` 在生成结束时读取原始 `SurfaceMesh` 和最终 `ExposedBoundaryTracker`，构造独立、紧凑编号的远场边界表面。该构建器不重新扫描全部体单元。
 
 `RegularLayerStepper` 继续只负责预推出和质量检查。`RegularLayerGenerator` 在 Stepper 返回后、分配最终体网格顶点编号以前调用碰撞检查器。
 
@@ -168,6 +171,8 @@ Triangle 产生一个碰撞三角形。Quad 固定沿 `v0-v2` 拆成：
 - 每层只处理本层新增单元，不重复扫描全部历史体单元。
 
 更新后的外露面集合在下一层开始时用于重建 `ExposedBoundaryTree`。
+
+外露面还必须保留原绕序、源 Wall 面和源 Wall `region_id`，供最终远场边界物化。作为远场体域的内部边界输出时，边界层外露面的绕序必须反转，使法向从剩余远场体域指向边界层区域。
 
 ## 10. 单层数据流
 
@@ -269,6 +274,15 @@ FaceStopEvent{
 - Debug、Release 完整 CTest 回归。
 
 真实 PLY 案例、规模性能和内存回归属于阶段 10。
+
+### 12.5 远场边界物化测试
+
+- 原始 Farfield 面及 `region_id` 保持不变；
+- 最终顶面、台阶侧面和 Patch 开放侧面全部输出；
+- 原始 Wall 底面和体单元内部共享面不输出；
+- 边界层接口标记为 `BoundaryLayerInterface` 并继承源 Wall `region_id`；
+- 接口绕序相对边界层外露面反转；
+- 输出顶点使用独立紧凑编号且不存在未引用顶点。
 
 ## 13. 完成边界
 

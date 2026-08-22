@@ -20,6 +20,7 @@
 8. 队列和最终结果不依赖源面遍历顺序；
 9. 程序级错误保持当前层零提交；
 10. 最终结果继续使用已有 `FaceGrowthRecord`。
+11. 最终结果同时返回可直接提供给远场体网格生成器的边界表面。
 
 ## 3. 非目标
 
@@ -60,6 +61,12 @@ NeighborLayerConstraint // 因相邻源面的层数上限传播而提前停止
 - 直接碰撞：保留 `Collision`。
 
 `stop_layer` 仍表示第一个未接受的目标层号。
+
+`RegularLayerGrowthResult` 增加：
+
+```cpp
+SurfaceMesh farfield_boundary; // 原始 Farfield 与边界层最终外露接口组成的远场边界
+```
 
 ## 5. 面层数约束
 
@@ -182,7 +189,43 @@ filterSelfCollisions(...)   // 当前剩余候选之间
 
 质量停止传播发生在两个碰撞操作以前。这样质量失败或邻接退出的候选也不会进入同层候选树。
 
-## 11. 停止原因优先级
+## 11. 最终远场边界
+
+生成结束后，结果必须包含：
+
+```text
+farfield_boundary
+    = 原始 Farfield 面
+    + 边界层最终顶面
+    + 层数差形成的台阶侧面
+    + GrowthPatch 开放边界上的外露侧面
+```
+
+不得包含：
+
+- 原始 Wall 底面；
+- Prism/Hexa 内部共享面；
+- 已被下一层覆盖的历史顶面。
+
+`SurfaceBoundaryKind` 增加：
+
+```cpp
+BoundaryLayerInterface // 边界层与后续远场体网格之间的界面
+```
+
+标签规则：
+
+- 原始 Farfield 保持原 `Farfield` 和 `region_id`；
+- 最终顶面继承对应源 Wall 的 `region_id`；
+- 台阶侧面继承较高一侧候选单元的源 Wall `region_id`；
+- Patch 开放边界侧面继承对应边界单元的源 Wall `region_id`；
+- 所有边界层外露面标记为 `BoundaryLayerInterface`。
+
+输出 `SurfaceMesh` 使用独立紧凑顶点编号，只保留被输出面引用的坐标。边界层接口绕序相对于边界层体网格外露面反转，使其法向从剩余远场体域指向边界层；原始 Farfield 保持输入绕序。
+
+当前阶段仍不支持 Symmetry。含 Symmetry 的案例暂不保证该输出闭合；正式对称生长接入后再加入经过更新的 Symmetry 边界。
+
+## 12. 停止原因优先级
 
 停止原因按直接性处理：
 
@@ -195,7 +238,7 @@ filterSelfCollisions(...)   // 当前剩余候选之间
 
 邻接传播只降低允许层数，不能覆盖已经存在的直接原因。一个面同时受到多条传播路径限制时不记录路径来源。
 
-## 12. 错误处理
+## 13. 错误处理
 
 新增程序错误：
 
@@ -217,9 +260,9 @@ struct InvalidFaceConstraintState
 
 程序级错误发生时当前层零提交。传播没有不收敛错误。
 
-## 13. 测试要求
+## 14. 测试要求
 
-### 13.1 约束和邻接
+### 14.1 约束和邻接
 
 - 面请求层数取顶点最小值；
 - 三种 Triangle/Quad 共享边组合；
@@ -229,7 +272,7 @@ struct InvalidFaceConstraintState
 - 输入顺序不改变邻接结果；
 - 缺失、重复和未知源面返回错误。
 
-### 13.2 传播器
+### 14.2 传播器
 
 - 差值 0、1、2 的链式传播；
 - 环形邻接收敛；
@@ -241,7 +284,7 @@ struct InvalidFaceConstraintState
 - 队列和输入顺序不变量；
 - 最大 `uint32_t` 差值不溢出。
 
-### 13.3 生成器集成
+### 14.3 生成器集成
 
 - 已知请求在生成前传播；
 - 差值 0 阻止邻面提交同一目标层；
@@ -252,12 +295,14 @@ struct InvalidFaceConstraintState
 - 无孤立顶点、半提交单元或错误外露面；
 - Triangle/Quad 混合链；
 - 复杂角点只沿共享边传播；
+- 最终远场边界包含原始 Farfield、最终顶面和全部外露侧面；
+- `BoundaryLayerInterface` 标签、源 Wall `region_id`、紧凑顶点编号和反向绕序正确；
 - Debug、Release 完整 CTest 回归。
 
 真实性能和 PLY 案例属于阶段 10。
 
-## 14. 完成边界
+## 15. 完成边界
 
-阶段 07 完成后，每个 GrowthPatch 连通分量内的最终源面层数满足外部最大共享边层数差，且全部动态停止在提交前以确定性方式传播。
+阶段 07 完成后，每个 GrowthPatch 连通分量内的最终源面层数满足外部最大共享边层数差，全部动态停止在提交前以确定性方式传播，并返回可供远场网格生成使用的最终边界表面。
 
 本阶段只协调规则层结果，不识别过渡区域，也不生成过渡单元。
