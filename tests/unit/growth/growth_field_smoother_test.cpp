@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -80,6 +81,39 @@ namespace
         }
         return true;
     }
+
+    Scalar expectedHeight(
+        std::size_t vertex_index,
+        const GrowthFront &front,
+        const FrontAdjacency &adjacency,
+        const std::vector<Vector3> &directions,
+        const std::vector<Scalar> &base_heights)
+    {
+        Scalar predicted = Scalar{0};
+        for (const std::size_t neighbor :
+             adjacency.vertex_neighbors[vertex_index])
+        {
+            predicted +=
+                ((front.vertices[neighbor].position +
+                  base_heights[neighbor] * directions[neighbor]) -
+                 front.vertices[vertex_index].position)
+                    .dot(directions[vertex_index]);
+        }
+        predicted /= static_cast<Scalar>(
+            adjacency.vertex_neighbors[vertex_index].size());
+        const Scalar relative =
+            (predicted - base_heights[vertex_index]) /
+            base_heights[vertex_index];
+        const Scalar correction =
+            Scalar{1} /
+                (Scalar{1} + std::exp(Scalar{-0.5} * relative)) -
+            Scalar{0.5};
+        return std::clamp(
+            base_heights[vertex_index] *
+                (Scalar{1} + correction),
+            Scalar{0.5} * base_heights[vertex_index],
+            Scalar{1.5} * base_heights[vertex_index]);
+    }
 }
 
 int main()
@@ -91,8 +125,9 @@ int main()
     if (!adjacency.hasValue()) return 1;
     const FrontEvaluation evaluation = makeEvaluation(front);
     const GrowthDirections raw = makeDirections(front.layer);
-    const std::vector<Scalar> base_heights(
-        front.vertices.size(), Scalar{0.1});
+    const std::vector<Scalar> base_heights{
+        Scalar{0.10}, Scalar{0.08}, Scalar{0.12},
+        Scalar{0.09}, Scalar{0.11}};
 
     const auto result = GrowthFieldSmoother{}.smooth(
         front,
@@ -103,7 +138,7 @@ int main()
     if (!result.hasValue() ||
         result.value().layer != front.layer ||
         result.value().directions.size() != front.vertices.size() ||
-        result.value().actual_heights != base_heights)
+        result.value().actual_heights.size() != front.vertices.size())
     {
         return 2;
     }
@@ -118,6 +153,23 @@ int main()
             std::abs(direction.norm() - Scalar{1}) > Scalar{1e-12})
         {
             return 4;
+        }
+    }
+    for (std::size_t index = 0;
+         index < front.vertices.size();
+         ++index)
+    {
+        const Scalar expected = expectedHeight(
+            index,
+            front,
+            adjacency.value(),
+            result.value().directions,
+            base_heights);
+        if (std::abs(
+                result.value().actual_heights[index] - expected) >
+            Scalar{1e-12})
+        {
+            return 10;
         }
     }
 

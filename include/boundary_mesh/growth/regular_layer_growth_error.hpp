@@ -6,6 +6,7 @@
 
 #include <boundary_mesh/growth/front_evaluation_error.hpp>
 #include <boundary_mesh/growth/growth_direction_error.hpp>
+#include <boundary_mesh/growth/growth_field_smoothing_error.hpp>
 #include <boundary_mesh/growth/growth_profile.hpp>
 #include <boundary_mesh/growth/growth_profile_error.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluation_error.hpp>
@@ -28,6 +29,12 @@ namespace boundary_mesh
     {
         std::uint32_t target_layer{}; // 本次尝试生成的目标层号
         GrowthDirectionError cause;   // 阶段 03 的方向错误
+    };
+
+    struct GrowthFieldSmoothingFailure
+    {
+        std::uint32_t target_layer{}; // 本次尝试生成的目标层号
+        GrowthFieldSmoothingError cause; // 法向或步长平滑的具体错误
     };
 
     struct CellEvaluationFailure
@@ -68,6 +75,7 @@ namespace boundary_mesh
         GrowthProfileFailure,
         FrontEvaluationFailure,
         GrowthDirectionFailure,
+        GrowthFieldSmoothingFailure,
         CellEvaluationFailure,
         NonFiniteLayerHeight,
         InvalidLayerFrontMapping,

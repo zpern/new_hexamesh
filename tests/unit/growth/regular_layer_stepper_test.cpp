@@ -173,6 +173,15 @@ int main()
         {
             return 7;
         }
+        const GrowthFrontVertex &vertex =
+            layer.next_front.vertices[index];
+        if (std::abs(vertex.actual_height - Scalar{0.25}) > 1e-12 ||
+            (vertex.direction - Vector3::UnitZ()).norm() > 1e-12 ||
+            std::abs(vertex.visibility_cosine - Scalar{1}) > 1e-12 ||
+            vertex.complex_corner)
+        {
+            return 40;
+        }
     }
 
     const auto *bottom = std::get_if<Triangle>(&front.value().faces[0]);
@@ -287,6 +296,11 @@ int main()
     if (!ratio_profiles.hasValue()) return 31;
     GrowthFront layer1 = front.value();
     layer1.layer = 1;
+    for (GrowthFrontVertex &vertex : layer1.vertices)
+    {
+        vertex.actual_height = Scalar{0.08};
+        vertex.direction = Vector3::UnitZ();
+    }
     const auto ratio_step = RegularLayerStepper{}.step(
         layer1,
         ratio_profiles.value(),
@@ -296,7 +310,7 @@ int main()
     for (std::size_t index = 0; index < 3; ++index)
     {
         const Point3 expected =
-            layer1.vertices[index].position + Vector3{0.0, 0.0, 0.5};
+            layer1.vertices[index].position + Vector3{0.0, 0.0, 0.16};
         if ((ratio_step.value().next_front.vertices[index].position -
              expected).norm() > 1e-12)
         {
@@ -311,8 +325,11 @@ int main()
     const auto overflow_profiles = GrowthProfileBuilder{}.build(
         patch.value(), overflow_profile_input);
     if (!overflow_profiles.hasValue()) return 34;
+    GrowthFront overflow_layer = layer1;
+    overflow_layer.vertices[0].actual_height =
+        std::numeric_limits<Scalar>::max();
     const auto overflow_step = RegularLayerStepper{}.step(
-        layer1,
+        overflow_layer,
         overflow_profiles.value(),
         buildFaceLayerConstraints(
             patch.value(), front.value(), overflow_profiles.value()).value());

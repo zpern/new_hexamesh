@@ -525,10 +525,88 @@ namespace boundary_mesh
             }
         }
 
+        std::vector<Point3> predicted_positions;
+        predicted_positions.reserve(front.vertices.size());
+        for (std::size_t index = 0;
+             index < front.vertices.size();
+             ++index)
+        {
+            predicted_positions.push_back(
+                front.vertices[index].position +
+                base_heights[index] * current[index]);
+        }
+
+        std::vector<Scalar> actual_heights(
+            front.vertices.size(), Scalar{0});
+        for (std::size_t index = 0;
+             index < front.vertices.size();
+             ++index)
+        {
+            const auto &neighbors =
+                adjacency.vertex_neighbors[index];
+            if (neighbors.empty())
+            {
+                actual_heights[index] = base_heights[index];
+                continue;
+            }
+
+            Scalar predicted_height = Scalar{0};
+            for (const std::size_t neighbor : neighbors)
+            {
+                predicted_height +=
+                    (predicted_positions[neighbor] -
+                     front.vertices[index].position)
+                        .dot(current[index]);
+            }
+            predicted_height /=
+                static_cast<Scalar>(neighbors.size());
+
+            const Scalar relative =
+                (predicted_height - base_heights[index]) /
+                base_heights[index];
+            const Scalar logistic_argument =
+                Scalar{0.5} * relative;
+            Scalar sigmoid = Scalar{0};
+            if (logistic_argument >= Scalar{0})
+            {
+                const Scalar exponential =
+                    std::exp(-logistic_argument);
+                sigmoid =
+                    Scalar{1} / (Scalar{1} + exponential);
+            }
+            else
+            {
+                const Scalar exponential =
+                    std::exp(logistic_argument);
+                sigmoid =
+                    exponential / (Scalar{1} + exponential);
+            }
+
+            const Scalar correction =
+                sigmoid - Scalar{0.5};
+            const Scalar actual = std::clamp(
+                base_heights[index] *
+                    (Scalar{1} + correction),
+                Scalar{0.5} * base_heights[index],
+                Scalar{1.5} * base_heights[index]);
+            if (!std::isfinite(predicted_height) ||
+                !std::isfinite(relative) ||
+                !std::isfinite(actual) ||
+                actual <= Scalar{0})
+            {
+                return SmoothingResult::failure(
+                    NonFiniteSmoothedHeight{
+                        index,
+                        front.vertices[index].source_vertex_id,
+                        front.layer});
+            }
+            actual_heights[index] = actual;
+        }
+
         return SmoothingResult::success(
             SmoothedGrowthFields{
                 front.layer,
                 std::move(current),
-                base_heights});
+                std::move(actual_heights)});
     }
 }

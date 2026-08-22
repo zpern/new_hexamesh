@@ -10,6 +10,7 @@
 
 #include <boundary_mesh/growth/front_evaluator.hpp>
 #include <boundary_mesh/growth/growth_direction.hpp>
+#include <boundary_mesh/growth/growth_field_smoother.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
@@ -274,27 +275,75 @@ namespace boundary_mesh
                     direction_result.error()});
         }
 
+        std::vector<Scalar> base_heights;
+        base_heights.reserve(eligible.front.vertices.size());
+        for (const GrowthFrontVertex &vertex : eligible.front.vertices)
+        {
+            const VertexGrowthProfile *profile =
+                profiles.find(vertex.source_vertex_id);
+            if (profile == nullptr)
+            {
+                return StepResult::failure(
+                    NonFiniteLayerHeight{
+                        vertex.source_vertex_id,
+                        target_layer});
+            }
+
+            const Scalar base_height = target_layer == 1
+                ? profile->first_height
+                : vertex.actual_height * profile->growth_ratio;
+            if (!std::isfinite(base_height) ||
+                base_height <= Scalar{0})
+            {
+                return StepResult::failure(
+                    NonFiniteLayerHeight{
+                        vertex.source_vertex_id,
+                        target_layer});
+            }
+            base_heights.push_back(base_height);
+        }
+
+        const auto field_result = GrowthFieldSmoother{}.smooth(
+            eligible.front,
+            front_evaluation.value(),
+            adjacency_result.value(),
+            direction_result.value(),
+            base_heights);
+        if (!field_result.hasValue())
+        {
+            return StepResult::failure(
+                GrowthFieldSmoothingFailure{
+                    target_layer,
+                    field_result.error()});
+        }
+
         GrowthFront candidate_front = eligible.front;
         candidate_front.layer = target_layer;
         for (std::size_t vertex_index = 0;
              vertex_index < candidate_front.vertices.size();
              ++vertex_index)
         {
-            const VertexId source_id =
-                candidate_front.vertices[vertex_index].source_vertex_id;
-            const auto height_result = profiles.height(
-                source_id, target_layer);
-            if (!height_result.hasValue())
-            {
-                return StepResult::failure(height_result.error());
-            }
-            candidate_front.vertices[vertex_index].position +=
-                height_result.value() *
-                direction_result.value().vertices[vertex_index].value;
+            GrowthFrontVertex &candidate_vertex =
+                candidate_front.vertices[vertex_index];
+            const GrowthDirectionSelection &raw_direction =
+                direction_result.value().vertices[vertex_index];
+            candidate_vertex.direction =
+                field_result.value().directions[vertex_index];
+            candidate_vertex.actual_height =
+                field_result.value().actual_heights[vertex_index];
+            candidate_vertex.visibility_cosine =
+                raw_direction.visibility_cosine;
+            candidate_vertex.complex_corner =
+                raw_direction.complex_corner;
+            candidate_vertex.position +=
+                candidate_vertex.actual_height *
+                candidate_vertex.direction;
             if (!candidate_front.vertices[vertex_index].position.allFinite())
             {
                 return StepResult::failure(
-                    NonFiniteLayerHeight{source_id, target_layer});
+                    NonFiniteLayerHeight{
+                        candidate_vertex.source_vertex_id,
+                        target_layer});
             }
         }
 

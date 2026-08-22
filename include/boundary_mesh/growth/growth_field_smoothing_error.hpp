@@ -47,10 +47,18 @@ namespace boundary_mesh
         std::uint32_t layer{}; // 发生错误的活动层号
     };
 
+    struct NonFiniteSmoothedHeight
+    {
+        std::size_t front_vertex_index{}; // 无法得到有限步长的活动点下标
+        VertexId source_vertex_id{}; // 对应输入 Wall 顶点编号
+        std::uint32_t layer{}; // 发生错误的活动层号
+    };
+
     using GrowthFieldSmoothingError = std::variant<
         GrowthFieldInputMismatch,
         NonFiniteGrowthFieldInput,
         DegenerateGrowthFieldNeighbor,
         InvalidGrowthFieldBaseHeight,
-        UndefinedSmoothedDirection>; // 活动前沿字段平滑错误
+        UndefinedSmoothedDirection,
+        NonFiniteSmoothedHeight>; // 活动前沿字段平滑错误
 }
