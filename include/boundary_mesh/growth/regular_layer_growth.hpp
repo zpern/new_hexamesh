@@ -7,6 +7,7 @@
 #include <boundary_mesh/growth/growth_front.hpp>
 #include <boundary_mesh/growth/growth_profile.hpp>
 #include <boundary_mesh/mesh/mesh_volume.hpp>
+#include <boundary_mesh/mesh/mesh_surface.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluation.hpp>
 
 namespace boundary_mesh
@@ -82,5 +83,6 @@ namespace boundary_mesh
         LayerVertexTable layer_vertices; // 源顶点到实际层顶点的显式映射
         std::vector<VertexGrowthRecord> vertices; // 逐源顶点请求值和实际接受层数
         std::vector<FaceGrowthRecord> faces; // 逐源面状态、层数和停止原因
+        SurfaceMesh farfield_boundary; // 原始 Farfield 与边界层最终外露接口组成的远场边界
     };
 }

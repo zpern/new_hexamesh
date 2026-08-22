@@ -76,7 +76,7 @@ int main()
     GrowthFront malformed = front;
     malformed.source_vertex_ids.pop_back();
     const auto mapping_failure = generateRegularLayers(
-        patch.value(), malformed, profiles);
+        mesh, topology.value(), patch.value(), malformed, profiles);
     const auto *mapping_error = mapping_failure.hasValue()
         ? nullptr
         : std::get_if<InvalidLayerFrontMapping>(&mapping_failure.error());
@@ -85,7 +85,7 @@ int main()
     auto invalid_profiles = profiles;
     invalid_profiles[0].profile.first_height = 0.0;
     const auto profile_failure = generateRegularLayers(
-        patch.value(), front, invalid_profiles);
+        mesh, topology.value(), patch.value(), front, invalid_profiles);
     const auto *profile_wrapper = profile_failure.hasValue()
         ? nullptr
         : std::get_if<GrowthProfileFailure>(&profile_failure.error());
@@ -104,7 +104,7 @@ int main()
         degenerate.vertices[face.vertex_ids[0]];
     const GrowthFront degenerate_before = degenerate;
     const auto front_failure = generateRegularLayers(
-        patch.value(), degenerate, profiles);
+        mesh, topology.value(), patch.value(), degenerate, profiles);
     const auto *front_wrapper = front_failure.hasValue()
         ? nullptr
         : std::get_if<FrontEvaluationFailure>(&front_failure.error());
@@ -123,7 +123,12 @@ int main()
     invalid_options.cell_quality.maximum_skewness = 2.0;
     const GrowthFront front_before = front;
     const auto quality_failure = generateRegularLayers(
-        patch.value(), front, profiles, invalid_options);
+        mesh,
+        topology.value(),
+        patch.value(),
+        front,
+        profiles,
+        invalid_options);
     const auto *quality_wrapper = quality_failure.hasValue()
         ? nullptr
         : std::get_if<CellEvaluationFailure>(&quality_failure.error());

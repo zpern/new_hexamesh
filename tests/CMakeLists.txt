@@ -442,3 +442,31 @@ add_test(
     NAME boundary_mesh_layer_collision_checker_test
     COMMAND boundary_mesh_layer_collision_checker_test
 )
+
+# 35：Generator 中碰撞停止、零孤立顶点和最终远场界面
+add_executable(
+    boundary_mesh_collision_growth_pipeline_test
+    integration/collision_growth_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_collision_growth_pipeline_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_collision_growth_pipeline_test
+    COMMAND boundary_mesh_collision_growth_pipeline_test
+)
+
+# 36：碰撞索引初始化失败时保持生成事务未提交
+add_executable(
+    boundary_mesh_collision_growth_failure_test
+    integration/collision_growth_failure_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_collision_growth_failure_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_collision_growth_failure_test
+    COMMAND boundary_mesh_collision_growth_failure_test
+)

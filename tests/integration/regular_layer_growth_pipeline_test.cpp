@@ -108,7 +108,11 @@ int main()
     }
 
     const auto result = generateRegularLayers(
-        patch.value(), front.value(), profiles);
+        surface,
+        topology.value(),
+        patch.value(),
+        front.value(),
+        profiles);
     if (!result.hasValue()) return 4;
     const RegularLayerGrowthResult &growth = result.value();
 
@@ -170,7 +174,11 @@ int main()
     }
 
     const auto repeated = generateRegularLayers(
-        patch.value(), front.value(), profiles);
+        surface,
+        topology.value(),
+        patch.value(),
+        front.value(),
+        profiles);
     if (!repeated.hasValue() ||
         repeated.value().mesh.vertices.size() != growth.mesh.vertices.size() ||
         repeated.value().mesh.cells.size() != growth.mesh.cells.size())

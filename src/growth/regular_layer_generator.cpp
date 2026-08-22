@@ -8,8 +8,12 @@
 #include <vector>
 
 #include <boundary_mesh/growth/growth_profile_builder.hpp>
+#include <boundary_mesh/growth/exposed_boundary.hpp>
+#include <boundary_mesh/growth/farfield_boundary_builder.hpp>
+#include <boundary_mesh/growth/layer_collision_checker.hpp>
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
+#include <boundary_mesh/spatial/collision_index.hpp>
 
 namespace boundary_mesh
 {
@@ -130,6 +134,8 @@ namespace boundary_mesh
 
     Result<RegularLayerGrowthResult, RegularLayerGrowthError>
     RegularLayerGenerator::generate(
+        const SurfaceMesh &surface_mesh,
+        const SurfaceTopology &topology,
         const GrowthPatch &patch,
         const GrowthFront &initial_front,
         const std::vector<SourceVertexGrowthProfile> &profiles,
@@ -142,6 +148,15 @@ namespace boundary_mesh
         {
             return GrowthResult::failure(
                 InvalidLayerFrontMapping{initial_front.layer});
+        }
+
+        const auto original_collision =
+            buildOriginalSurfaceCollisionIndex(surface_mesh, topology);
+        if (!original_collision.hasValue())
+        {
+            return GrowthResult::failure(
+                CollisionInitializationFailure{
+                    original_collision.error()});
         }
 
         const auto profile_result = GrowthProfileBuilder{}.build(
@@ -194,6 +209,7 @@ namespace boundary_mesh
         }
 
         GrowthFront current_front = initial_front;
+        ExposedBoundaryTracker exposed_boundary;
         while (!current_front.faces.empty())
         {
             const auto step_result = RegularLayerStepper{}.step(
@@ -202,7 +218,31 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(step_result.error());
             }
-            const LayerStepResult &step = step_result.value();
+            const auto obstacle_step =
+                LayerCollisionChecker{}.filterAgainstObstacles(
+                    original_collision.value(),
+                    exposed_boundary,
+                    current_front,
+                    step_result.value());
+            if (!obstacle_step.hasValue())
+            {
+                return GrowthResult::failure(
+                    CollisionStateFailure{
+                        step_result.value().layer,
+                        obstacle_step.error()});
+            }
+            const auto collision_step =
+                LayerCollisionChecker{}.filterSelfCollisions(
+                    current_front,
+                    obstacle_step.value());
+            if (!collision_step.hasValue())
+            {
+                return GrowthResult::failure(
+                    CollisionStateFailure{
+                        step_result.value().layer,
+                        collision_step.error()});
+            }
+            const LayerStepResult &step = collision_step.value();
             if (step.next_front.vertices.size() !=
                     step.previous_front_vertex_indices.size() ||
                 step.next_front.faces.size() !=
@@ -262,6 +302,42 @@ namespace boundary_mesh
                         step.layer});
             }
 
+            auto boundary_candidates = buildLayerBoundaryCandidates(
+                current_front, step);
+            if (!boundary_candidates.hasValue())
+            {
+                return GrowthResult::failure(
+                    CollisionStateFailure{
+                        step.layer,
+                        boundary_candidates.error()});
+            }
+            for (LayerBoundaryCandidate &candidate :
+                 boundary_candidates.value())
+            {
+                const std::size_t source_index =
+                    static_cast<std::size_t>(candidate.top.source_face_id);
+                if (source_index >= surface_mesh.face_tags.size())
+                {
+                    return GrowthResult::failure(
+                        CollisionStateFailure{
+                            step.layer,
+                            SpatialError::InvalidTopologyReference});
+                }
+                const std::uint32_t region_id =
+                    surface_mesh.face_tags[source_index].region_id;
+                candidate.bottom.region_id = region_id;
+                candidate.top.region_id = region_id;
+            }
+            const auto boundary_update = exposed_boundary.prepare(
+                boundary_candidates.value());
+            if (!boundary_update.hasValue())
+            {
+                return GrowthResult::failure(
+                    CollisionStateFailure{
+                        step.layer,
+                        boundary_update.error()});
+            }
+
             result.mesh.vertices.insert(
                 result.mesh.vertices.end(),
                 step.next_front.vertices.begin(),
@@ -274,6 +350,7 @@ namespace boundary_mesh
                 result.mesh.metadata.end(),
                 new_metadata.begin(),
                 new_metadata.end());
+            exposed_boundary.apply(boundary_update.value());
 
             for (std::size_t index = 0;
                  index < step.next_front.source_vertex_ids.size();
@@ -337,17 +414,35 @@ namespace boundary_mesh
             current_global_ids = std::move(next_global_ids);
         }
 
+        const auto farfield_boundary = buildFarfieldBoundary(
+            surface_mesh, exposed_boundary);
+        if (!farfield_boundary.hasValue())
+        {
+            return GrowthResult::failure(
+                CollisionStateFailure{
+                    current_front.layer,
+                    farfield_boundary.error()});
+        }
+        result.farfield_boundary = farfield_boundary.value();
+
         return GrowthResult::success(std::move(result));
     }
 
     Result<RegularLayerGrowthResult, RegularLayerGrowthError>
     generateRegularLayers(
+        const SurfaceMesh &surface_mesh,
+        const SurfaceTopology &topology,
         const GrowthPatch &patch,
         const GrowthFront &initial_front,
         const std::vector<SourceVertexGrowthProfile> &profiles,
         const RegularLayerGrowthOptions &options)
     {
         return RegularLayerGenerator{}.generate(
-            patch, initial_front, profiles, options);
+            surface_mesh,
+            topology,
+            patch,
+            initial_front,
+            profiles,
+            options);
     }
 }

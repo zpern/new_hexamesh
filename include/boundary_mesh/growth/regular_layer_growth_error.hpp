@@ -9,6 +9,7 @@
 #include <boundary_mesh/growth/growth_profile.hpp>
 #include <boundary_mesh/growth/growth_profile_error.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluation_error.hpp>
+#include <boundary_mesh/spatial/spatial_error.hpp>
 
 namespace boundary_mesh
 {
@@ -46,6 +47,17 @@ namespace boundary_mesh
         std::size_t attempted_index{}; // 无法转换为 VertexId 的体网格下标
     };
 
+    struct CollisionInitializationFailure
+    {
+        SpatialError cause; // 原始表面碰撞索引建立失败的具体原因
+    };
+
+    struct CollisionStateFailure
+    {
+        std::uint32_t layer{}; // 外露边界或本层碰撞状态无效的目标层号
+        SpatialError cause; // 空间模块返回的具体程序错误
+    };
+
     using RegularLayerGrowthError = std::variant<
         GrowthProfileFailure,
         FrontEvaluationFailure,
@@ -53,5 +65,7 @@ namespace boundary_mesh
         CellEvaluationFailure,
         NonFiniteLayerHeight,
         InvalidLayerFrontMapping,
-        VolumeVertexIdOverflow>; // 规则层生成过程中可诊断的程序级错误
+        VolumeVertexIdOverflow,
+        CollisionInitializationFailure,
+        CollisionStateFailure>; // 规则层生成过程中可诊断的程序级错误
 }
