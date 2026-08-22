@@ -541,3 +541,16 @@ add_test(
     NAME boundary_mesh_boundary_condition_map_test
     COMMAND boundary_mesh_boundary_condition_map_test
 )
+
+add_executable(
+    boundary_mesh_legacy_vtk_writer_test
+    unit/io/legacy_vtk_writer_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_legacy_vtk_writer_test
+    PRIVATE BoundaryMesh::IO
+)
+add_test(
+    NAME boundary_mesh_legacy_vtk_writer_test
+    COMMAND boundary_mesh_legacy_vtk_writer_test
+)

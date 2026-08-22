@@ -159,6 +159,7 @@ add_library(
     boundary_mesh_io
     STATIC
         src/io/boundary_condition_map.cpp
+        src/io/legacy_vtk_writer.cpp
 )
 add_library(BoundaryMesh::IO ALIAS boundary_mesh_io)
 target_compile_features(boundary_mesh_io PUBLIC cxx_std_17)
