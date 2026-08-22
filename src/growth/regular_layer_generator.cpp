@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <boundary_mesh/growth/growth_profile_builder.hpp>
+#include <boundary_mesh/growth/face_layer_constraint.hpp>
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 #include <boundary_mesh/growth/farfield_boundary_builder.hpp>
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
@@ -167,6 +168,14 @@ namespace boundary_mesh
                 GrowthProfileFailure{profile_result.error()});
         }
         const GrowthProfileTable &profile_table = profile_result.value();
+        const auto constraint_result = buildFaceLayerConstraints(
+            patch, initial_front, profile_table);
+        if (!constraint_result.hasValue())
+        {
+            return GrowthResult::failure(constraint_result.error());
+        }
+        const FaceLayerConstraintTable &constraints =
+            constraint_result.value();
 
         RegularLayerGrowthResult result;
         result.mesh.vertices = initial_front.vertices;
@@ -213,7 +222,7 @@ namespace boundary_mesh
         while (!current_front.faces.empty())
         {
             const auto step_result = RegularLayerStepper{}.step(
-                current_front, profile_table, options);
+                current_front, profile_table, constraints, options);
             if (!step_result.hasValue())
             {
                 return GrowthResult::failure(step_result.error());

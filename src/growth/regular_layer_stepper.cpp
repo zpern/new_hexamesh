@@ -147,6 +147,7 @@ namespace boundary_mesh
     RegularLayerStepper::step(
         const GrowthFront &current_front,
         const GrowthProfileTable &profiles,
+        const FaceLayerConstraintTable &constraints,
         const RegularLayerGrowthOptions &options) const
     {
         using StepResult =
@@ -170,6 +171,48 @@ namespace boundary_mesh
              face_index < current_front.faces.size();
              ++face_index)
         {
+            const SurfaceFaceId source_face_id =
+                current_front.source_face_ids[face_index];
+            const FaceLayerConstraint *constraint =
+                constraints.find(source_face_id);
+            if (constraint == nullptr)
+            {
+                return StepResult::failure(
+                    InvalidFaceConstraintState{
+                        source_face_id,
+                        target_layer});
+            }
+            if (current_front.layer >= constraint->allowed_layer_count)
+            {
+                if (constraint->limit_kind ==
+                    FaceLayerLimitKind::DirectStop)
+                {
+                    return StepResult::failure(
+                        InvalidFaceConstraintState{
+                            source_face_id,
+                            target_layer});
+                }
+
+                FaceStopEvent event{
+                    face_index,
+                    source_face_id,
+                    target_layer,
+                    constraint->limit_kind ==
+                            FaceLayerLimitKind::Requested
+                        ? FaceStopReason::VertexLayerLimit
+                        : FaceStopReason::NeighborLayerConstraint};
+                if (constraint->limit_kind ==
+                    FaceLayerLimitKind::Requested)
+                {
+                    output.completed_faces.push_back(event);
+                }
+                else
+                {
+                    output.stopped_faces.push_back(event);
+                }
+                continue;
+            }
+
             bool eligible = true;
             for (const VertexId local_id :
                  faceVertexIds(current_front.faces[face_index]))
@@ -195,7 +238,7 @@ namespace boundary_mesh
                 output.completed_faces.push_back(
                     FaceStopEvent{
                         face_index,
-                        current_front.source_face_ids[face_index],
+                        source_face_id,
                         target_layer,
                         FaceStopReason::VertexLayerLimit});
             }

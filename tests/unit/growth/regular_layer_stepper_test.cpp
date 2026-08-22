@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <boundary_mesh/growth/growth_front_builder.hpp>
+#include <boundary_mesh/growth/face_layer_constraint.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
 #include <boundary_mesh/growth/growth_profile_builder.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
@@ -141,7 +142,11 @@ int main()
     if (!profiles.hasValue()) return 4;
 
     const auto result = RegularLayerStepper{}.step(
-        front.value(), profiles.value(), RegularLayerGrowthOptions{});
+        front.value(),
+        profiles.value(),
+        buildFaceLayerConstraints(
+            patch.value(), front.value(), profiles.value()).value(),
+        RegularLayerGrowthOptions{});
     if (!result.hasValue()) return 5;
 
     const LayerStepResult &layer = result.value();
@@ -203,7 +208,12 @@ int main()
         hexa_patch.value(), hexa_input_profiles);
     if (!hexa_profiles.hasValue()) return 13;
     const auto hexa_step = RegularLayerStepper{}.step(
-        hexa_front.value(), hexa_profiles.value());
+        hexa_front.value(),
+        hexa_profiles.value(),
+        buildFaceLayerConstraints(
+            hexa_patch.value(),
+            hexa_front.value(),
+            hexa_profiles.value()).value());
     if (!hexa_step.hasValue() ||
         hexa_step.value().next_front.vertices.size() != 4 ||
         hexa_step.value().next_front.faces.size() != 1)
@@ -250,7 +260,12 @@ int main()
         mixed_patch.value(), mixed_profile_input);
     if (!mixed_profiles.hasValue()) return 29;
     const auto mixed_step = RegularLayerStepper{}.step(
-        mixed_front.value(), mixed_profiles.value());
+        mixed_front.value(),
+        mixed_profiles.value(),
+        buildFaceLayerConstraints(
+            mixed_patch.value(),
+            mixed_front.value(),
+            mixed_profiles.value()).value());
     if (!mixed_step.hasValue() ||
         mixed_step.value().next_front.vertices.size() != 7 ||
         mixed_step.value().next_front.faces.size() != 2 ||
@@ -271,7 +286,10 @@ int main()
     GrowthFront layer1 = front.value();
     layer1.layer = 1;
     const auto ratio_step = RegularLayerStepper{}.step(
-        layer1, ratio_profiles.value());
+        layer1,
+        ratio_profiles.value(),
+        buildFaceLayerConstraints(
+            patch.value(), front.value(), ratio_profiles.value()).value());
     if (!ratio_step.hasValue()) return 32;
     for (std::size_t index = 0; index < 3; ++index)
     {
@@ -292,7 +310,10 @@ int main()
         patch.value(), overflow_profile_input);
     if (!overflow_profiles.hasValue()) return 34;
     const auto overflow_step = RegularLayerStepper{}.step(
-        layer1, overflow_profiles.value());
+        layer1,
+        overflow_profiles.value(),
+        buildFaceLayerConstraints(
+            patch.value(), front.value(), overflow_profiles.value()).value());
     const auto *overflow_error = overflow_step.hasValue()
         ? nullptr
         : std::get_if<NonFiniteLayerHeight>(&overflow_step.error());
@@ -313,7 +334,10 @@ int main()
     GrowthFront layer4 = front.value();
     layer4.layer = 4;
     const auto completed = RegularLayerStepper{}.step(
-        layer4, limited_profiles.value());
+        layer4,
+        limited_profiles.value(),
+        buildFaceLayerConstraints(
+            patch.value(), front.value(), limited_profiles.value()).value());
     if (!completed.hasValue() ||
         !completed.value().next_front.faces.empty() ||
         completed.value().completed_faces.size() != 1 ||
@@ -322,6 +346,55 @@ int main()
         completed.value().completed_faces[0].layer != 5)
     {
         return 18;
+    }
+
+    auto constrained_faces = buildFaceLayerConstraints(
+        patch.value(), front.value(), limited_profiles.value()).value();
+    FaceLayerConstraint *constrained_face = constrained_faces.find(
+        front.value().source_face_ids[0]);
+    if (constrained_face == nullptr) return 36;
+    constrained_face->allowed_layer_count = 4;
+    constrained_face->limit_kind = FaceLayerLimitKind::NeighborConstraint;
+    const auto neighbor_stopped = RegularLayerStepper{}.step(
+        layer4,
+        limited_profiles.value(),
+        constrained_faces);
+    if (!neighbor_stopped.hasValue() ||
+        !neighbor_stopped.value().next_front.faces.empty() ||
+        neighbor_stopped.value().stopped_faces.size() != 1 ||
+        neighbor_stopped.value().stopped_faces[0].reason !=
+            FaceStopReason::NeighborLayerConstraint)
+    {
+        return 37;
+    }
+
+    GrowthFront degenerate_layer4 = layer4;
+    degenerate_layer4.vertices[1] = degenerate_layer4.vertices[0];
+    const auto prefiltered = RegularLayerStepper{}.step(
+        degenerate_layer4,
+        limited_profiles.value(),
+        buildFaceLayerConstraints(
+            patch.value(), front.value(), limited_profiles.value()).value());
+    if (!prefiltered.hasValue() ||
+        prefiltered.value().completed_faces.size() != 1)
+    {
+        return 38;
+    }
+
+    constrained_face->limit_kind = FaceLayerLimitKind::DirectStop;
+    constrained_face->direct_reason = FaceStopReason::Collision;
+    const auto invalid_direct = RegularLayerStepper{}.step(
+        layer4,
+        limited_profiles.value(),
+        constrained_faces);
+    const auto *constraint_error = invalid_direct.hasValue()
+        ? nullptr
+        : std::get_if<InvalidFaceConstraintState>(&invalid_direct.error());
+    if (constraint_error == nullptr ||
+        constraint_error->source_face_id != front.value().source_face_ids[0] ||
+        constraint_error->layer != 5)
+    {
+        return 39;
     }
 
     const SurfaceMesh tetra_mesh = makeTetraWithTwoWallFaces();
@@ -342,7 +415,12 @@ int main()
         tetra_patch.value(), tetra_profile_input);
     if (!tetra_profiles.hasValue()) return 22;
     const auto tetra_step = RegularLayerStepper{}.step(
-        tetra_front.value(), tetra_profiles.value());
+        tetra_front.value(),
+        tetra_profiles.value(),
+        buildFaceLayerConstraints(
+            tetra_patch.value(),
+            tetra_front.value(),
+            tetra_profiles.value()).value());
     if (!tetra_step.hasValue() ||
         tetra_step.value().completed_faces.size() != 1 ||
         tetra_step.value().completed_faces[0].source_face_id !=
@@ -367,7 +445,13 @@ int main()
     RegularLayerGrowthOptions strict_options;
     strict_options.cell_quality.maximum_skewness = 0.05;
     const auto stopped = RegularLayerStepper{}.step(
-        hexa_front.value(), skewed_profiles.value(), strict_options);
+        hexa_front.value(),
+        skewed_profiles.value(),
+        buildFaceLayerConstraints(
+            hexa_patch.value(),
+            hexa_front.value(),
+            skewed_profiles.value()).value(),
+        strict_options);
     if (!stopped.hasValue() ||
         stopped.value().stopped_faces.size() != 1 ||
         stopped.value().stopped_faces[0].reason !=
