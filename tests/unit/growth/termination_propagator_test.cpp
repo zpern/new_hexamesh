@@ -65,4 +65,43 @@ int main()
     assert(changed0.hasValue());
     assert(diff0.find(1)->allowed_layer_count == 2);
     assert(diff0.find(4)->allowed_layer_count == 2);
+
+    auto runtime = initial.value();
+    const std::vector<FaceStopEvent> direct{{
+        0, 2, 5, FaceStopReason::Collision}};
+    const auto runtime_changed = propagator.value().applyDirectStops(
+        runtime, direct, 1);
+    assert(runtime_changed.hasValue());
+    assert(runtime.find(2)->allowed_layer_count == 4);
+    assert(runtime.find(2)->limit_kind == FaceLayerLimitKind::DirectStop);
+    assert(runtime.find(2)->direct_reason == FaceStopReason::Collision);
+    assert(runtime.find(1)->allowed_layer_count == 5);
+    assert(runtime.find(4)->allowed_layer_count == 6);
+
+    auto filtering_constraints = initial.value();
+    filtering_constraints.find(2)->allowed_layer_count = 4;
+    filtering_constraints.find(2)->limit_kind =
+        FaceLayerLimitKind::NeighborConstraint;
+    LayerStepResult candidate_step;
+    candidate_step.layer = 5;
+    candidate_step.next_front = front.value();
+    candidate_step.next_front.layer = 5;
+    candidate_step.previous_front_vertex_indices.resize(
+        candidate_step.next_front.vertices.size());
+    for (std::size_t index = 0;
+         index < candidate_step.previous_front_vertex_indices.size();
+         ++index)
+    {
+        candidate_step.previous_front_vertex_indices[index] = index;
+    }
+    candidate_step.previous_front_face_indices = {0, 1, 2};
+    const auto filtered = propagator.value().filterCandidates(
+        front.value(), candidate_step, filtering_constraints);
+    assert(filtered.hasValue());
+    assert(filtered.value().next_front.source_face_ids ==
+           std::vector<SurfaceFaceId>({1, 4}));
+    assert(filtered.value().stopped_faces.size() == 1);
+    assert(filtered.value().stopped_faces.front().source_face_id == 2);
+    assert(filtered.value().stopped_faces.front().reason ==
+           FaceStopReason::NeighborLayerConstraint);
 }

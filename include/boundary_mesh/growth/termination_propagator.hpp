@@ -26,6 +26,18 @@ namespace boundary_mesh
             FaceLayerConstraintTable &constraints,
             std::uint32_t max_difference) const;
 
+        Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>
+        applyDirectStops(
+            FaceLayerConstraintTable &constraints,
+            const std::vector<FaceStopEvent> &events,
+            std::uint32_t max_difference) const;
+
+        Result<LayerStepResult, InvalidFaceConstraintState>
+        filterCandidates(
+            const GrowthFront &current_front,
+            const LayerStepResult &step,
+            const FaceLayerConstraintTable &constraints) const;
+
     private:
         struct NeighborEntry
         {
