@@ -484,3 +484,17 @@ add_test(
     NAME boundary_mesh_face_layer_constraint_test
     COMMAND boundary_mesh_face_layer_constraint_test
 )
+
+# 38：GrowthPatch 共享边邻接和初始化层数上限传播
+add_executable(
+    boundary_mesh_termination_propagator_test
+    unit/growth/termination_propagator_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_termination_propagator_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_termination_propagator_test
+    COMMAND boundary_mesh_termination_propagator_test
+)

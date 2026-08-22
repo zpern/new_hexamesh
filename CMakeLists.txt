@@ -129,6 +129,7 @@ add_library(
         src/growth/farfield_boundary_builder.cpp
         src/growth/layer_collision_checker.cpp
         src/growth/face_layer_constraint.cpp
+        src/growth/termination_propagator.cpp
 )
 add_library(
     BoundaryMesh::BoundaryLayer
