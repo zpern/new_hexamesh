@@ -226,7 +226,9 @@ namespace boundary_mesh::test
     }
 
     void writeClosedCubeSurface(
-        const std::filesystem::path &path)
+        const std::filesystem::path &path,
+        bool reverse_zone_order,
+        bool reverse_point_order)
     {
         int file{};
         requireCgns(cg_open(
@@ -238,12 +240,28 @@ namespace boundary_mesh::test
         const cgsize_t far_size[3]{8, 5, 0};
         int wall_zone{};
         int far_zone{};
-        requireCgns(cg_zone_write(
-            file, base, "1", wall_size,
-            CGNS_ENUMV(Unstructured), &wall_zone));
-        requireCgns(cg_zone_write(
-            file, base, "2", far_size,
-            CGNS_ENUMV(Unstructured), &far_zone));
+        const auto write_wall_zone = [&]
+        {
+            requireCgns(cg_zone_write(
+                file, base, "1", wall_size,
+                CGNS_ENUMV(Unstructured), &wall_zone));
+        };
+        const auto write_far_zone = [&]
+        {
+            requireCgns(cg_zone_write(
+                file, base, "2", far_size,
+                CGNS_ENUMV(Unstructured), &far_zone));
+        };
+        if (reverse_zone_order)
+        {
+            write_far_zone();
+            write_wall_zone();
+        }
+        else
+        {
+            write_wall_zone();
+            write_far_zone();
+        }
 
         const double wall_x[4]{0.0, 1.0, 1.0, 0.0};
         const double wall_y[4]{0.0, 0.0, 1.0, 1.0};
@@ -284,7 +302,11 @@ namespace boundary_mesh::test
             file, base, far_zone, "Far", CGNS_ENUMV(QUAD_4),
             1, 5, 0, far_faces, &section));
 
-        const cgsize_t points[4]{1, 2, 3, 4};
+        const cgsize_t points_forward[4]{1, 2, 3, 4};
+        const cgsize_t points_reverse[4]{4, 3, 2, 1};
+        const auto *points = reverse_point_order
+            ? points_reverse
+            : points_forward;
         int connection{};
         requireCgns(cg_conn_write(
             file, base, wall_zone, "to-2",
@@ -292,6 +314,127 @@ namespace boundary_mesh::test
             CGNS_ENUMV(PointList), 4, points, "2",
             CGNS_ENUMV(Unstructured), CGNS_ENUMV(PointListDonor),
             CGNS_ENUMV(LongInteger), 4, points, &connection));
+
+        requireCgns(cg_close(file));
+    }
+
+    void writeTwoZoneOrderVariantSurface(
+        const std::filesystem::path &path,
+        bool reverse_zone_order,
+        bool reverse_section_order,
+        bool reverse_connection_order)
+    {
+        int file{};
+        requireCgns(cg_open(
+            path.string().c_str(), CG_MODE_WRITE, &file));
+        int base{};
+        requireCgns(cg_base_write(file, "Surface", 2, 3, &base));
+
+        const cgsize_t size[3]{4, 2, 0};
+        int zone1{};
+        int zone2{};
+        const auto write_zone = [&](const char *name, int &zone)
+        {
+            requireCgns(cg_zone_write(
+                file, base, name, size,
+                CGNS_ENUMV(Unstructured), &zone));
+        };
+        if (reverse_zone_order)
+        {
+            write_zone("2", zone2);
+            write_zone("1", zone1);
+        }
+        else
+        {
+            write_zone("1", zone1);
+            write_zone("2", zone2);
+        }
+
+        const double x1[4]{0.0, 1.0, 1.0, 0.0};
+        const double y1[4]{0.0, 0.0, 1.0, 1.0};
+        const double x2[4]{1.0, 2.0, 2.0, 1.0};
+        const double y2[4]{0.0, 0.0, 1.0, 1.0};
+        const double z[4]{0.0, 0.0, 0.0, 0.0};
+        const auto write_coordinates =
+            [&](int zone, const double *x, const double *y)
+            {
+                int coordinate{};
+                requireCgns(cg_coord_write(
+                    file, base, zone, CGNS_ENUMV(RealDouble),
+                    "CoordinateX", x, &coordinate));
+                requireCgns(cg_coord_write(
+                    file, base, zone, CGNS_ENUMV(RealDouble),
+                    "CoordinateY", y, &coordinate));
+                requireCgns(cg_coord_write(
+                    file, base, zone, CGNS_ENUMV(RealDouble),
+                    "CoordinateZ", z, &coordinate));
+            };
+        write_coordinates(zone1, x1, y1);
+        write_coordinates(zone2, x2, y2);
+
+        const cgsize_t first_triangle[3]{1, 2, 3};
+        const cgsize_t second_triangle[3]{1, 3, 4};
+        const auto write_sections = [&](int zone)
+        {
+            int section{};
+            const auto write_first = [&]
+            {
+                requireCgns(cg_section_write(
+                    file, base, zone, "Triangle-1",
+                    CGNS_ENUMV(TRI_3), 1, 1, 0,
+                    first_triangle, &section));
+            };
+            const auto write_second = [&]
+            {
+                requireCgns(cg_section_write(
+                    file, base, zone, "Triangle-2",
+                    CGNS_ENUMV(TRI_3), 2, 2, 0,
+                    second_triangle, &section));
+            };
+            if (reverse_section_order)
+            {
+                write_second();
+                write_first();
+            }
+            else
+            {
+                write_first();
+                write_second();
+            }
+        };
+        write_sections(zone1);
+        write_sections(zone2);
+
+        const cgsize_t point_lower[1]{2};
+        const cgsize_t donor_lower[1]{1};
+        const cgsize_t point_upper[1]{3};
+        const cgsize_t donor_upper[1]{4};
+        const auto write_connection =
+            [&](const char *name,
+                const cgsize_t *points,
+                const cgsize_t *donors)
+            {
+                int connection{};
+                requireCgns(cg_conn_write(
+                    file, base, zone1, name,
+                    CGNS_ENUMV(Vertex),
+                    CGNS_ENUMV(Abutting1to1),
+                    CGNS_ENUMV(PointList), 1, points, "2",
+                    CGNS_ENUMV(Unstructured),
+                    CGNS_ENUMV(PointListDonor),
+                    CGNS_ENUMV(LongInteger), 1, donors,
+                    &connection));
+            };
+        if (reverse_connection_order)
+        {
+            write_connection("upper", point_upper, donor_upper);
+            write_connection("lower", point_lower, donor_lower);
+        }
+        else
+        {
+            write_connection("lower", point_lower, donor_lower);
+            write_connection("upper", point_upper, donor_upper);
+        }
 
         requireCgns(cg_close(file));
     }

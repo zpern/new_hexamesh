@@ -9,6 +9,17 @@
 
 #include <helpers/cgns_fixture.hpp>
 
+namespace
+{
+    std::string fileText(const std::filesystem::path &path)
+    {
+        std::ifstream input(path, std::ios::binary);
+        return std::string(
+            std::istreambuf_iterator<char>(input),
+            std::istreambuf_iterator<char>());
+    }
+}
+
 int main()
 {
     const auto expect_argument_error =
@@ -74,6 +85,35 @@ int main()
         std::filesystem::path(prefix.string() + "_farfield_boundary.vtk");
     assert(std::filesystem::file_size(volume_path) > 0);
     assert(std::filesystem::file_size(surface_path) > 0);
+
+    const auto reversed_input = directory / "cube-reversed.cgns";
+    boundary_mesh::test::writeClosedCubeSurface(
+        reversed_input,
+        true,
+        true);
+    std::ofstream(directory / "cube-reversed.bc.txt")
+        << "Far:\n2\n\nWall:\n1\n";
+    const auto reversed_prefix = directory / "output" / "cube-reversed";
+    const std::vector<std::string> reversed_arguments{
+        "--input", reversed_input.string(),
+        "--first-height", "0.1",
+        "--growth-ratio", "1.0",
+        "--layer-count", "1",
+        "--output-prefix", reversed_prefix.string()};
+    std::ostringstream reversed_output;
+    std::ostringstream reversed_error;
+    assert(boundary_mesh::runBoundaryMeshCommand(
+               reversed_arguments,
+               reversed_output,
+               reversed_error) == 0);
+    assert(reversed_error.str().empty());
+
+    const auto reversed_volume_path = std::filesystem::path(
+        reversed_prefix.string() + "_boundary_layer.vtk");
+    const auto reversed_surface_path = std::filesystem::path(
+        reversed_prefix.string() + "_farfield_boundary.vtk");
+    assert(fileText(reversed_volume_path) == fileText(volume_path));
+    assert(fileText(reversed_surface_path) == fileText(surface_path));
 
     std::filesystem::remove_all(directory);
     return 0;

@@ -48,6 +48,14 @@ namespace boundary_mesh::test
         bool reverse_point_order = false,
         bool mismatch_coordinate = false);
 
+    void writeTwoZoneOrderVariantSurface(
+        const std::filesystem::path &path,
+        bool reverse_zone_order = false,
+        bool reverse_section_order = false,
+        bool reverse_connection_order = false);
+
     void writeClosedCubeSurface(
-        const std::filesystem::path &path);
+        const std::filesystem::path &path,
+        bool reverse_zone_order = false,
+        bool reverse_point_order = false);
 }

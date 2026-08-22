@@ -94,6 +94,55 @@ int main()
     {
         assert(orderedVertexIds(reversed.value().faces[face]) ==
                orderedVertexIds(mesh.faces[face]));
+        assert(reversed.value().face_tags[face].kind ==
+               mesh.face_tags[face].kind);
+        assert(reversed.value().face_tags[face].region_id ==
+               mesh.face_tags[face].region_id);
+    }
+
+    const auto ordered_path = directory / "ordered.cgns";
+    boundary_mesh::test::writeTwoZoneOrderVariantSurface(
+        ordered_path);
+    std::ofstream(directory / "ordered.bc.txt")
+        << "Wall:\n1\n2\n";
+    const auto ordered = readCgnsSurface(ordered_path);
+    assert(ordered.hasValue());
+
+    const auto order_variant_path = directory / "order-variant.cgns";
+    boundary_mesh::test::writeTwoZoneOrderVariantSurface(
+        order_variant_path,
+        true,
+        true,
+        true);
+    std::ofstream(directory / "order-variant.bc.txt")
+        << "Wall:\n1\n2\n";
+    const auto order_variant = readCgnsSurface(order_variant_path);
+    assert(order_variant.hasValue());
+    assert(order_variant.value().vertices.size() ==
+           ordered.value().vertices.size());
+    assert(order_variant.value().faces.size() ==
+           ordered.value().faces.size());
+    for (std::size_t vertex = 0;
+         vertex < ordered.value().vertices.size();
+         ++vertex)
+    {
+        assert(order_variant.value().vertices[vertex].x() ==
+               ordered.value().vertices[vertex].x());
+        assert(order_variant.value().vertices[vertex].y() ==
+               ordered.value().vertices[vertex].y());
+        assert(order_variant.value().vertices[vertex].z() ==
+               ordered.value().vertices[vertex].z());
+    }
+    for (std::size_t face = 0;
+         face < ordered.value().faces.size();
+         ++face)
+    {
+        assert(orderedVertexIds(order_variant.value().faces[face]) ==
+               orderedVertexIds(ordered.value().faces[face]));
+        assert(order_variant.value().face_tags[face].kind ==
+               ordered.value().face_tags[face].kind);
+        assert(order_variant.value().face_tags[face].region_id ==
+               ordered.value().face_tags[face].region_id);
     }
 
     const auto mismatch_path = directory / "mismatch.cgns";

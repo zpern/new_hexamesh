@@ -4,7 +4,7 @@
 
 本文档定义 BoundaryMesh 的正式文件 IO 边界、命令行编排和真实案例验收规则。该模块只负责外部格式与内部数据模型之间的转换，不参与拓扑、几何、质量、碰撞、生长或停止传播决策。
 
-对应开发路线图阶段 10。阶段 10 实施前，阶段 06 和 07 必须已经完成；阶段 08、09 不是本阶段前置条件，继续保持未开始。VTK 写出器仍必须能够表达 `VolumeMesh` 已经定义的全部体单元类型。
+对应开发路线图阶段 10。阶段 10 已在阶段 06 和 07 完成后实施；阶段 08、09 不是本阶段前置条件，继续保持未开始。VTK 写出器能够表达 `VolumeMesh` 已经定义的全部体单元类型。
 
 ## 2. 已确认目标
 
@@ -148,8 +148,10 @@ Wall:
 - `cell_dimension == 2` 且 `physical_dimension == 3`；
 - `Unstructured` 表面 Zone；
 - `CoordinateX`、`CoordinateY` 和 `CoordinateZ`；
-- `TRI_3` 与 `QUAD_4` 元素段；
-- PointList/PointListDonor 形式的跨 Zone 顶点连接。
+- 作为表面输出的 `TRI_3` 与 `QUAD_4` 元素段；
+- 作为接口辅助信息的 `BAR_2` 元素段；`BAR_2` 不写入 `SurfaceMesh::faces`；
+- `GridLocation=Vertex` 的 PointList/PointListDonor 跨 Zone 顶点连接；
+- `GridLocation=FaceCenter` 或 `EdgeCenter` 且引用 `BAR_2` 元素 ID 的跨 Zone 接口边连接。
 
 以下输入必须返回错误：
 
@@ -157,7 +159,7 @@ Wall:
 - Structured Zone；
 - 缺失坐标分量；
 - NaN 或无穷坐标；
-- Polygon、高阶面、线单元或体单元；
+- Polygon、高阶面、`BAR_2` 之外的线单元或体单元；
 - 元素引用越界；
 - 连接两侧长度不一致、索引越界或 donor Zone 不存在；
 - 数字 Zone 名重复、为零、溢出或含非数字字符。
@@ -169,7 +171,8 @@ CGNS Zone 使用局部节点编号。统一 `SurfaceMesh` 按以下固定流程�
 1. 将 Zone 名解析为 `std::uint32_t`，按数字 Zone ID 升序处理；
 2. 在每个 Zone 内按 ElementRange 升序读取元素；
 3. 为每个 `(zone_id, local_vertex_id)` 建立局部顶点键；
-4. 读取所有显式 PointList/PointListDonor 对；
+4. 读取所有显式 PointList/PointListDonor 对；Vertex 连接直接产生顶点对，
+   FaceCenter/EdgeCenter 连接通过两侧 `BAR_2` 端点的精确坐标确定同向或反向配对；
 5. 使用并查集合并连接两侧的局部顶点键；
 6. 不进行最近点搜索，也不使用距离容差；
 7. 同一集合内的三个坐标分量必须逐值相等，否则返回连接坐标不一致错误；
@@ -377,6 +380,11 @@ max_neighbor_layer_difference = 1
 - Windows 进程峰值工作集。
 
 耗时只记录，不使用与机器强相关的固定秒数作为通过条件。`2dot5_cf` 的 58,599 面、一层案例峰值工作集不得超过 1 GiB。
+
+本阶段在 Windows Release 配置下的验收记录为：读取 0.038 秒、拓扑与前沿构建
+0.149 秒、一层生成 13.372 秒、两个 VTK 写出 0.164 秒、总计 13.723 秒；峰值
+工作集 250,519,552 字节。该次运行生成 3,252 个边界层体单元，最终外表面包含
+7,974 个面。耗时只作为本机基线，不作为跨机器的固定通过阈值。
 
 ## 17. 完成边界
 
