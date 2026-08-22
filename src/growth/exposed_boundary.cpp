@@ -299,6 +299,16 @@ namespace boundary_mesh
                 CollisionTriangle triangle;
                 triangle.owner_kind = CollisionOwnerKind::ExposedBoundary;
                 triangle.owner_id = static_cast<std::uint32_t>(face_index);
+                triangle.boundary_vertex_count =
+                    static_cast<std::uint8_t>(face.points.size());
+                for (std::size_t boundary = 0;
+                     boundary < face.points.size();
+                     ++boundary)
+                {
+                    triangle.boundary_points[boundary] = face.points[boundary];
+                    triangle.boundary_vertex_keys[boundary] =
+                        face.vertex_keys[boundary];
+                }
                 for (std::size_t corner = 0; corner < 3; ++corner)
                 {
                     const std::size_t index = splits[split][corner];

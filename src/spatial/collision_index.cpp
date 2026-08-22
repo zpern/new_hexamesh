@@ -9,6 +9,31 @@ namespace boundary_mesh
 {
     namespace
     {
+        template <std::size_t VertexCount>
+        Result<std::monostate, SpatialError> setBoundaryMetadata(
+            const SurfaceMesh &mesh,
+            const std::array<VertexId, VertexCount> &vertex_ids,
+            CollisionTriangle &triangle)
+        {
+            static_assert(VertexCount == 3 || VertexCount == 4);
+            triangle.boundary_vertex_count =
+                static_cast<std::uint8_t>(VertexCount);
+            for (std::size_t index = 0; index < VertexCount; ++index)
+            {
+                const auto vertex_index =
+                    static_cast<std::size_t>(vertex_ids[index]);
+                if (vertex_index >= mesh.vertices.size())
+                {
+                    return Result<std::monostate, SpatialError>::failure(
+                        SpatialError::InvalidTopologyReference);
+                }
+                triangle.boundary_points[index] = mesh.vertices[vertex_index];
+                triangle.boundary_vertex_keys[index] =
+                    CollisionVertexKey{vertex_ids[index], 0};
+            }
+            return Result<std::monostate, SpatialError>::success({});
+        }
+
         Result<CollisionTriangle, SpatialError> makeTriangle(
             const SurfaceMesh &mesh,
             const std::array<VertexId, 3> &vertex_ids,
@@ -42,7 +67,7 @@ namespace boundary_mesh
         {
             if (const auto *triangle = std::get_if<Triangle>(&face))
             {
-                const auto value = makeTriangle(
+                auto value = makeTriangle(
                     mesh,
                     triangle->vertex_ids,
                     face_id);
@@ -50,6 +75,14 @@ namespace boundary_mesh
                 {
                     return Result<std::monostate, SpatialError>::failure(
                         value.error());
+                }
+                const auto metadata = setBoundaryMetadata(
+                    mesh,
+                    triangle->vertex_ids,
+                    value.value());
+                if (!metadata.hasValue())
+                {
+                    return metadata;
                 }
                 triangles.push_back(value.value());
             }
@@ -66,11 +99,19 @@ namespace boundary_mesh
                              quad.vertex_ids[2],
                              quad.vertex_ids[3]}})
                 {
-                    const auto value = makeTriangle(mesh, ids, face_id);
+                    auto value = makeTriangle(mesh, ids, face_id);
                     if (!value.hasValue())
                     {
                         return Result<std::monostate, SpatialError>::failure(
                             value.error());
+                    }
+                    const auto metadata = setBoundaryMetadata(
+                        mesh,
+                        quad.vertex_ids,
+                        value.value());
+                    if (!metadata.hasValue())
+                    {
+                        return metadata;
                     }
                     triangles.push_back(value.value());
                 }

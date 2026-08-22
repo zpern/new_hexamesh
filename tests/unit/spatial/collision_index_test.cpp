@@ -34,6 +34,13 @@ int main()
     assert(index.hasValue());
     assert(index.value().primitiveCount() == 4);
 
+    const CollisionTriangle &wall_primitive =
+        index.value().primitive(0);
+    assert(wall_primitive.boundary_vertex_count == 4);
+    assert(
+        wall_primitive.boundary_vertex_keys[3].source_vertex_id == 1);
+    assert(wall_primitive.boundary_vertex_keys[3].layer == 0);
+
     const CollisionTriangle wall_hit{
         {{{0.0, 0.0, 0.0},
           {0.0, 1.0, 0.0},

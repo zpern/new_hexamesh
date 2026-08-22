@@ -27,6 +27,9 @@ namespace boundary_mesh
         std::array<CollisionVertexKey, 3> vertex_keys{}; // 分层拓扑顶点键
         CollisionOwnerKind owner_kind{CollisionOwnerKind::OriginalSurface}; // 图元归属类别
         std::uint32_t owner_id{}; // 所属源面、外露面或候选单元编号
+        std::array<Point3, 4> boundary_points{}; // 所属完整 Triangle/Quad 边界面的点序
+        std::array<CollisionVertexKey, 4> boundary_vertex_keys{}; // 完整边界面的分层拓扑键
+        std::uint8_t boundary_vertex_count{}; // 完整边界面有效顶点数，只允许 3 或 4
     };
 
     class CollisionIndex
