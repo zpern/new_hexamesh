@@ -43,6 +43,8 @@ src/spatial/collision_index.cpp                   原始表面三角形化和空
 
 include/boundary_mesh/growth/exposed_boundary.hpp 增量外露面集合
 src/growth/exposed_boundary.cpp                   面抵消和更新事务
+include/boundary_mesh/growth/farfield_boundary_builder.hpp 远场边界物化接口
+src/growth/farfield_boundary_builder.cpp           合并 Farfield 与边界层接口
 include/boundary_mesh/growth/layer_collision_checker.hpp 整层碰撞过滤接口
 src/growth/layer_collision_checker.cpp            三阶段确定性过滤
 
@@ -56,6 +58,7 @@ tests/unit/spatial/binary_aabb_tree_test.cpp     树查询与确定性
 tests/unit/spatial/triangle_contact_test.cpp     接触分类和拓扑放行
 tests/unit/spatial/collision_index_test.cpp      Wall/Farfield/Symmetry 索引
 tests/unit/growth/exposed_boundary_test.cpp      外露面增量维护
+tests/unit/growth/farfield_boundary_builder_test.cpp 远场边界标签、绕序和紧凑编号
 tests/unit/growth/layer_collision_checker_test.cpp 三类碰撞过滤
 tests/integration/collision_growth_pipeline_test.cpp 生成器事务和混合单元
 tests/integration/collision_growth_failure_test.cpp 程序错误零提交
@@ -517,18 +520,22 @@ git commit -m "feat: index collision surface triangles"
 
 ---
 
-### Task 5: 增量 ExposedBoundaryTracker
+### Task 5: 增量 ExposedBoundaryTracker 与远场边界物化
 
 **Files:**
 - Create: `include/boundary_mesh/growth/exposed_boundary.hpp`
 - Create: `src/growth/exposed_boundary.cpp`
+- Create: `include/boundary_mesh/growth/farfield_boundary_builder.hpp`
+- Create: `src/growth/farfield_boundary_builder.cpp`
+- Modify: `include/boundary_mesh/mesh/mesh_surface.hpp`
 - Modify: `CMakeLists.txt`
 - Test: `tests/unit/growth/exposed_boundary_test.cpp`
+- Test: `tests/unit/growth/farfield_boundary_builder_test.cpp`
 - Modify: `tests/CMakeLists.txt`
 
 **Interfaces:**
 - Consumes: 最终接受的 Prism/Hexa 候选、源面 ID、层号和分层顶点键。
-- Produces: `ExposedBoundaryUpdate`、`ExposedBoundaryTracker::prepare/apply` 和碰撞三角形快照。
+- Produces: `ExposedBoundaryUpdate`、`ExposedBoundaryTracker::prepare/apply`、碰撞三角形快照和最终 `SurfaceMesh` 远场边界。
 
 - [ ] **Step 1: 写面抵消和台阶保留失败测试**
 
@@ -582,11 +589,39 @@ ctest --test-dir build -C Debug -R boundary_mesh_exposed_boundary_test --output-
 
 - [ ] **Step 6: 回归并提交**
 
+在提交前增加 `FarfieldBoundaryBuilder` 的失败测试和实现：
+
+```cpp
+Result<SurfaceMesh, SpatialError>
+buildFarfieldBoundary(
+    const SurfaceMesh &original_surface,
+    const ExposedBoundaryTracker &exposed_boundary);
+```
+
+同时为 `SurfaceBoundaryKind` 增加：
+
+```cpp
+BoundaryLayerInterface // 边界层与后续远场体网格之间的界面
+```
+
+构建器复制原始 Farfield 面及标签，跳过 Wall/Symmetry；追加最终顶面、台阶侧面和 Patch 开放侧面，将其标记为 `BoundaryLayerInterface` 并继承源 Wall `region_id`。边界层接口绕序相对 tracker 中的边界层外露面反转，输出顶点重新紧凑编号。
+
+测试必须断言：原始 Farfield 标签不变、Wall 底面不出现、接口标签和 region 正确、内部共享面不出现、接口绕序反转、没有未引用顶点。
+
+Run:
+
+```powershell
+cmake --build build --config Debug --target boundary_mesh_exposed_boundary_test boundary_mesh_farfield_boundary_builder_test
+ctest --test-dir build -C Debug -R "boundary_mesh_(exposed_boundary|farfield_boundary_builder)_test" --output-on-failure
+```
+
+- [ ] **Step 7: 回归并提交**
+
 ```powershell
 ctest --test-dir build -C Debug --output-on-failure
-git add CMakeLists.txt include/boundary_mesh/growth/exposed_boundary.hpp src/growth/exposed_boundary.cpp tests/CMakeLists.txt tests/unit/growth/exposed_boundary_test.cpp
+git add CMakeLists.txt include/boundary_mesh/mesh/mesh_surface.hpp include/boundary_mesh/growth/exposed_boundary.hpp src/growth/exposed_boundary.cpp include/boundary_mesh/growth/farfield_boundary_builder.hpp src/growth/farfield_boundary_builder.cpp tests/CMakeLists.txt tests/unit/growth/exposed_boundary_test.cpp tests/unit/growth/farfield_boundary_builder_test.cpp
 git diff --cached --check
-git commit -m "feat: track exposed layer boundaries"
+git commit -m "feat: build exposed farfield boundary"
 ```
 
 ---
@@ -602,7 +637,7 @@ git commit -m "feat: track exposed layer boundaries"
 
 **Interfaces:**
 - Consumes: 原始 `CollisionIndex`、当前 Front、质量合格 `LayerStepResult` 和外露边界快照。
-- Produces: 压缩后的 `LayerStepResult`，碰撞面追加 `FaceStopEvent`。
+- Produces: 分别经过固定障碍和同层候选过滤的 `LayerStepResult`，碰撞面追加 `FaceStopEvent`。
 
 - [ ] **Step 1: 写三类碰撞失败测试**
 
@@ -631,19 +666,24 @@ class LayerCollisionChecker
 {
 public:
     Result<LayerStepResult, SpatialError>
-    filter(
+    filterAgainstObstacles(
         const CollisionIndex &original_surface,
         const ExposedBoundaryTracker &exposed_boundary,
         const GrowthFront &current_front,
         const LayerStepResult &quality_step) const;
+
+    Result<LayerStepResult, SpatialError>
+    filterSelfCollisions(
+        const GrowthFront &current_front,
+        const LayerStepResult &obstacle_step) const;
 };
 ```
 
-返回值保留阶段 05 的质量停止和完成事件，并追加去重后的碰撞事件。
+两个返回值都保留已有停止和完成事件，并追加去重后的碰撞事件。阶段 06 的 Generator 连续调用两步；阶段 07 会在两步之间插入停止传播。
 
 - [ ] **Step 4: 实现静态、历史、同层三阶段过滤**
 
-算法顺序固定：
+两个操作合起来的算法顺序固定：
 
 ```text
 构造全部质量合格候选
@@ -744,9 +784,15 @@ struct CollisionStateFailure
 
 将两个错误加入 `RegularLayerGrowthError`。
 
+同时为 `RegularLayerGrowthResult` 增加：
+
+```cpp
+SurfaceMesh farfield_boundary; // 原始 Farfield 与边界层最终外露接口组成的远场边界
+```
+
 - [ ] **Step 4: 修改 Generator 数据流**
 
-初始化时建立原始索引和空 `ExposedBoundaryTracker`。每层 Stepper 返回后先调用 `LayerCollisionChecker::filter`；只对过滤后 Front 分配最终 `VertexId`、构造体单元和更新 `LayerVertexTable`。
+初始化时建立原始索引和空 `ExposedBoundaryTracker`。每层 Stepper 返回后先调用 `filterAgainstObstacles`、再调用 `filterSelfCollisions`；只对两步过滤后 Front 分配最终 `VertexId`、构造体单元和更新 `LayerVertexTable`。生成循环结束后调用 `buildFarfieldBoundary(surface_mesh, exposed_boundary)` 写入 `result.farfield_boundary`。
 
 在修改 `VolumeMesh` 之前完成：碰撞过滤、Front 映射检查、顶点 ID 上限检查及 `ExposedBoundaryTracker::prepare`。全部成功后按固定顺序提交网格、记录、外露 delta 和当前 Front。
 
