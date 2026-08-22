@@ -1,5 +1,7 @@
 #include <boundary_mesh/spatial/triangle_contact.hpp>
 
+#include <boundary_mesh/spatial/collision_index.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -16,6 +18,28 @@ namespace boundary_mesh
         {
             Scalar x{};
             Scalar y{};
+        };
+
+        struct TriangleContactEvidence
+        {
+            TriangleContactKind kind{TriangleContactKind::Disjoint};
+            std::vector<Point3> points;
+        };
+
+        enum class SharedFeatureKind
+        {
+            None,
+            Points,
+            Segment,
+            Face
+        };
+
+        struct SharedFeature
+        {
+            SharedFeatureKind kind{SharedFeatureKind::None};
+            std::vector<Point3> points;
+            std::array<Point3, 4> face_points{};
+            std::uint8_t face_point_count{};
         };
 
         bool sameKey(
@@ -69,6 +93,43 @@ namespace boundary_mesh
                 return {point.x(), point.z()};
             }
             return {point.x(), point.y()};
+        }
+
+        Point3 lift(
+            const Point2 &point,
+            int axis,
+            const TrianglePoints &plane,
+            const Vector3 &plane_normal)
+        {
+            Point3 result;
+            if (axis == 0)
+            {
+                result.y() = point.x;
+                result.z() = point.y;
+                result.x() = plane[0].x() -
+                    (plane_normal.y() * (result.y() - plane[0].y()) +
+                     plane_normal.z() * (result.z() - plane[0].z())) /
+                        plane_normal.x();
+            }
+            else if (axis == 1)
+            {
+                result.x() = point.x;
+                result.z() = point.y;
+                result.y() = plane[0].y() -
+                    (plane_normal.x() * (result.x() - plane[0].x()) +
+                     plane_normal.z() * (result.z() - plane[0].z())) /
+                        plane_normal.y();
+            }
+            else
+            {
+                result.x() = point.x;
+                result.y() = point.y;
+                result.z() = plane[0].z() -
+                    (plane_normal.x() * (result.x() - plane[0].x()) +
+                     plane_normal.y() * (result.y() - plane[0].y())) /
+                        plane_normal.z();
+            }
+            return result;
         }
 
         Scalar cross2(
@@ -255,6 +316,329 @@ namespace boundary_mesh
             }
             return false;
         }
+
+        Result<TriangleContactEvidence, SpatialError> contactEvidence(
+            const TrianglePoints &first,
+            const TrianglePoints &second)
+        {
+            if (!validTriangle(first) || !validTriangle(second))
+            {
+                return Result<TriangleContactEvidence, SpatialError>::failure(
+                    SpatialError::NonFiniteCoordinate);
+            }
+
+            const Vector3 first_normal = normal(first);
+            const Vector3 second_normal = normal(second);
+            if (first_normal.squaredNorm() == Scalar{0} ||
+                second_normal.squaredNorm() == Scalar{0})
+            {
+                return Result<TriangleContactEvidence, SpatialError>::failure(
+                    SpatialError::DegenerateTriangle);
+            }
+
+            auto first_values = mutablePoints(first);
+            auto second_values = mutablePoints(second);
+            const int contact = TiGER_GEOM_FUNC::tri_tri_overlap_test_3d(
+                first_values[0].data(),
+                first_values[1].data(),
+                first_values[2].data(),
+                second_values[0].data(),
+                second_values[1].data(),
+                second_values[2].data());
+            if (contact == 0)
+            {
+                return Result<TriangleContactEvidence, SpatialError>::success(
+                    {});
+            }
+
+            TriangleContactEvidence evidence;
+            const bool coplanar =
+                first_normal.dot(second[0] - first[0]) == Scalar{0} &&
+                first_normal.dot(second[1] - first[0]) == Scalar{0} &&
+                first_normal.dot(second[2] - first[0]) == Scalar{0};
+            if (coplanar)
+            {
+                const int axis = dominantAxis(first_normal);
+                std::vector<Point2> polygon{
+                    project(first[0], axis),
+                    project(first[1], axis),
+                    project(first[2], axis)};
+                const std::array<Point2, 3> clip{{
+                    project(second[0], axis),
+                    project(second[1], axis),
+                    project(second[2], axis)}};
+                polygon = clipPolygon(std::move(polygon), clip);
+                evidence.kind =
+                    polygon.size() >= 3 && polygonArea(polygon) > Scalar{0}
+                    ? TriangleContactKind::CoplanarOverlap
+                    : (distinctPointCount(polygon) >= 2
+                           ? TriangleContactKind::EdgeTouch
+                           : TriangleContactKind::VertexTouch);
+                for (const Point2 &point : polygon)
+                {
+                    appendUnique(
+                        evidence.points,
+                        lift(point, axis, first, first_normal));
+                }
+                return Result<TriangleContactEvidence, SpatialError>::success(
+                    std::move(evidence));
+            }
+
+            appendPlaneIntersections(
+                first,
+                second,
+                second_normal,
+                evidence.points);
+            appendPlaneIntersections(
+                second,
+                first,
+                first_normal,
+                evidence.points);
+            if (evidence.points.size() <= 1)
+            {
+                evidence.kind = TriangleContactKind::VertexTouch;
+            }
+            else
+            {
+                evidence.kind =
+                    pointsLieOnOneEdge(evidence.points, first) &&
+                            pointsLieOnOneEdge(evidence.points, second)
+                        ? TriangleContactKind::EdgeTouch
+                        : TriangleContactKind::ProperIntersect;
+            }
+            return Result<TriangleContactEvidence, SpatialError>::success(
+                std::move(evidence));
+        }
+
+        std::size_t boundaryVertexCount(const CollisionTriangle &triangle)
+        {
+            return triangle.boundary_vertex_count == 0
+                ? std::size_t{3}
+                : static_cast<std::size_t>(triangle.boundary_vertex_count);
+        }
+
+        const Point3 &boundaryPoint(
+            const CollisionTriangle &triangle,
+            std::size_t index)
+        {
+            return triangle.boundary_vertex_count == 0
+                ? triangle.points[index]
+                : triangle.boundary_points[index];
+        }
+
+        const CollisionVertexKey &boundaryKey(
+            const CollisionTriangle &triangle,
+            std::size_t index)
+        {
+            return triangle.boundary_vertex_count == 0
+                ? triangle.vertex_keys[index]
+                : triangle.boundary_vertex_keys[index];
+        }
+
+        bool containsBoundaryKey(
+            const CollisionTriangle &triangle,
+            const CollisionVertexKey &key)
+        {
+            const std::size_t count = boundaryVertexCount(triangle);
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                if (sameKey(boundaryKey(triangle, index), key))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool adjacentBoundaryKeys(
+            const CollisionTriangle &triangle,
+            const CollisionVertexKey &first,
+            const CollisionVertexKey &second)
+        {
+            const std::size_t count = boundaryVertexCount(triangle);
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                if (!sameKey(boundaryKey(triangle, index), first))
+                {
+                    continue;
+                }
+                return sameKey(
+                           boundaryKey(triangle, (index + 1) % count),
+                           second) ||
+                       sameKey(
+                           boundaryKey(
+                               triangle,
+                               (index + count - 1) % count),
+                           second);
+            }
+            return false;
+        }
+
+        SharedFeature makeSharedFeature(
+            const CollisionTriangle &first,
+            const CollisionTriangle &second)
+        {
+            SharedFeature feature;
+            const std::size_t first_count = boundaryVertexCount(first);
+            const std::size_t second_count = boundaryVertexCount(second);
+            std::vector<CollisionVertexKey> shared_keys;
+            for (std::size_t index = 0; index < first_count; ++index)
+            {
+                const CollisionVertexKey &key = boundaryKey(first, index);
+                if (containsBoundaryKey(second, key))
+                {
+                    shared_keys.push_back(key);
+                    feature.points.push_back(boundaryPoint(first, index));
+                }
+            }
+
+            if (first_count == second_count &&
+                shared_keys.size() == first_count)
+            {
+                feature.kind = SharedFeatureKind::Face;
+                feature.face_point_count =
+                    static_cast<std::uint8_t>(first_count);
+                for (std::size_t index = 0; index < first_count; ++index)
+                {
+                    feature.face_points[index] = boundaryPoint(first, index);
+                }
+            }
+            else if (shared_keys.size() == 2 &&
+                     adjacentBoundaryKeys(
+                         first, shared_keys[0], shared_keys[1]) &&
+                     adjacentBoundaryKeys(
+                         second, shared_keys[0], shared_keys[1]))
+            {
+                feature.kind = SharedFeatureKind::Segment;
+            }
+            else if (!shared_keys.empty())
+            {
+                feature.kind = SharedFeatureKind::Points;
+            }
+            return feature;
+        }
+
+        bool samePoint(const Point3 &left, const Point3 &right)
+        {
+            return (left.array() == right.array()).all();
+        }
+
+        bool pointOnSegment(
+            const Point3 &point,
+            const Point3 &first,
+            const Point3 &second)
+        {
+            return (second - first).cross(point - first).squaredNorm() ==
+                       Scalar{0} &&
+                   (point - first).dot(point - second) <= Scalar{0};
+        }
+
+        bool pointInBoundaryTriangle(
+            const Point3 &point,
+            const Point3 &first,
+            const Point3 &second,
+            const Point3 &third)
+        {
+            const TrianglePoints triangle{{first, second, third}};
+            const Vector3 triangle_normal = normal(triangle);
+            return triangle_normal.squaredNorm() != Scalar{0} &&
+                   triangle_normal.dot(point - first) == Scalar{0} &&
+                   pointInTriangle(point, triangle, triangle_normal);
+        }
+
+        bool pointInBoundaryFace(
+            const Point3 &point,
+            const SharedFeature &feature)
+        {
+            if (feature.face_point_count == 3)
+            {
+                return pointInBoundaryTriangle(
+                    point,
+                    feature.face_points[0],
+                    feature.face_points[1],
+                    feature.face_points[2]);
+            }
+            return feature.face_point_count == 4 &&
+                   (pointInBoundaryTriangle(
+                        point,
+                        feature.face_points[0],
+                        feature.face_points[1],
+                        feature.face_points[2]) ||
+                    pointInBoundaryTriangle(
+                        point,
+                        feature.face_points[0],
+                        feature.face_points[2],
+                        feature.face_points[3]));
+        }
+
+        bool containsEvidencePoint(
+            const SharedFeature &feature,
+            const Point3 &point)
+        {
+            if (feature.kind == SharedFeatureKind::Points)
+            {
+                return std::any_of(
+                    feature.points.begin(),
+                    feature.points.end(),
+                    [&](const Point3 &allowed)
+                    {
+                        return samePoint(point, allowed);
+                    });
+            }
+            if (feature.kind == SharedFeatureKind::Segment)
+            {
+                return pointOnSegment(
+                    point,
+                    feature.points[0],
+                    feature.points[1]);
+            }
+            if (feature.kind == SharedFeatureKind::Face)
+            {
+                return pointInBoundaryFace(point, feature);
+            }
+            return false;
+        }
+
+        bool featureContainsEvidence(
+            const SharedFeature &feature,
+            const TriangleContactEvidence &evidence)
+        {
+            if (evidence.kind == TriangleContactKind::Disjoint)
+            {
+                return true;
+            }
+            if (feature.kind == SharedFeatureKind::None ||
+                evidence.points.empty())
+            {
+                return false;
+            }
+            if (feature.kind == SharedFeatureKind::Points &&
+                evidence.points.size() != 1)
+            {
+                return false;
+            }
+            for (std::size_t index = 0;
+                 index < evidence.points.size();
+                 ++index)
+            {
+                if (!containsEvidencePoint(feature, evidence.points[index]))
+                {
+                    return false;
+                }
+                if (feature.kind == SharedFeatureKind::Face &&
+                    evidence.points.size() > 1)
+                {
+                    const Point3 midpoint = Scalar{0.5} *
+                        (evidence.points[index] +
+                         evidence.points[(index + 1) % evidence.points.size()]);
+                    if (!containsEvidencePoint(feature, midpoint))
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
     }
 
     Result<TriangleContactKind, SpatialError>
@@ -262,76 +646,14 @@ namespace boundary_mesh
         const TrianglePoints &first,
         const TrianglePoints &second)
     {
-        if (!validTriangle(first) || !validTriangle(second))
+        const auto evidence = contactEvidence(first, second);
+        if (!evidence.hasValue())
         {
             return Result<TriangleContactKind, SpatialError>::failure(
-                SpatialError::NonFiniteCoordinate);
-        }
-
-        const Vector3 first_normal = normal(first);
-        const Vector3 second_normal = normal(second);
-        if (first_normal.squaredNorm() == Scalar{0} ||
-            second_normal.squaredNorm() == Scalar{0})
-        {
-            return Result<TriangleContactKind, SpatialError>::failure(
-                SpatialError::DegenerateTriangle);
-        }
-
-        auto first_values = mutablePoints(first);
-        auto second_values = mutablePoints(second);
-        const int contact = TiGER_GEOM_FUNC::tri_tri_overlap_test_3d(
-            first_values[0].data(),
-            first_values[1].data(),
-            first_values[2].data(),
-            second_values[0].data(),
-            second_values[1].data(),
-            second_values[2].data());
-        if (contact == 0)
-        {
-            return Result<TriangleContactKind, SpatialError>::success(
-                TriangleContactKind::Disjoint);
-        }
-
-        const bool coplanar =
-            first_normal.dot(second[0] - first[0]) == Scalar{0} &&
-            first_normal.dot(second[1] - first[0]) == Scalar{0} &&
-            first_normal.dot(second[2] - first[0]) == Scalar{0};
-        if (coplanar)
-        {
-            const int axis = dominantAxis(first_normal);
-            std::vector<Point2> polygon{
-                project(first[0], axis),
-                project(first[1], axis),
-                project(first[2], axis)};
-            const std::array<Point2, 3> clip{{
-                project(second[0], axis),
-                project(second[1], axis),
-                project(second[2], axis)}};
-            polygon = clipPolygon(std::move(polygon), clip);
-            if (polygon.size() >= 3 && polygonArea(polygon) > Scalar{0})
-            {
-                return Result<TriangleContactKind, SpatialError>::success(
-                    TriangleContactKind::CoplanarOverlap);
-            }
-            return Result<TriangleContactKind, SpatialError>::success(
-                distinctPointCount(polygon) >= 2
-                    ? TriangleContactKind::EdgeTouch
-                    : TriangleContactKind::VertexTouch);
-        }
-
-        std::vector<Point3> points;
-        appendPlaneIntersections(first, second, second_normal, points);
-        appendPlaneIntersections(second, first, first_normal, points);
-        if (points.size() <= 1)
-        {
-            return Result<TriangleContactKind, SpatialError>::success(
-                TriangleContactKind::VertexTouch);
+                evidence.error());
         }
         return Result<TriangleContactKind, SpatialError>::success(
-            pointsLieOnOneEdge(points, first) &&
-                    pointsLieOnOneEdge(points, second)
-                ? TriangleContactKind::EdgeTouch
-                : TriangleContactKind::ProperIntersect);
+            evidence.value().kind);
     }
 
     Result<bool, SpatialError> hasIllegalTriangleContact(
@@ -382,5 +704,28 @@ namespace boundary_mesh
                 TriangleContactKind::CoplanarOverlap;
         }
         return Result<bool, SpatialError>::success(!legal);
+    }
+
+    Result<bool, SpatialError> hasIllegalTriangleContact(
+        const CollisionTriangle &first,
+        const CollisionTriangle &second)
+    {
+        const std::size_t first_count = boundaryVertexCount(first);
+        const std::size_t second_count = boundaryVertexCount(second);
+        if ((first_count != 3 && first_count != 4) ||
+            (second_count != 3 && second_count != 4))
+        {
+            return Result<bool, SpatialError>::failure(
+                SpatialError::InvalidTopologyReference);
+        }
+
+        const auto evidence = contactEvidence(first.points, second.points);
+        if (!evidence.hasValue())
+        {
+            return Result<bool, SpatialError>::failure(evidence.error());
+        }
+        const SharedFeature feature = makeSharedFeature(first, second);
+        return Result<bool, SpatialError>::success(
+            !featureContainsEvidence(feature, evidence.value()));
     }
 }

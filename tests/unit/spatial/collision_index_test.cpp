@@ -59,4 +59,30 @@ int main()
         CollisionOwnerKind::LayerCandidate,
         8};
     assert(index.value().queryIllegalContacts(symmetry_only_hit).empty());
+
+    const std::array<Point3, 4> quad_points{{
+        {0.0, 0.0, 0.0},
+        {1.0, 0.0, 0.0},
+        {1.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0}}};
+    const std::array<CollisionVertexKey, 4> quad_keys{{
+        {10, 0}, {11, 0}, {12, 0}, {13, 0}}};
+    CollisionTriangle stored;
+    stored.points = {{quad_points[1], quad_points[2], quad_points[3]}};
+    stored.vertex_keys = {{quad_keys[1], quad_keys[2], quad_keys[3]}};
+    stored.boundary_points =
+        {{quad_points[1], quad_points[0], quad_points[3], quad_points[2]}};
+    stored.boundary_vertex_keys =
+        {{quad_keys[1], quad_keys[0], quad_keys[3], quad_keys[2]}};
+    stored.boundary_vertex_count = 4;
+    const auto quad_index = CollisionIndex::build({stored});
+    assert(quad_index.hasValue());
+
+    CollisionTriangle query;
+    query.points = {{quad_points[0], quad_points[1], quad_points[2]}};
+    query.vertex_keys = {{quad_keys[0], quad_keys[1], quad_keys[2]}};
+    query.boundary_points = quad_points;
+    query.boundary_vertex_keys = quad_keys;
+    query.boundary_vertex_count = 4;
+    assert(quad_index.value().queryIllegalContacts(query).empty());
 }

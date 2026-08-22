@@ -176,11 +176,9 @@ namespace boundary_mesh
         for (const std::size_t primitive : tree_.query(bounds.value()))
         {
             const auto illegal = hasIllegalTriangleContact(
-                query.points,
-                query.vertex_keys,
-                triangles_[primitive].points,
-                triangles_[primitive].vertex_keys);
-            if (illegal.hasValue() && illegal.value())
+                query,
+                triangles_[primitive]);
+            if (!illegal.hasValue() || illegal.value())
             {
                 result.push_back(primitive);
             }

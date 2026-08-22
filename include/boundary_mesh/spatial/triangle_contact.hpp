@@ -9,6 +9,8 @@
 
 namespace boundary_mesh
 {
+    struct CollisionTriangle;
+
     using TrianglePoints = std::array<Point3, 3>; // 三角形的三个空间坐标
 
     struct CollisionVertexKey
@@ -36,4 +38,8 @@ namespace boundary_mesh
         const std::array<CollisionVertexKey, 3> &first_keys,
         const TrianglePoints &second,
         const std::array<CollisionVertexKey, 3> &second_keys);
+
+    Result<bool, SpatialError> hasIllegalTriangleContact(
+        const CollisionTriangle &first,
+        const CollisionTriangle &second);
 }

@@ -2,9 +2,28 @@
 #include <cassert>
 #include <utility>
 
-#include <boundary_mesh/spatial/triangle_contact.hpp>
+#include <boundary_mesh/spatial/collision_index.hpp>
 
 using namespace boundary_mesh;
+
+namespace
+{
+    CollisionTriangle makeCollisionTriangle(
+        const TrianglePoints &points,
+        const std::array<CollisionVertexKey, 3> &keys,
+        const std::array<Point3, 4> &boundary_points,
+        const std::array<CollisionVertexKey, 4> &boundary_keys,
+        std::uint8_t boundary_count)
+    {
+        CollisionTriangle triangle;
+        triangle.points = points;
+        triangle.vertex_keys = keys;
+        triangle.boundary_points = boundary_points;
+        triangle.boundary_vertex_keys = boundary_keys;
+        triangle.boundary_vertex_count = boundary_count;
+        return triangle;
+    }
+}
 
 int main()
 {
@@ -86,5 +105,125 @@ int main()
                unrelated_keys,
                reversed_first,
                reversed_keys)
+               .value());
+
+    const CollisionTriangle shared_vertex_first = makeCollisionTriangle(
+        first,
+        first_keys,
+        {{first[0], first[1], first[2], Point3{}}},
+        {{{0, 0}, {1, 0}, {2, 0}, {}}},
+        3);
+    const CollisionTriangle shared_vertex_touch = makeCollisionTriangle(
+        vertex_touch,
+        {{{0, 0}, {3, 0}, {4, 0}}},
+        {{vertex_touch[0], vertex_touch[1], vertex_touch[2], Point3{}}},
+        {{{0, 0}, {3, 0}, {4, 0}, {}}},
+        3);
+    assert(!hasIllegalTriangleContact(
+                shared_vertex_first,
+                shared_vertex_touch)
+                .value());
+
+    const TrianglePoints vertex_cross_points{{
+        first[0],
+        {0.5, 0.5, -1.0},
+        {0.5, 0.5, 1.0}}};
+    const CollisionTriangle shared_vertex_cross = makeCollisionTriangle(
+        vertex_cross_points,
+        {{{0, 0}, {3, 0}, {4, 0}}},
+        {{vertex_cross_points[0],
+          vertex_cross_points[1],
+          vertex_cross_points[2],
+          Point3{}}},
+        {{{0, 0}, {3, 0}, {4, 0}, {}}},
+        3);
+    assert(hasIllegalTriangleContact(
+               shared_vertex_first,
+               shared_vertex_cross)
+               .value());
+
+    const CollisionTriangle shared_edge_first = makeCollisionTriangle(
+        first,
+        first_keys,
+        {{first[0], first[1], first[2], Point3{}}},
+        {{{0, 0}, {1, 0}, {2, 0}, {}}},
+        3);
+    const CollisionTriangle shared_edge_touch = makeCollisionTriangle(
+        shared_edge,
+        edge_keys,
+        {{shared_edge[0], shared_edge[1], shared_edge[2], Point3{}}},
+        {{{0, 0}, {1, 0}, {3, 0}, {}}},
+        3);
+    assert(!hasIllegalTriangleContact(
+                shared_edge_first,
+                shared_edge_touch)
+                .value());
+
+    const TrianglePoints edge_cross_points{{
+        first[0], first[1], {0.5, 0.5, 0.0}}};
+    const CollisionTriangle shared_edge_cross = makeCollisionTriangle(
+        edge_cross_points,
+        edge_keys,
+        {{edge_cross_points[0],
+          edge_cross_points[1],
+          edge_cross_points[2],
+          Point3{}}},
+        {{{0, 0}, {1, 0}, {3, 0}, {}}},
+        3);
+    assert(hasIllegalTriangleContact(
+               shared_edge_first,
+               shared_edge_cross)
+               .value());
+
+    const std::array<Point3, 4> quad_points{{
+        {0.0, 0.0, 0.0},
+        {1.0, 0.0, 0.0},
+        {1.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0}}};
+    const std::array<CollisionVertexKey, 4> quad_keys{{
+        {10, 0}, {11, 0}, {12, 0}, {13, 0}}};
+    const CollisionTriangle quad_split_first = makeCollisionTriangle(
+        {{quad_points[0], quad_points[1], quad_points[2]}},
+        {{quad_keys[0], quad_keys[1], quad_keys[2]}},
+        quad_points,
+        quad_keys,
+        4);
+    const CollisionTriangle quad_split_second = makeCollisionTriangle(
+        {{quad_points[1], quad_points[2], quad_points[3]}},
+        {{quad_keys[1], quad_keys[2], quad_keys[3]}},
+        {{quad_points[1], quad_points[0], quad_points[3], quad_points[2]}},
+        {{quad_keys[1], quad_keys[0], quad_keys[3], quad_keys[2]}},
+        4);
+    assert(!hasIllegalTriangleContact(
+                quad_split_first,
+                quad_split_second)
+                .value());
+
+    const TrianglePoints diagonal_touch_points{{
+        quad_points[0],
+        quad_points[2],
+        {0.5, 0.5, 1.0}}};
+    const CollisionTriangle diagonal_touch = makeCollisionTriangle(
+        diagonal_touch_points,
+        {{{10, 0}, {12, 0}, {20, 0}}},
+        {{diagonal_touch_points[0],
+          diagonal_touch_points[1],
+          diagonal_touch_points[2],
+          Point3{}}},
+        {{{10, 0}, {12, 0}, {20, 0}, {}}},
+        3);
+    assert(hasIllegalTriangleContact(
+               quad_split_first,
+               diagonal_touch)
+               .value());
+
+    CollisionTriangle coincident_without_shared_keys = quad_split_first;
+    coincident_without_shared_keys.vertex_keys =
+        {{{30, 0}, {31, 0}, {32, 0}}};
+    coincident_without_shared_keys.boundary_vertex_keys =
+        {{{30, 0}, {31, 0}, {32, 0}, {33, 0}}};
+    assert(hasIllegalTriangleContact(
+               quad_split_first,
+               coincident_without_shared_keys)
                .value());
 }
