@@ -255,8 +255,17 @@ namespace boundary_mesh
                     front_evaluation.error()});
         }
 
+        const auto adjacency_result = buildFrontAdjacency(eligible.front);
+        if (!adjacency_result.hasValue())
+        {
+            return StepResult::failure(
+                InvalidLayerFrontMapping{target_layer});
+        }
+
         const auto direction_result = computeGrowthDirections(
-            eligible.front, front_evaluation.value());
+            eligible.front,
+            front_evaluation.value(),
+            adjacency_result.value());
         if (!direction_result.hasValue())
         {
             return StepResult::failure(
@@ -281,7 +290,7 @@ namespace boundary_mesh
             }
             candidate_front.vertices[vertex_index].position +=
                 height_result.value() *
-                direction_result.value().values[vertex_index];
+                direction_result.value().vertices[vertex_index].value;
             if (!candidate_front.vertices[vertex_index].position.allFinite())
             {
                 return StepResult::failure(

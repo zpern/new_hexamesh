@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <boundary_mesh/growth/front_evaluator.hpp>
+#include <boundary_mesh/growth/front_adjacency.hpp>
 #include <boundary_mesh/growth/growth_direction.hpp>
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
@@ -82,8 +83,13 @@ int main()
     {
         return 4;
     }
+    const auto adjacency0 = buildFrontAdjacency(layer0.value());
+    if (!adjacency0.hasValue())
+    {
+        return 5;
+    }
     const auto directions0 = computeGrowthDirections(
-        layer0.value(), evaluation0.value());
+        layer0.value(), evaluation0.value(), adjacency0.value());
     if (!directions0.hasValue())
     {
         return 5;
@@ -95,12 +101,12 @@ int main()
         return 6;
     }
     for (std::size_t vertex_index = 0;
-         vertex_index < directions0.value().values.size();
+         vertex_index < directions0.value().vertices.size();
          ++vertex_index)
     {
         if (!constraints0.value().apply(
                 vertex_index,
-                directions0.value().values[vertex_index]).hasValue())
+                directions0.value().vertices[vertex_index].value).hasValue())
         {
             return 7;
         }
@@ -130,8 +136,13 @@ int main()
     {
         return 8;
     }
+    const auto adjacency1 = buildFrontAdjacency(layer1);
+    if (!adjacency1.hasValue())
+    {
+        return 9;
+    }
     const auto directions1 = computeGrowthDirections(
-        layer1, evaluation1.value());
+        layer1, evaluation1.value(), adjacency1.value());
     if (!directions1.hasValue())
     {
         return 9;
@@ -147,7 +158,8 @@ int main()
         std::abs(evaluation1.value().faces[0].value.area - layer0_area) <= 1e-12 ||
         (evaluation1.value().faces[0].value.unit_normal - layer0_normal).norm()
             <= 1e-12 ||
-        (directions1.value().values[0] - directions0.value().values[0]).norm()
+        (directions1.value().vertices[0].value -
+         directions0.value().vertices[0].value).norm()
             <= 1e-12)
     {
         return 11;
@@ -166,12 +178,12 @@ int main()
         return 12;
     }
     for (std::size_t vertex_index = 0;
-         vertex_index < directions1.value().values.size();
+         vertex_index < directions1.value().vertices.size();
          ++vertex_index)
     {
         if (!constraints1.value().apply(
                 vertex_index,
-                directions1.value().values[vertex_index]).hasValue())
+                directions1.value().vertices[vertex_index].value).hasValue())
         {
             return 13;
         }
