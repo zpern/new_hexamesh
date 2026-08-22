@@ -648,3 +648,41 @@ BoundaryLayerInterface 标签、region、绕序和紧凑编号正确
 不实现仅共点传播、Symmetry 或过渡单元
 Debug/Release 全量 CTest 均为 0 failed
 ```
+
+## Implementation Record
+
+阶段 07 已于 `feature/collision-local-stop` 分支完成。主要提交如下：
+
+```text
+78a19b9 feat: define face layer constraints
+ea514c8 feat: propagate initial face layer limits
+a88053d feat: propagate runtime face stops
+fa76706 feat: prefilter constrained growth faces
+4fe6852 feat: coordinate neighboring layer stops
+2b69999 fix: preserve legal shared sides in coordinated growth
+```
+
+最终实现严格按以下顺序执行：
+
+```text
+Stepper
+质量直接停止传播与过滤
+固定/历史障碍碰撞传播与过滤
+同层碰撞传播与过滤
+外露边界准备
+体网格与状态原子提交
+```
+
+层差集成测试覆盖最大差值 0/1、质量停止、固定障碍碰撞、直接原因优先、
+非法事件零修改、合法相邻候选共享侧面、最终顶面和台阶侧面。反转外部
+profile 输入顺序后，体网格、面记录和 `farfield_boundary` 保持逐项一致。
+
+最终验证结果：
+
+```text
+Debug   40/40 passed
+Release 40/40 passed
+```
+
+阶段 08、09 保持未开始。本阶段没有实现 `TransitionRegion`、Pyramid 或
+Tetra。

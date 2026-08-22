@@ -79,6 +79,16 @@ TiGER_GEOM_FUNC::tri_tri_overlap_test_3d(...);
 
 `LayerCollisionChecker` 接收一层中通过质量检查的所有候选，完成原始表面、历史外露边界和同层自碰撞检测，并输出碰撞停止的源面集合。
 
+阶段 07 接入后，该检查器保持两个独立入口：
+
+```cpp
+filterAgainstObstacles(...) // 原始表面和历史外露边界
+filterSelfCollisions(...)   // 传播过滤后剩余的同层候选
+```
+
+两次调用之间由 Generator 执行停止传播和候选压缩，已经因质量、固定障碍
+或邻接约束退出的候选不会成为同层幽灵障碍。
+
 `FarfieldBoundaryBuilder` 在生成结束时读取原始 `SurfaceMesh` 和最终 `ExposedBoundaryTracker`，构造独立、紧凑编号的远场边界表面。该构建器不重新扫描全部体单元。
 
 `RegularLayerStepper` 继续只负责预推出和质量检查。`RegularLayerGenerator` 在 Stepper 返回后、分配最终体网格顶点编号以前调用碰撞检查器。
@@ -133,6 +143,10 @@ Triangle 产生一个碰撞三角形。Quad 固定沿 `v0-v2` 拆成：
 - 候选侧面从自己的源面边出发形成的共享边；
 - 候选与当前底层 Front 的预期共享边；
 - 拓扑相邻候选之间的预期共享侧面、共享边和共享点。
+
+相邻候选的共享侧面通过分层 `CollisionVertexKey` 识别。只有两侧接触
+三角形都完全属于这一个共享侧面时才放行；若任一三角形还在共享侧面
+之外发生重叠或穿透，仍按非法自碰撞停止双方。
 
 不能通过“坐标相等”判断合法连接。相同坐标但拓扑 ID 不同的点、边或面仍然属于碰撞。
 
@@ -317,3 +331,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 Debug 与 Release 均为 36/36 通过。第三方 `tiger_geom` 在 MSVC
 下仍报告其自身源码编码和既有返回路径警告；BoundaryMesh 目标无新增警告。
+
+阶段 07 集成后又增加了合法相邻候选共享侧面的 RED/GREEN 覆盖，并确认
+传播过滤发生在 `filterSelfCollisions(...)` 以前。集成回归的 Debug 与
+Release 均为 40/40 通过；该结果不改变阶段 06 的完成边界。

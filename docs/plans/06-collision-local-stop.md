@@ -953,3 +953,8 @@ Release 36/36 passed
 依赖扫描确认 `geom_func.h`/`TiGER_GEOM_FUNC` 只存在于
 `src/spatial/triangle_contact.cpp`，没有实现 Symmetry 碰撞、体包含、
 最近点、最大安全步长或碰撞后缩短重试。
+
+阶段 07 接入记录：同层候选检查已验证会放行由分层拓扑键确定的合法共享
+侧面；共享侧面以外的额外交叉仍停止双方。质量和固定/历史障碍导致的停止
+会先传播并压缩候选，再调用 `filterSelfCollisions(...)`，不会形成幽灵障碍。
+阶段 07 集成后的 Debug/Release 回归均为 40/40。

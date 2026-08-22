@@ -1,5 +1,8 @@
 #include <algorithm>
+#include <cstddef>
 #include <iostream>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 #include <boundary_mesh/growth/growth_front_builder.hpp>
@@ -173,7 +176,9 @@ namespace
         return true;
     }
 
-    bool runLayerDifference(RegularLayerGrowthResult &output)
+    bool runLayerDifference(
+        bool reverse_profiles,
+        RegularLayerGrowthResult &output)
     {
         const SurfaceMesh mesh = makeQualityPair();
         const auto topology = SurfaceTopologyBuilder{}.build(mesh);
@@ -194,6 +199,10 @@ namespace
                 vertex.source_vertex_id,
                 {0.1, 1.0, left_unique ? 1u : 2u}});
         }
+        if (reverse_profiles)
+        {
+            std::reverse(profiles.begin(), profiles.end());
+        }
         const auto result = generateRegularLayers(
             mesh,
             topology.value(),
@@ -202,6 +211,109 @@ namespace
             profiles);
         if (!result.hasValue()) return false;
         output = result.value();
+        return true;
+    }
+
+    bool sameFace(const SurfaceFace &first, const SurfaceFace &second)
+    {
+        return std::visit(
+            [&](const auto &value)
+            {
+                using Face = std::decay_t<decltype(value)>;
+                const Face *other = std::get_if<Face>(&second);
+                return other != nullptr &&
+                       other->vertex_ids == value.vertex_ids;
+            },
+            first);
+    }
+
+    bool sameCell(const VolumeCell &first, const VolumeCell &second)
+    {
+        return std::visit(
+            [&](const auto &value)
+            {
+                using Cell = std::decay_t<decltype(value)>;
+                const Cell *other = std::get_if<Cell>(&second);
+                return other != nullptr &&
+                       other->vertex_ids == value.vertex_ids;
+            },
+            first);
+    }
+
+    bool sameSurface(const SurfaceMesh &first, const SurfaceMesh &second)
+    {
+        if (first.vertices.size() != second.vertices.size() ||
+            first.faces.size() != second.faces.size() ||
+            first.face_tags.size() != second.face_tags.size())
+        {
+            return false;
+        }
+        for (std::size_t index = 0; index < first.vertices.size(); ++index)
+        {
+            if ((first.vertices[index] - second.vertices[index]).norm() != 0.0)
+            {
+                return false;
+            }
+        }
+        for (std::size_t index = 0; index < first.faces.size(); ++index)
+        {
+            if (!sameFace(first.faces[index], second.faces[index]) ||
+                first.face_tags[index].kind != second.face_tags[index].kind ||
+                first.face_tags[index].region_id !=
+                    second.face_tags[index].region_id)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool sameGrowthResult(
+        const RegularLayerGrowthResult &first,
+        const RegularLayerGrowthResult &second)
+    {
+        if (first.mesh.vertices.size() != second.mesh.vertices.size() ||
+            first.mesh.cells.size() != second.mesh.cells.size() ||
+            first.mesh.metadata.size() != second.mesh.metadata.size() ||
+            first.faces.size() != second.faces.size() ||
+            !sameSurface(first.farfield_boundary, second.farfield_boundary))
+        {
+            return false;
+        }
+        for (std::size_t index = 0; index < first.mesh.vertices.size(); ++index)
+        {
+            if ((first.mesh.vertices[index] -
+                 second.mesh.vertices[index]).norm() != 0.0)
+            {
+                return false;
+            }
+        }
+        for (std::size_t index = 0; index < first.mesh.cells.size(); ++index)
+        {
+            if (!sameCell(first.mesh.cells[index], second.mesh.cells[index]) ||
+                first.mesh.metadata[index].role !=
+                    second.mesh.metadata[index].role ||
+                first.mesh.metadata[index].source_face_id !=
+                    second.mesh.metadata[index].source_face_id ||
+                first.mesh.metadata[index].layer !=
+                    second.mesh.metadata[index].layer)
+            {
+                return false;
+            }
+        }
+        for (std::size_t index = 0; index < first.faces.size(); ++index)
+        {
+            const FaceGrowthRecord &left = first.faces[index];
+            const FaceGrowthRecord &right = second.faces[index];
+            if (left.source_face_id != right.source_face_id ||
+                left.accepted_layer_count != right.accepted_layer_count ||
+                left.status != right.status ||
+                left.stop_reason != right.stop_reason ||
+                left.stop_layer != right.stop_layer)
+            {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -325,7 +437,7 @@ int main()
     }
 
     RegularLayerGrowthResult layer_difference;
-    if (!runLayerDifference(layer_difference)) return 24;
+    if (!runLayerDifference(false, layer_difference)) return 24;
     const FaceGrowthRecord *left = faceRecord(
         layer_difference, SurfaceFaceId{2});
     const FaceGrowthRecord *right = faceRecord(
@@ -376,5 +488,12 @@ int main()
         {
             return 27;
         }
+    }
+
+    RegularLayerGrowthResult reversed_profiles;
+    if (!runLayerDifference(true, reversed_profiles) ||
+        !sameGrowthResult(layer_difference, reversed_profiles))
+    {
+        return 28;
     }
 }

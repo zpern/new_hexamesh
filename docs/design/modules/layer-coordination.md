@@ -306,3 +306,36 @@ struct InvalidFaceConstraintState
 阶段 07 完成后，每个 GrowthPatch 连通分量内的最终源面层数满足外部最大共享边层数差，全部动态停止在提交前以确定性方式传播，并返回可供远场网格生成使用的最终边界表面。
 
 本阶段只协调规则层结果，不识别过渡区域，也不生成过渡单元。
+
+## 16. 实施结果
+
+阶段 07 已在 `feature/collision-local-stop` 分支完成，最终实现包含：
+
+- `FaceLayerConstraintTable` 与逐面请求上限；
+- `TerminationPropagator` 的初始化传播、运行时直接停止传播和候选压缩；
+- `RegularLayerStepper` 在动态几何评价以前执行的逐面上限预筛选；
+- Generator 在质量、固定/历史障碍碰撞和同层碰撞之后分别传播并过滤；
+- 合法相邻候选共享侧面的放行，以及共享侧面以外额外交叉的保留检测；
+- 原始 Farfield、最终顶面、层差台阶侧面和开放侧面组成的紧凑 `farfield_boundary`。
+
+主要新增测试目标为：
+
+```text
+boundary_mesh_face_layer_constraint_test
+boundary_mesh_termination_propagator_test
+boundary_mesh_layer_coordination_pipeline_test
+boundary_mesh_layer_coordination_failure_test
+```
+
+最终验证命令为：
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Debug
+ctest --test-dir build -C Debug --output-on-failure
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
+```
+
+Debug 与 Release 均为 40/40 通过。阶段 08、09 未实施；本阶段没有
+创建 `TransitionRegion`，也没有生成 Pyramid/Tetra 过渡单元。
