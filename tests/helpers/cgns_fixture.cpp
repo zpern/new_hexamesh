@@ -224,4 +224,75 @@ namespace boundary_mesh::test
 
         requireCgns(cg_close(file));
     }
+
+    void writeClosedCubeSurface(
+        const std::filesystem::path &path)
+    {
+        int file{};
+        requireCgns(cg_open(
+            path.string().c_str(), CG_MODE_WRITE, &file));
+        int base{};
+        requireCgns(cg_base_write(file, "Surface", 2, 3, &base));
+
+        const cgsize_t wall_size[3]{4, 1, 0};
+        const cgsize_t far_size[3]{8, 5, 0};
+        int wall_zone{};
+        int far_zone{};
+        requireCgns(cg_zone_write(
+            file, base, "1", wall_size,
+            CGNS_ENUMV(Unstructured), &wall_zone));
+        requireCgns(cg_zone_write(
+            file, base, "2", far_size,
+            CGNS_ENUMV(Unstructured), &far_zone));
+
+        const double wall_x[4]{0.0, 1.0, 1.0, 0.0};
+        const double wall_y[4]{0.0, 0.0, 1.0, 1.0};
+        const double wall_z[4]{0.0, 0.0, 0.0, 0.0};
+        const double far_x[8]{0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0};
+        const double far_y[8]{0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0};
+        const double far_z[8]{0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0};
+        const auto write_coordinates =
+            [&](int zone, const double *x, const double *y,
+                const double *z)
+            {
+                int coordinate{};
+                requireCgns(cg_coord_write(
+                    file, base, zone, CGNS_ENUMV(RealDouble),
+                    "CoordinateX", x, &coordinate));
+                requireCgns(cg_coord_write(
+                    file, base, zone, CGNS_ENUMV(RealDouble),
+                    "CoordinateY", y, &coordinate));
+                requireCgns(cg_coord_write(
+                    file, base, zone, CGNS_ENUMV(RealDouble),
+                    "CoordinateZ", z, &coordinate));
+            };
+        write_coordinates(wall_zone, wall_x, wall_y, wall_z);
+        write_coordinates(far_zone, far_x, far_y, far_z);
+
+        const cgsize_t wall[4]{1, 4, 3, 2};
+        const cgsize_t far_faces[20]{
+            5, 6, 7, 8,
+            1, 2, 6, 5,
+            2, 3, 7, 6,
+            3, 4, 8, 7,
+            4, 1, 5, 8};
+        int section{};
+        requireCgns(cg_section_write(
+            file, base, wall_zone, "Wall", CGNS_ENUMV(QUAD_4),
+            1, 1, 0, wall, &section));
+        requireCgns(cg_section_write(
+            file, base, far_zone, "Far", CGNS_ENUMV(QUAD_4),
+            1, 5, 0, far_faces, &section));
+
+        const cgsize_t points[4]{1, 2, 3, 4};
+        int connection{};
+        requireCgns(cg_conn_write(
+            file, base, wall_zone, "to-2",
+            CGNS_ENUMV(Vertex), CGNS_ENUMV(Abutting1to1),
+            CGNS_ENUMV(PointList), 4, points, "2",
+            CGNS_ENUMV(Unstructured), CGNS_ENUMV(PointListDonor),
+            CGNS_ENUMV(LongInteger), 4, points, &connection));
+
+        requireCgns(cg_close(file));
+    }
 }

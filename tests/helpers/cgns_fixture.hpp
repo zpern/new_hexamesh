@@ -47,4 +47,7 @@ namespace boundary_mesh::test
         const std::filesystem::path &path,
         bool reverse_point_order = false,
         bool mismatch_coordinate = false);
+
+    void writeClosedCubeSurface(
+        const std::filesystem::path &path);
 }

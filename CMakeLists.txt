@@ -184,6 +184,33 @@ if(BOUNDARY_MESH_ENABLE_CGNS_IO)
         PUBLIC BoundaryMesh::Core
         PRIVATE BoundaryMesh::CGNS
     )
+
+    add_library(
+        boundary_mesh_cli_support
+        STATIC
+            src/cli/boundary_mesh_command.cpp
+    )
+    add_library(BoundaryMesh::CLI ALIAS boundary_mesh_cli_support)
+    target_compile_features(boundary_mesh_cli_support PUBLIC cxx_std_17)
+    target_include_directories(
+        boundary_mesh_cli_support
+        PUBLIC "${PROJECT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(
+        boundary_mesh_cli_support
+        PUBLIC
+            BoundaryMesh::IO
+            BoundaryMesh::BoundaryLayer
+    )
+
+    add_executable(
+        boundary_mesh_cli
+        apps/boundary_mesh_cli.cpp
+    )
+    target_link_libraries(
+        boundary_mesh_cli
+        PRIVATE BoundaryMesh::CLI
+    )
 endif()
 
 include(CTest)
