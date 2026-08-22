@@ -151,6 +151,20 @@ add_test(
     COMMAND boundary_mesh_growth_direction_test
 )
 
+# 当前活动前沿的法向与步长字段平滑
+add_executable(
+    boundary_mesh_growth_field_smoother_test
+    unit/growth/growth_field_smoother_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_growth_field_smoother_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_growth_field_smoother_test
+    COMMAND boundary_mesh_growth_field_smoother_test
+)
+
 # 14
 add_executable(
     boundary_mesh_symmetry_constraints_test
