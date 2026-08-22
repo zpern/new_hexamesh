@@ -109,6 +109,20 @@ add_test(
     COMMAND boundary_mesh_growth_front_test
 )
 
+# 当前活动前沿的一环顶点和关联面邻接
+add_executable(
+    boundary_mesh_front_adjacency_test
+    unit/growth/front_adjacency_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_front_adjacency_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_front_adjacency_test
+    COMMAND boundary_mesh_front_adjacency_test
+)
+
 # 12
 add_executable(
     boundary_mesh_front_evaluator_test

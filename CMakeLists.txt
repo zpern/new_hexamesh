@@ -125,6 +125,7 @@ add_library(
     STATIC
         src/growth/growth_patch_builder.cpp
         src/growth/growth_front_builder.cpp
+        src/growth/front_adjacency.cpp
         src/growth/front_evaluator.cpp
         src/growth/growth_direction.cpp
         src/growth/symmetry_constraint_builder.cpp
