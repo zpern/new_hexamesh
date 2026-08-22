@@ -400,3 +400,31 @@ add_test(
     NAME boundary_mesh_spatial_collision_index_test
     COMMAND boundary_mesh_spatial_collision_index_test
 )
+
+# 32：已提交边界层顶面/侧面的增量外露集合
+add_executable(
+    boundary_mesh_exposed_boundary_test
+    unit/growth/exposed_boundary_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_exposed_boundary_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_exposed_boundary_test
+    COMMAND boundary_mesh_exposed_boundary_test
+)
+
+# 33：原始 Farfield 与最终边界层接口的紧凑表面输出
+add_executable(
+    boundary_mesh_farfield_boundary_builder_test
+    unit/growth/farfield_boundary_builder_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_farfield_boundary_builder_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_farfield_boundary_builder_test
+    COMMAND boundary_mesh_farfield_boundary_builder_test
+)

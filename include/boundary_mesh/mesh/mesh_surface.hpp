@@ -25,7 +25,8 @@ namespace boundary_mesh
     {
         Farfield, // 远场边界
         Wall,     // 需要生成边界层的壁面
-        Symmetry  // 对称面
+        Symmetry, // 对称面
+        BoundaryLayerInterface // 边界层与后续远场体网格之间的界面
     };
 
     struct SurfaceBoundaryTag

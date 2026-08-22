@@ -125,6 +125,8 @@ add_library(
         src/growth/growth_profile_builder.cpp
         src/growth/regular_layer_stepper.cpp
         src/growth/regular_layer_generator.cpp
+        src/growth/exposed_boundary.cpp
+        src/growth/farfield_boundary_builder.cpp
 )
 add_library(
     BoundaryMesh::BoundaryLayer
