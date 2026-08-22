@@ -25,7 +25,8 @@ namespace boundary_mesh
         DegenerateCandidate,      // 候选单元退化
         ReversedCandidate,        // 候选单元整体反转
         LocallyInvertedCandidate, // 候选单元局部翻转
-        SkewnessExceeded          // 候选单元偏斜度超过阈值
+        SkewnessExceeded,         // 候选单元偏斜度超过阈值
+        Collision                // 候选单元发生非法几何接触
     };
 
     struct FaceStopEvent

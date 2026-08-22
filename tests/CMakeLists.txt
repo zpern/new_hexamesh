@@ -428,3 +428,17 @@ add_test(
     NAME boundary_mesh_farfield_boundary_builder_test
     COMMAND boundary_mesh_farfield_boundary_builder_test
 )
+
+# 34：质量合格候选对固定障碍与同层候选的确定性碰撞过滤
+add_executable(
+    boundary_mesh_layer_collision_checker_test
+    unit/growth/layer_collision_checker_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_layer_collision_checker_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_layer_collision_checker_test
+    COMMAND boundary_mesh_layer_collision_checker_test
+)

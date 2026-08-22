@@ -152,6 +152,12 @@ namespace boundary_mesh
         return triangles_.size();
     }
 
+    const CollisionTriangle &CollisionIndex::primitive(
+        std::size_t primitive_index) const
+    {
+        return triangles_.at(primitive_index);
+    }
+
     Result<CollisionIndex, SpatialError>
     buildOriginalSurfaceCollisionIndex(
         const SurfaceMesh &mesh,

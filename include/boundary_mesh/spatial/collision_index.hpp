@@ -40,6 +40,9 @@ namespace boundary_mesh
 
         std::size_t primitiveCount() const noexcept;
 
+        const CollisionTriangle &primitive(
+            std::size_t primitive_index) const;
+
     private:
         std::vector<CollisionTriangle> triangles_; // 按稳定图元编号保存的三角形
         BinaryAabbTree tree_; // 对 triangles_ 的只读空间粗筛索引
