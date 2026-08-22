@@ -89,6 +89,7 @@ add_library(
     boundary_mesh_spatial
     STATIC
         src/spatial/aabb.cpp
+        src/spatial/binary_aabb_tree.cpp
 )
 add_library(BoundaryMesh::Spatial ALIAS boundary_mesh_spatial)
 

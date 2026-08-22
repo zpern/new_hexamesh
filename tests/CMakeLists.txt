@@ -358,3 +358,17 @@ add_test(
     NAME boundary_mesh_spatial_aabb_test
     COMMAND boundary_mesh_spatial_aabb_test
 )
+
+# 29：共享只读二叉 AABB 树的批量构建和确定性查询
+add_executable(
+    boundary_mesh_spatial_binary_aabb_tree_test
+    unit/spatial/binary_aabb_tree_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_spatial_binary_aabb_tree_test
+    PRIVATE BoundaryMesh::Spatial
+)
+add_test(
+    NAME boundary_mesh_spatial_binary_aabb_tree_test
+    COMMAND boundary_mesh_spatial_binary_aabb_tree_test
+)
