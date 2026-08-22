@@ -1,6 +1,7 @@
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 
 #include <algorithm>
+#include <map>
 #include <utility>
 
 #include <Eigen/Geometry>
@@ -66,6 +67,21 @@ namespace boundary_mesh
             return true;
         }
 
+        struct BoundaryFaceKeyLess
+        {
+            bool operator()(
+                const BoundaryFaceKey &left,
+                const BoundaryFaceKey &right) const
+            {
+                return faceKeyLess(left, right);
+            }
+        };
+
+        using BoundaryFaceMap = std::map<
+            BoundaryFaceKey,
+            BoundaryFace,
+            BoundaryFaceKeyLess>;
+
         bool validFace(const BoundaryFace &face)
         {
             if (face.points.size() != face.vertex_keys.size() ||
@@ -96,19 +112,18 @@ namespace boundary_mesh
         }
 
         void toggleFace(
-            std::vector<BoundaryFace> &faces,
+            BoundaryFaceMap &faces,
             const BoundaryFace &face)
         {
             const BoundaryFaceKey key = makeBoundaryFaceKey(face).value();
-            const std::size_t found = findFace(faces, key);
-            if (found == faces.size())
+            const auto found = faces.find(key);
+            if (found == faces.end())
             {
-                faces.push_back(face);
+                faces.emplace(key, face);
             }
             else
             {
-                faces.erase(faces.begin() +
-                            static_cast<std::ptrdiff_t>(found));
+                faces.erase(found);
             }
         }
 
@@ -136,17 +151,27 @@ namespace boundary_mesh
             return faces;
         }
 
-        void sortFaces(std::vector<BoundaryFace> &faces)
+        BoundaryFaceMap makeFaceMap(
+            const std::vector<BoundaryFace> &faces)
         {
-            std::sort(
-                faces.begin(),
-                faces.end(),
-                [](const BoundaryFace &left, const BoundaryFace &right)
-                {
-                    return faceKeyLess(
-                        makeBoundaryFaceKey(left).value(),
-                        makeBoundaryFaceKey(right).value());
-                });
+            BoundaryFaceMap result;
+            for (const BoundaryFace &face : faces)
+            {
+                result.emplace(makeBoundaryFaceKey(face).value(), face);
+            }
+            return result;
+        }
+
+        std::vector<BoundaryFace> mapFaces(
+            const BoundaryFaceMap &faces)
+        {
+            std::vector<BoundaryFace> result;
+            result.reserve(faces.size());
+            for (const auto &entry : faces)
+            {
+                result.push_back(entry.second);
+            }
+            return result;
         }
     }
 
@@ -189,7 +214,8 @@ namespace boundary_mesh
     ExposedBoundaryTracker::prepare(
         const std::vector<LayerBoundaryCandidate> &candidates) const
     {
-        std::vector<BoundaryFace> working = faces_;
+        const BoundaryFaceMap original = makeFaceMap(faces_);
+        BoundaryFaceMap working = original;
         for (const LayerBoundaryCandidate &candidate : candidates)
         {
             if (!validFace(candidate.bottom) ||
@@ -208,12 +234,7 @@ namespace boundary_mesh
                         ? bottom_key.error()
                         : top_key.error());
             }
-            const std::size_t bottom = findFace(working, bottom_key.value());
-            if (bottom != working.size())
-            {
-                working.erase(working.begin() +
-                              static_cast<std::ptrdiff_t>(bottom));
-            }
+            working.erase(bottom_key.value());
             for (const BoundaryFace &face : candidateFaces(candidate))
             {
                 const auto key = makeBoundaryFaceKey(face);
@@ -225,23 +246,19 @@ namespace boundary_mesh
                 toggleFace(working, face);
             }
         }
-        sortFaces(working);
-
         ExposedBoundaryUpdate update;
-        for (const BoundaryFace &face : faces_)
+        for (const auto &entry : original)
         {
-            const BoundaryFaceKey key = makeBoundaryFaceKey(face).value();
-            if (findFace(working, key) == working.size())
+            if (working.find(entry.first) == working.end())
             {
-                update.erase_faces.push_back(key);
+                update.erase_faces.push_back(entry.first);
             }
         }
-        for (const BoundaryFace &face : working)
+        for (const auto &entry : working)
         {
-            const BoundaryFaceKey key = makeBoundaryFaceKey(face).value();
-            if (findFace(faces_, key) == faces_.size())
+            if (original.find(entry.first) == original.end())
             {
-                update.insert_faces.push_back(face);
+                update.insert_faces.push_back(entry.second);
             }
         }
         return Result<ExposedBoundaryUpdate, SpatialError>::success(
@@ -251,20 +268,16 @@ namespace boundary_mesh
     void ExposedBoundaryTracker::apply(
         const ExposedBoundaryUpdate &update)
     {
+        BoundaryFaceMap working = makeFaceMap(faces_);
         for (const BoundaryFaceKey &key : update.erase_faces)
         {
-            const std::size_t found = findFace(faces_, key);
-            if (found != faces_.size())
-            {
-                faces_.erase(faces_.begin() +
-                             static_cast<std::ptrdiff_t>(found));
-            }
+            working.erase(key);
         }
-        faces_.insert(
-            faces_.end(),
-            update.insert_faces.begin(),
-            update.insert_faces.end());
-        sortFaces(faces_);
+        for (const BoundaryFace &face : update.insert_faces)
+        {
+            working[makeBoundaryFaceKey(face).value()] = face;
+        }
+        faces_ = mapFaces(working);
     }
 
     std::size_t ExposedBoundaryTracker::faceCount() const noexcept

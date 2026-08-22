@@ -1,4 +1,5 @@
 #include <chrono>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -42,6 +43,17 @@ namespace
 #else
         return 0;
 #endif
+    }
+
+    std::array<std::size_t, 8> stopReasonCounts(
+        const boundary_mesh::RegularLayerGrowthResult &growth)
+    {
+        std::array<std::size_t, 8> counts{};
+        for (const boundary_mesh::FaceGrowthRecord &face : growth.faces)
+        {
+            ++counts[static_cast<std::size_t>(face.stop_reason)];
+        }
+        return counts;
     }
 }
 
@@ -154,6 +166,7 @@ int main(int argc, char **argv)
     }
 
     const auto peak = peakWorkingSet();
+    const auto stop_counts = stopReasonCounts(growth.value());
     std::cout << "read_seconds=" << seconds(read_start, read_end) << '\n'
               << "topology_seconds="
               << seconds(topology_start, topology_end) << '\n'
@@ -168,7 +181,15 @@ int main(int argc, char **argv)
               << '\n'
               << "farfield_faces="
               << growth.value().farfield_boundary.faces.size()
-              << '\n';
+              << '\n'
+              << "stop_none=" << stop_counts[0] << '\n'
+              << "stop_vertex_layer_limit=" << stop_counts[1] << '\n'
+              << "stop_degenerate_candidate=" << stop_counts[2] << '\n'
+              << "stop_reversed_candidate=" << stop_counts[3] << '\n'
+              << "stop_locally_inverted_candidate=" << stop_counts[4] << '\n'
+              << "stop_skewness_exceeded=" << stop_counts[5] << '\n'
+              << "stop_collision=" << stop_counts[6] << '\n'
+              << "stop_neighbor_layer_constraint=" << stop_counts[7] << '\n';
 
 #ifdef _WIN32
     constexpr std::uint64_t one_gibibyte = 1024ULL * 1024ULL * 1024ULL;

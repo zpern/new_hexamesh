@@ -124,6 +124,13 @@ int main()
                 shared_vertex_touch)
                 .value());
 
+    CollisionTriangle inconsistent_shared_vertex = shared_vertex_touch;
+    inconsistent_shared_vertex.boundary_points[0] = {0.0, 0.0, 0.5};
+    assert(hasIllegalTriangleContact(
+               shared_vertex_first,
+               inconsistent_shared_vertex)
+               .value());
+
     const TrianglePoints vertex_cross_points{{
         first[0],
         {0.5, 0.5, -1.0},
@@ -226,4 +233,64 @@ int main()
                quad_split_first,
                coincident_without_shared_keys)
                .value());
+
+    const std::array<Point3, 4> oblique_quad_points{{
+        {0.1, 0.2, 0.3},
+        {1.1, 0.2, 0.5},
+        {1.1, 1.2, 0.8},
+        {0.1, 1.2, 0.6}}};
+    const CollisionTriangle oblique_first = makeCollisionTriangle(
+        {{oblique_quad_points[0],
+          oblique_quad_points[1],
+          oblique_quad_points[2]}},
+        {{quad_keys[0], quad_keys[1], quad_keys[2]}},
+        oblique_quad_points,
+        quad_keys,
+        4);
+    const CollisionTriangle oblique_second = makeCollisionTriangle(
+        {{oblique_quad_points[1],
+          oblique_quad_points[2],
+          oblique_quad_points[3]}},
+        {{quad_keys[1], quad_keys[2], quad_keys[3]}},
+        {{oblique_quad_points[1],
+          oblique_quad_points[0],
+          oblique_quad_points[3],
+          oblique_quad_points[2]}},
+        {{quad_keys[1], quad_keys[0], quad_keys[3], quad_keys[2]}},
+        4);
+    assert(classifyTriangleContact(
+               oblique_first.points,
+               oblique_second.points)
+               .value() == TriangleContactKind::CoplanarOverlap);
+    assert(!hasIllegalTriangleContact(oblique_first, oblique_second).value());
+
+    const Point3 oblique_edge_first{0.1, 0.2, 0.3};
+    const Point3 oblique_edge_second{1.1, 0.4, 0.7};
+    const TrianglePoints oblique_edge_triangle{{
+        oblique_edge_first,
+        oblique_edge_second,
+        {0.2, 1.3, 0.9}}};
+    const TrianglePoints oblique_edge_neighbor{{
+        oblique_edge_first,
+        oblique_edge_second,
+        {0.4, -0.8, 1.2}}};
+    const CollisionTriangle oblique_edge_a = makeCollisionTriangle(
+        oblique_edge_triangle,
+        {{{40, 1}, {41, 1}, {42, 1}}},
+        {{oblique_edge_triangle[0],
+          oblique_edge_triangle[1],
+          oblique_edge_triangle[2],
+          Point3{}}},
+        {{{40, 1}, {41, 1}, {42, 1}, {}}},
+        3);
+    const CollisionTriangle oblique_edge_b = makeCollisionTriangle(
+        oblique_edge_neighbor,
+        {{{40, 1}, {41, 1}, {43, 0}}},
+        {{oblique_edge_neighbor[0],
+          oblique_edge_neighbor[1],
+          oblique_edge_neighbor[2],
+          Point3{}}},
+        {{{40, 1}, {41, 1}, {43, 0}, {}}},
+        3);
+    assert(!hasIllegalTriangleContact(oblique_edge_a, oblique_edge_b).value());
 }

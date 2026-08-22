@@ -1,5 +1,6 @@
 #include <cli/boundary_mesh_command.hpp>
 
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <filesystem>
@@ -165,6 +166,32 @@ namespace boundary_mesh
                 << "[--max-neighbor-layer-difference COUNT] "
                 << "[--output-prefix PATH]\n";
         }
+
+        std::array<std::size_t, 8> stopReasonCounts(
+            const RegularLayerGrowthResult &growth)
+        {
+            std::array<std::size_t, 8> counts{};
+            for (const FaceGrowthRecord &face : growth.faces)
+            {
+                ++counts[static_cast<std::size_t>(face.stop_reason)];
+            }
+            return counts;
+        }
+
+        void printStopReasonCounts(
+            std::ostream &output,
+            const RegularLayerGrowthResult &growth)
+        {
+            const auto counts = stopReasonCounts(growth);
+            output << "stop_none=" << counts[0] << '\n'
+                   << "stop_vertex_layer_limit=" << counts[1] << '\n'
+                   << "stop_degenerate_candidate=" << counts[2] << '\n'
+                   << "stop_reversed_candidate=" << counts[3] << '\n'
+                   << "stop_locally_inverted_candidate=" << counts[4] << '\n'
+                   << "stop_skewness_exceeded=" << counts[5] << '\n'
+                   << "stop_collision=" << counts[6] << '\n'
+                   << "stop_neighbor_layer_constraint=" << counts[7] << '\n';
+        }
     }
 
     int runBoundaryMeshCommand(
@@ -294,6 +321,7 @@ namespace boundary_mesh
                << "max_neighbor_layer_difference="
                << command_options.max_neighbor_layer_difference
                << '\n';
+        printStopReasonCounts(output, growth.value());
         return 0;
     }
 }

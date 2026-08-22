@@ -1,6 +1,6 @@
 # 拓扑感知合法碰撞接触修复实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 修复连续 Wall 前沿中共享顶点、共享边和共享侧面的候选 Prism/Hexa 被误判为碰撞的问题，同时保留公共拓扑区域以外的真实穿插检测。
 
@@ -62,7 +62,7 @@ tests/integration/cgns_cli_pipeline_test.cpp
 - Consumes: Triangle/Quad 边界面的完整点序、完整 `CollisionVertexKey` 序列及其固定 `v0-v2` 三角化。
 - Produces: 每个 `CollisionTriangle` 同时具有三角形局部数据和所属完整边界面的数据。
 
-- [ ] **Step 1: 写缺少完整边界面来源的 RED 测试**
+- [x] **Step 1: 写缺少完整边界面来源的 RED 测试**
 
 在 `collision_index_test.cpp` 构造一个属于 Quad 的碰撞三角形，并通过索引稳定图元接口验证完整边界面元数据被保留：
 
@@ -79,7 +79,7 @@ assert(index.value().primitive(0).boundary_vertex_count == 4);
 assert(index.value().primitive(0).boundary_vertex_keys[3] == key3);
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 cmake --build build --config Debug `
@@ -88,7 +88,7 @@ cmake --build build --config Debug `
 
 Expected: 编译失败，因为 `CollisionTriangle` 尚不能表达所属完整边界面。
 
-- [ ] **Step 3: 增加完整边界面字段**
+- [x] **Step 3: 增加完整边界面字段**
 
 在 `CollisionTriangle` 末尾增加固定容量元数据：
 
@@ -100,7 +100,7 @@ std::uint8_t boundary_vertex_count{}; // 完整边界面有效顶点数，只允
 
 保留原字段顺序，使没有指定新字段的旧测试初始化仍能编译；新判定在计数为零时使用现有三角形局部语义。
 
-- [ ] **Step 4: 让三类生产者填充元数据**
+- [x] **Step 4: 让三类生产者填充元数据**
 
 - `appendFaceTriangles(...)`：原始 Triangle/Quad 的每个拆分三角形携带原完整面；
 - `candidateTriangles(...)`：候选顶面和每个侧面的拆分三角形携带对应完整 `BoundaryFace`；
@@ -108,7 +108,7 @@ std::uint8_t boundary_vertex_count{}; // 完整边界面有效顶点数，只允
 
 统一使用小型内部辅助函数复制 3/4 个点和 key，并验证数量匹配。
 
-- [ ] **Step 5: 运行目标测试 GREEN**
+- [x] **Step 5: 运行目标测试 GREEN**
 
 ```powershell
 cmake --build build --config Debug `
@@ -118,7 +118,7 @@ ctest --test-dir build -C Debug `
   --output-on-failure
 ```
 
-- [ ] **Step 6: 提交元数据基础**
+- [x] **Step 6: 提交元数据基础**
 
 ```powershell
 git add include/boundary_mesh/spatial/collision_index.hpp `
@@ -145,7 +145,7 @@ git commit -m "fix: preserve collision boundary provenance"
 - Consumes: 两个 `CollisionTriangle` 及其完整边界面元数据。
 - Produces: `hasIllegalTriangleContact(const CollisionTriangle &, const CollisionTriangle &)`，只在实际交集超出公共拓扑特征时返回 `true`。
 
-- [ ] **Step 1: 写公共点、公共边和公共面的 RED 测试**
+- [x] **Step 1: 写公共点、公共边和公共面的 RED 测试**
 
 分别覆盖：
 
@@ -164,7 +164,7 @@ assert(!hasIllegalTriangleContact(shared_face_a, shared_face_b).value());
 
 再构造坐标相同但 key 不同的共点/共边，断言仍为非法。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 cmake --build build --config Debug `
@@ -174,7 +174,7 @@ cmake --build build --config Debug `
 
 Expected: 编译失败，缺少 `CollisionTriangle` 重载；或断言失败，当前实现仍只按局部三角形 key 数量判断。
 
-- [ ] **Step 3: 提取三角形交集证据**
+- [x] **Step 3: 提取三角形交集证据**
 
 将 `classifyTriangleContact(...)` 的内部过程扩展为私有详细结果：
 
@@ -190,7 +190,7 @@ struct TriangleContactEvidence
 - 共面情况保留裁剪多边形，并用被丢弃主轴对应的平面方程恢复三维点；
 - 现有公共 `classifyTriangleContact(...)` 只返回详细结果中的 `kind`，保持 API 兼容。
 
-- [ ] **Step 4: 从完整边界面建立允许特征**
+- [x] **Step 4: 从完整边界面建立允许特征**
 
 比较完整 `boundary_vertex_keys`：
 
@@ -202,7 +202,7 @@ struct TriangleContactEvidence
 
 允许面使用规范 key 顺序三角化，不能依赖两输入面的起点或绕序。
 
-- [ ] **Step 5: 判断交集是否完全包含**
+- [x] **Step 5: 判断交集是否完全包含**
 
 严格零判断：
 
@@ -213,7 +213,7 @@ struct TriangleContactEvidence
 
 共面裁剪多边形除顶点外还检查每条边中点，防止多边形跨出非平面或分片允许区域。
 
-- [ ] **Step 6: 切换 CollisionIndex 到新重载并运行 GREEN**
+- [x] **Step 6: 切换 CollisionIndex 到新重载并运行 GREEN**
 
 ```powershell
 cmake --build build --config Debug `
@@ -224,7 +224,7 @@ ctest --test-dir build -C Debug `
   --output-on-failure
 ```
 
-- [ ] **Step 7: 提交公共特征判定**
+- [x] **Step 7: 提交公共特征判定**
 
 ```powershell
 git add include/boundary_mesh/spatial/triangle_contact.hpp `
@@ -249,7 +249,7 @@ git commit -m "fix: allow contacts within shared topology"
 - Consumes: Task 1–2 的完整边界来源与拓扑感知 `CollisionIndex`。
 - Produces: 连续前沿合法邻接不停止，公共区域外真实碰撞仍停止双方。
 
-- [ ] **Step 1: 写混合相邻候选 RED 测试**
+- [x] **Step 1: 写混合相邻候选 RED 测试**
 
 在 `layer_collision_checker_test.cpp` 构造同一连续前沿上的：
 
@@ -269,7 +269,7 @@ assert(result.value().next_front.faces.size() == expected_face_count);
 assert(result.value().stopped_faces.empty());
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 cmake --build build --config Debug `
@@ -281,20 +281,20 @@ ctest --test-dir build -C Debug `
 
 Expected: 当前实现至少一个合法邻接场景被压缩为 Collision。
 
-- [ ] **Step 3: 写越界真实碰撞 RED 测试**
+- [x] **Step 3: 写越界真实碰撞 RED 测试**
 
 保持相同源拓扑关系，但移动一个非共享顶点，使顶面或外侧面穿过公共侧面区域。
 断言两个源面均产生唯一 `FaceStopReason::Collision`。再交换两个源面在 Front 中的
 顺序，断言停止的 `source_face_id` 集合相同。
 
-- [ ] **Step 4: 最小修正候选对过滤**
+- [x] **Step 4: 最小修正候选对过滤**
 
 `filterSelfCollisions(...)` 不再使用只接受“两三角形全部属于共享侧面”的
 `legalSharedSideContact(...)` 作为最终判断。由 `CollisionIndex` 的完整边界面
 公共特征判定决定合法性；候选 owner 相同仍直接跳过，owner 不同的非法命中仍
 同时停止双方。
 
-- [ ] **Step 5: 验证候选、原始障碍和历史边界**
+- [x] **Step 5: 验证候选、原始障碍和历史边界**
 
 ```powershell
 cmake --build build --config Debug `
@@ -306,7 +306,7 @@ ctest --test-dir build -C Debug `
   --output-on-failure
 ```
 
-- [ ] **Step 6: 提交生长接入**
+- [x] **Step 6: 提交生长接入**
 
 ```powershell
 git add src/growth/layer_collision_checker.cpp `
@@ -331,7 +331,7 @@ git commit -m "fix: preserve adjacent layer candidates"
 - Consumes: `RegularLayerGrowthResult::faces`。
 - Produces: 稳定的逐 `FaceStopReason` 汇总和修复后的 `2dot5_cf` 真实一层结果。
 
-- [ ] **Step 1: 写 CLI 统计 RED 测试**
+- [x] **Step 1: 写 CLI 统计 RED 测试**
 
 在小型 CGNS CLI 流水线断言 stdout 包含固定字段：
 
@@ -345,7 +345,7 @@ assert(output.str().find("stop_collision=") != std::string::npos);
 assert(output.str().find("stop_neighbor_layer_constraint=") != std::string::npos);
 ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
 ```powershell
 cmake --build build --config Debug `
@@ -357,21 +357,21 @@ ctest --test-dir build -C Debug `
 
 Expected: 断言失败，因为 CLI 当前只输出总单元数和两个配置值。
 
-- [ ] **Step 3: 实现确定性停止原因汇总**
+- [x] **Step 3: 实现确定性停止原因汇总**
 
 在 CLI 内按枚举值计数 `growth.value().faces`，按上述固定字段顺序输出。`None`
 单独输出为 `stop_none`，便于发现仍处于 Active 的异常结果；不逐面刷屏。
 
 benchmark 使用相同字段名输出逐原因计数，避免再次添加临时诊断代码。
 
-- [ ] **Step 4: 运行小型 GREEN 和 Debug 全回归**
+- [x] **Step 4: 运行小型 GREEN 和 Debug 全回归**
 
 ```powershell
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-- [ ] **Step 5: 运行 `2dot5_cf` Release 一层验收**
+- [x] **Step 5: 运行 `2dot5_cf` Release 一层验收**
 
 ```powershell
 cmake --build build --config Release `
@@ -390,7 +390,7 @@ cmake --build build --config Release `
 - `volume_cells` 相比修复前 3,252 明显增加；
 - 若仍有大量 Collision，使用正式原因统计继续区分障碍和同层来源，不放宽真实穿插规则。
 
-- [ ] **Step 6: Release 和 IO-OFF 回归**
+- [x] **Step 6: Release 和 IO-OFF 回归**
 
 ```powershell
 cmake --build build --config Release
@@ -400,7 +400,7 @@ cmake --build build-no-io --config Debug `
   --target boundary_mesh_boundary_layer
 ```
 
-- [ ] **Step 7: 更新结果、勾选计划并提交**
+- [x] **Step 7: 更新结果、勾选计划并提交**
 
 将真实案例修复后计数、耗时和峰值工作集写入碰撞设计第 15 节，将本计划全部
 检查项改为 `[x]`，然后：
@@ -437,3 +437,9 @@ Debug/Release 全量 CTest 为 0 failed
 IO-OFF 核心构建通过
 阶段 08、09 仍未实施
 ```
+
+## Actual Result
+
+`2dot5_cf` Release 一层最终生成 41,453 个体单元，`Collision` 停止 16,684
+个源面，峰值工作集 414,887,936 字节，总耗时 20.7472 秒。两个 VTK 文件均
+非空。Debug 与 Release 均为 45/45 通过，IO-OFF 核心 Debug 构建通过。

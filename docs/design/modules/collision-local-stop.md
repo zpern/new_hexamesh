@@ -435,6 +435,13 @@ Spatial 层扩展三角形接触结果，使其除 `TriangleContactKind` 外还�
 所有包含判断继续采用项目现有的严格零判断，不增加用户容差。Growth 只构造
 候选之间的允许区域并调用 Spatial 判定，不直接包含 `geom_func.h`。
 
+实际实现补充了一条重要约束：不能把平面求交或二维裁剪得到的浮点交点重新构造
+为三维坐标，再要求它严格满足 `dot == 0` 或 `cross == 0`。数学上共面、共线的
+结果经过除法后可能不再得到机器意义上的精确零。在完整边界面 key 和对应坐标
+一致时，局部共享 key 数用于选择常数时间分支：仅共点只放行 `VertexTouch`，
+共享精确边只拒绝公共边以外的共面正面积重叠，完整公共面放行其三角化内部接触。
+没有这些拓扑证据时仍使用完整交集证据判断。整个过程没有引入几何容差。
+
 ### 15.7 保留真实碰撞
 
 拓扑相邻不是无条件豁免。以下情况仍必须同时停止相关候选：
@@ -460,3 +467,34 @@ CLI 汇总增加各 `FaceStopReason` 的源面数量，使真实案例无需修�
 6. 非相邻候选真实碰撞仍同时停止；
 7. 交换源面顺序后结果不变；
 8. `2dot5_cf` Release 一层回归、Debug/Release 全量 CTest 和 IO-OFF 构建。
+
+### 15.9 修正结果
+
+`2dot5_cf` 使用 `first_height=0.1`、`growth_ratio=1.0`、一层和
+`maximum_skewness=0.95` 的 Release 结果为：
+
+```text
+volume_cells=41453
+farfield_faces=58800
+stop_vertex_layer_limit=41453
+stop_reversed_candidate=1
+stop_locally_inverted_candidate=7
+stop_skewness_exceeded=32
+stop_collision=16684
+growth_seconds=19.9299
+total_seconds=20.7472
+peak_working_set_bytes=414887936
+```
+
+相较修正前的 3,252 个体单元和 54,885 个碰撞停止面，体单元增至约
+12.7 倍，碰撞停止下降约 69.6%。峰值工作集约 395.7 MiB，低于 1 GiB。
+两个 ASCII legacy VTK 均成功生成且非空：边界层体网格 7,511,825 字节，
+远场边界 5,054,139 字节。
+
+大量候选恢复后，原 `ExposedBoundaryTracker` 基于 `vector` 的逐面线性切换暴露出
+O(n²) 路径。实现改为以规范 `BoundaryFaceKey` 为键的有序容器，`prepare/apply`
+降为 O(n log n)，并在导出 `faces()` 时保持稳定规范顺序。
+
+最终验证结果：Debug 45/45、Release 45/45，均为 0 failed；关闭
+`BOUNDARY_MESH_ENABLE_CGNS_IO` 后 `boundary_mesh_boundary_layer` Debug 构建通过。
+阶段 08、09仍未实施。

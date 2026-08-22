@@ -42,6 +42,8 @@ namespace boundary_mesh
             std::uint8_t face_point_count{};
         };
 
+
+
         bool sameKey(
             const CollisionVertexKey &left,
             const CollisionVertexKey &right)
@@ -435,21 +437,6 @@ namespace boundary_mesh
                 : triangle.boundary_vertex_keys[index];
         }
 
-        bool containsBoundaryKey(
-            const CollisionTriangle &triangle,
-            const CollisionVertexKey &key)
-        {
-            const std::size_t count = boundaryVertexCount(triangle);
-            for (std::size_t index = 0; index < count; ++index)
-            {
-                if (sameKey(boundaryKey(triangle, index), key))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         bool adjacentBoundaryKeys(
             const CollisionTriangle &triangle,
             const CollisionVertexKey &first,
@@ -485,10 +472,22 @@ namespace boundary_mesh
             for (std::size_t index = 0; index < first_count; ++index)
             {
                 const CollisionVertexKey &key = boundaryKey(first, index);
-                if (containsBoundaryKey(second, key))
+                for (std::size_t second_index = 0;
+                     second_index < second_count;
+                     ++second_index)
                 {
+                    if (!sameKey(boundaryKey(second, second_index), key))
+                    {
+                        continue;
+                    }
+                    if ((boundaryPoint(first, index).array() !=
+                         boundaryPoint(second, second_index).array()).any())
+                    {
+                        return {};
+                    }
                     shared_keys.push_back(key);
                     feature.points.push_back(boundaryPoint(first, index));
+                    break;
                 }
             }
 
@@ -541,9 +540,33 @@ namespace boundary_mesh
         {
             const TrianglePoints triangle{{first, second, third}};
             const Vector3 triangle_normal = normal(triangle);
-            return triangle_normal.squaredNorm() != Scalar{0} &&
-                   triangle_normal.dot(point - first) == Scalar{0} &&
-                   pointInTriangle(point, triangle, triangle_normal);
+            if (triangle_normal.squaredNorm() == Scalar{0})
+            {
+                return false;
+            }
+            const int axis = dominantAxis(triangle_normal);
+            const Point2 projected_point = project(point, axis);
+            const Point2 projected_first = project(first, axis);
+            const Point2 projected_second = project(second, axis);
+            const Point2 projected_third = project(third, axis);
+            const Scalar first_side = cross2(
+                projected_first,
+                projected_second,
+                projected_point);
+            const Scalar second_side = cross2(
+                projected_second,
+                projected_third,
+                projected_point);
+            const Scalar third_side = cross2(
+                projected_third,
+                projected_first,
+                projected_point);
+            return (first_side >= Scalar{0} &&
+                    second_side >= Scalar{0} &&
+                    third_side >= Scalar{0}) ||
+                   (first_side <= Scalar{0} &&
+                    second_side <= Scalar{0} &&
+                    third_side <= Scalar{0});
         }
 
         bool pointInBoundaryFace(
@@ -639,6 +662,37 @@ namespace boundary_mesh
             }
             return true;
         }
+
+        struct LocalSharedKeys
+        {
+            std::size_t count{};
+        };
+
+        LocalSharedKeys localSharedKeys(
+            const CollisionTriangle &first,
+            const CollisionTriangle &second)
+        {
+            LocalSharedKeys result;
+            for (std::size_t first_index = 0;
+                 first_index < first.vertex_keys.size();
+                 ++first_index)
+            {
+                for (std::size_t second_index = 0;
+                     second_index < second.vertex_keys.size();
+                     ++second_index)
+                {
+                    if (sameKey(
+                            first.vertex_keys[first_index],
+                            second.vertex_keys[second_index]))
+                    {
+                        ++result.count;
+                        break;
+                    }
+                }
+            }
+            return result;
+        }
+
     }
 
     Result<TriangleContactKind, SpatialError>
@@ -725,6 +779,31 @@ namespace boundary_mesh
             return Result<bool, SpatialError>::failure(evidence.error());
         }
         const SharedFeature feature = makeSharedFeature(first, second);
+        if (evidence.value().kind == TriangleContactKind::Disjoint)
+        {
+            return Result<bool, SpatialError>::success(false);
+        }
+
+        const LocalSharedKeys shared = localSharedKeys(first, second);
+        if (feature.kind == SharedFeatureKind::Face)
+        {
+            return Result<bool, SpatialError>::success(false);
+        }
+        if (shared.count == 1 &&
+            feature.kind != SharedFeatureKind::None)
+        {
+            return Result<bool, SpatialError>::success(
+                evidence.value().kind != TriangleContactKind::VertexTouch &&
+                !(feature.kind == SharedFeatureKind::Segment &&
+                  evidence.value().kind == TriangleContactKind::EdgeTouch));
+        }
+        if (shared.count == 2 &&
+            feature.kind == SharedFeatureKind::Segment)
+        {
+            return Result<bool, SpatialError>::success(
+                evidence.value().kind ==
+                TriangleContactKind::CoplanarOverlap);
+        }
         return Result<bool, SpatialError>::success(
             !featureContainsEvidence(feature, evidence.value()));
     }

@@ -78,6 +78,20 @@ int main()
            std::string::npos);
     assert(output.str().find("max_neighbor_layer_difference=1") !=
            std::string::npos);
+    assert(output.str().find("stop_none=") != std::string::npos);
+    assert(output.str().find("stop_vertex_layer_limit=") !=
+           std::string::npos);
+    assert(output.str().find("stop_degenerate_candidate=") !=
+           std::string::npos);
+    assert(output.str().find("stop_reversed_candidate=") !=
+           std::string::npos);
+    assert(output.str().find("stop_locally_inverted_candidate=") !=
+           std::string::npos);
+    assert(output.str().find("stop_skewness_exceeded=") !=
+           std::string::npos);
+    assert(output.str().find("stop_collision=") != std::string::npos);
+    assert(output.str().find("stop_neighbor_layer_constraint=") !=
+           std::string::npos);
 
     const auto volume_path =
         std::filesystem::path(prefix.string() + "_boundary_layer.vtk");
