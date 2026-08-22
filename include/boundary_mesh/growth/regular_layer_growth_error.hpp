@@ -58,6 +58,12 @@ namespace boundary_mesh
         SpatialError cause; // 空间模块返回的具体程序错误
     };
 
+    struct InvalidFaceConstraintState
+    {
+        SurfaceFaceId source_face_id{}; // 状态不一致的源 Wall 面
+        std::uint32_t layer{}; // 发现错误时的目标层号
+    };
+
     using RegularLayerGrowthError = std::variant<
         GrowthProfileFailure,
         FrontEvaluationFailure,
@@ -67,5 +73,6 @@ namespace boundary_mesh
         InvalidLayerFrontMapping,
         VolumeVertexIdOverflow,
         CollisionInitializationFailure,
-        CollisionStateFailure>; // 规则层生成过程中可诊断的程序级错误
+        CollisionStateFailure,
+        InvalidFaceConstraintState>; // 规则层生成过程中可诊断的程序级错误
 }

@@ -128,6 +128,7 @@ add_library(
         src/growth/exposed_boundary.cpp
         src/growth/farfield_boundary_builder.cpp
         src/growth/layer_collision_checker.cpp
+        src/growth/face_layer_constraint.cpp
 )
 add_library(
     BoundaryMesh::BoundaryLayer

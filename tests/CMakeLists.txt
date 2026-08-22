@@ -470,3 +470,17 @@ add_test(
     NAME boundary_mesh_collision_growth_failure_test
     COMMAND boundary_mesh_collision_growth_failure_test
 )
+
+# 37：逐源面请求层数上限和默认邻接层差配置
+add_executable(
+    boundary_mesh_face_layer_constraint_test
+    unit/growth/face_layer_constraint_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_face_layer_constraint_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_face_layer_constraint_test
+    COMMAND boundary_mesh_face_layer_constraint_test
+)

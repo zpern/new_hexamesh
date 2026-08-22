@@ -27,7 +27,8 @@ namespace boundary_mesh
         ReversedCandidate,        // 候选单元整体反转
         LocallyInvertedCandidate, // 候选单元局部翻转
         SkewnessExceeded,         // 候选单元偏斜度超过阈值
-        Collision                // 候选单元发生非法几何接触
+        Collision,               // 候选单元发生非法几何接触
+        NeighborLayerConstraint  // 因共享边邻域层数上限传播而提前停止
     };
 
     struct FaceStopEvent
@@ -75,6 +76,7 @@ namespace boundary_mesh
     struct RegularLayerGrowthOptions
     {
         VolumeCellQualityOptions cell_quality; // 阶段 04 的候选单元质量参数
+        std::uint32_t max_neighbor_layer_difference{1}; // 共享边两侧最大允许层数差
     };
 
     struct RegularLayerGrowthResult
