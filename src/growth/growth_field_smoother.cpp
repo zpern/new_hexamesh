@@ -585,7 +585,7 @@ namespace boundary_mesh
             const Scalar correction =
                 sigmoid - Scalar{0.5};
             const Scalar actual = std::clamp(
-                base_heights[index] *
+                base_heights[index] /
                     (Scalar{1} + correction),
                 Scalar{0.5} * base_heights[index],
                 Scalar{1.5} * base_heights[index]);
