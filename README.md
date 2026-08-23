@@ -338,133 +338,7 @@ ctest --test-dir build -C Debug `
     --output-on-failure
 ```
 
-## 11. 在 TiGER 或其他 CMake 工程中使用
-
-### 11.1 CMake 接入
-
-如果父工程已经将 BoundaryMesh 放在某个子目录中，可以使用：
-
-```cmake
-add_subdirectory(path/to/new_boundaryMesh)
-
-target_link_libraries(
-    your_target
-    PRIVATE
-        BoundaryMesh::BoundaryLayer
-        BoundaryMesh::IO
-)
-```
-
-可以使用的主要 CMake target：
-
-| Target | 用途 |
-|---|---|
-| `BoundaryMesh::Core` | 基础类型与表面拓扑 |
-| `BoundaryMesh::Surface` | 表面几何算法 |
-| `BoundaryMesh::Quality` | Prism/Hexa 单元质量判断 |
-| `BoundaryMesh::Spatial` | 包围盒树与碰撞检测 |
-| `BoundaryMesh::BoundaryLayer` | 前沿和规则边界层生成 |
-| `BoundaryMesh::IO` | CGNS 读取与 VTK 写出 |
-| `BoundaryMesh::CLI` | 命令行流程封装 |
-
-父工程若已经提供 CGNS，可在加入 BoundaryMesh 前提供 `BoundaryMesh::CGNS`、`CGNS::cgns-static` 或 `CGNS::cgns-shared` target。否则独立工程会使用 `third/hdf5` 和 `third/cgns`。
-
-### 11.2 C++ 核心调用流程
-
-下面展示库接口的主要调用顺序。实际工程应在每一步读取 `Result::error()` 并转换为自己的诊断信息。
-
-```cpp
-#include <boundary_mesh/growth/growth_front_builder.hpp>
-#include <boundary_mesh/growth/growth_patch_builder.hpp>
-#include <boundary_mesh/growth/regular_layer_generator.hpp>
-#include <boundary_mesh/io/cgns_surface_reader.hpp>
-#include <boundary_mesh/io/legacy_vtk_writer.hpp>
-#include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
-
-#include <filesystem>
-#include <vector>
-
-int generateBoundaryLayer(const std::filesystem::path &input)
-{
-    using namespace boundary_mesh;
-
-    const auto surface = readCgnsSurface(input);
-    if (!surface.hasValue()) return 1;
-
-    const auto topology =
-        SurfaceTopologyBuilder{}.build(surface.value());
-    if (!topology.hasValue()) return 2;
-
-    const auto patch = GrowthPatchBuilder{}.build(
-        surface.value(), topology.value());
-    if (!patch.hasValue()) return 3;
-
-    const auto front = GrowthFrontBuilder{}.buildInitial(
-        surface.value(), patch.value());
-    if (!front.hasValue()) return 4;
-
-    std::vector<SourceVertexGrowthProfile> profiles;
-    profiles.reserve(patch.value().vertices().size());
-    for (const PatchVertex &vertex : patch.value().vertices())
-    {
-        profiles.push_back({
-            vertex.source_vertex_id,
-            VertexGrowthProfile{
-                0.1, // first_height
-                1.2, // growth_ratio
-                10   // layer_count
-            }});
-    }
-
-    RegularLayerGrowthOptions options;
-    options.cell_quality.maximum_skewness = 0.95;
-    options.max_neighbor_layer_difference = 1;
-
-    const auto growth = generateRegularLayers(
-        surface.value(),
-        topology.value(),
-        patch.value(),
-        front.value(),
-        profiles,
-        options);
-    if (!growth.hasValue()) return 5;
-
-    const auto volume_status = writeLegacyVtk(
-        "boundary_layer.vtk", growth.value().mesh);
-    const auto farfield_status = writeLegacyVtk(
-        "farfield_boundary.vtk",
-        growth.value().farfield_boundary);
-    if (!volume_status.hasValue() || !farfield_status.hasValue())
-    {
-        return 6;
-    }
-
-    return 0;
-}
-```
-
-如果不同 Wall 顶点需要不同的生长参数，应按 `source_vertex_id` 分别填写：
-
-```cpp
-SourceVertexGrowthProfile{
-    source_vertex_id,
-    VertexGrowthProfile{
-        first_height,
-        growth_ratio,
-        layer_count}}
-```
-
-生成结果中的主要数据：
-
-```cpp
-growth.value().mesh;              // 边界层体网格
-growth.value().farfield_boundary; // 最外层和原始 Farfield 表面
-growth.value().layer_vertices;    // 源顶点到各层体网格顶点的映射
-growth.value().vertices;          // 每个源顶点的请求值和接受层数
-growth.value().faces;             // 每个源面的层数、状态和停止原因
-```
-
-## 12. 常见问题
+## 11. 常见问题
 
 ### 12.1 提示 `failed to read CGNS surface`
 
@@ -502,7 +376,7 @@ BOUNDARY_MESH_ENABLE_CGNS_IO=ON
 
 并确认 `third/hdf5`、`third/cgns` 子模块已经初始化。
 
-## 13. 工程目录概览
+## 12. 工程目录概览
 
 ```text
 apps/            命令行主程序
