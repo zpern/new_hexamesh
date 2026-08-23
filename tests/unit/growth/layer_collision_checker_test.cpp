@@ -167,15 +167,38 @@ int main()
     }
     adjacent_step.previous_front_vertex_indices = {0, 1, 2, 3, 4, 5};
     adjacent_step.previous_front_face_indices = {0, 1};
+    adjacent_step.accepted_stopped_faces = {
+        {0, 2, 2, FaceStopReason::IsotropicHeightReached}};
     const auto adjacent_filtered =
         LayerCollisionChecker{}.filterSelfCollisions(
             adjacent,
             adjacent_step);
     if (!adjacent_filtered.hasValue() ||
         adjacent_filtered.value().next_front.faces.size() != 2 ||
-        !adjacent_filtered.value().stopped_faces.empty())
+        !adjacent_filtered.value().stopped_faces.empty() ||
+        adjacent_filtered.value().accepted_stopped_faces.size() != 1 ||
+        adjacent_filtered.value().accepted_stopped_faces.front().source_face_id !=
+            SurfaceFaceId{2})
     {
         return 1;
+    }
+
+    LayerStepResult colliding_isotropic = quality;
+    colliding_isotropic.accepted_stopped_faces = {
+        {0, 4, 2, FaceStopReason::IsotropicHeightReached}};
+    const auto colliding_filtered =
+        LayerCollisionChecker{}.filterAgainstObstacles(
+            obstacle_index.value(),
+            empty_history,
+            current,
+            colliding_isotropic);
+    if (!colliding_filtered.hasValue() ||
+        !colliding_filtered.value().accepted_stopped_faces.empty() ||
+        colliding_filtered.value().stopped_faces.size() != 1 ||
+        colliding_filtered.value().stopped_faces.front().reason !=
+            FaceStopReason::Collision)
+    {
+        return 2;
     }
 
     GrowthFront vertex_adjacent;

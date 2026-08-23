@@ -248,5 +248,74 @@ int main()
         }
     }
 
+    std::vector<SourceVertexGrowthProfile> isotropic_profiles;
+    for (const PatchVertex &vertex : patch.value().vertices())
+    {
+        isotropic_profiles.push_back(
+            {vertex.source_vertex_id, {0.1, 2.0, 4}});
+    }
+    RegularLayerGrowthOptions isotropic_options;
+    isotropic_options.isotropic_height = Scalar{0.12};
+    std::ostringstream isotropic_progress;
+    const auto isotropic_result = [&]
+    {
+        ScopedCoutRedirect redirect(isotropic_progress);
+        return generateRegularLayers(
+            surface,
+            topology.value(),
+            patch.value(),
+            front.value(),
+            isotropic_profiles,
+            isotropic_options);
+    }();
+    if (!isotropic_result.hasValue()) return 15;
+
+    const RegularLayerGrowthResult &isotropic_growth =
+        isotropic_result.value();
+    if (isotropic_growth.mesh.cells.size() != 3 ||
+        isotropic_growth.faces.size() != 2 ||
+        isotropic_growth.faces[0].accepted_layer_count != 1 ||
+        isotropic_growth.faces[0].status != FaceGrowthStatus::Stopped ||
+        isotropic_growth.faces[0].stop_reason !=
+            FaceStopReason::IsotropicHeightReached ||
+        isotropic_growth.faces[0].stop_layer != 2 ||
+        isotropic_growth.faces[1].accepted_layer_count != 2 ||
+        isotropic_growth.faces[1].status != FaceGrowthStatus::Stopped ||
+        isotropic_growth.faces[1].stop_reason !=
+            FaceStopReason::IsotropicHeightReached ||
+        isotropic_growth.faces[1].stop_layer != 3)
+    {
+        return 16;
+    }
+
+    const std::string expected_isotropic_progress =
+        "generate 1 boundarylayer\n"
+        "finish 1 boundarylayer. add 2 cell\n"
+        "generate 2 boundarylayer\n"
+        "finish 2 boundarylayer. add 1 cell\n";
+    if (isotropic_progress.str() != expected_isotropic_progress)
+    {
+        return 17;
+    }
+
+    bool found_triangle_interface = false;
+    bool found_hexa_interface = false;
+    for (const SurfaceBoundaryTag &tag :
+         isotropic_growth.farfield_boundary.face_tags)
+    {
+        if (tag.kind != SurfaceBoundaryKind::BoundaryLayerInterface)
+        {
+            continue;
+        }
+        found_triangle_interface =
+            found_triangle_interface || tag.region_id == 10;
+        found_hexa_interface =
+            found_hexa_interface || tag.region_id == 11;
+    }
+    if (!found_triangle_interface || !found_hexa_interface)
+    {
+        return 18;
+    }
+
     return 0;
 }

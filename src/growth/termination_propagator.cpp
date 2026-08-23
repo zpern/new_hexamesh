@@ -278,6 +278,18 @@ namespace boundary_mesh
             output.previous_front_face_indices.push_back(
                 step.previous_front_face_indices[face_index]);
         }
+        for (const FaceStopEvent &event :
+             step.accepted_stopped_faces)
+        {
+            if (std::find(
+                    output.next_front.source_face_ids.begin(),
+                    output.next_front.source_face_ids.end(),
+                    event.source_face_id) !=
+                output.next_front.source_face_ids.end())
+            {
+                output.accepted_stopped_faces.push_back(event);
+            }
+        }
         std::sort(
             output.stopped_faces.begin(),
             output.stopped_faces.end(),

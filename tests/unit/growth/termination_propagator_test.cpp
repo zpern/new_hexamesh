@@ -78,6 +78,23 @@ int main()
     assert(runtime.find(1)->allowed_layer_count == 5);
     assert(runtime.find(4)->allowed_layer_count == 6);
 
+    auto isotropic_runtime = initial.value();
+    const std::vector<FaceStopEvent> isotropic_stop{{
+        0, 2, 3, FaceStopReason::IsotropicHeightReached}};
+    const auto isotropic_changed =
+        propagator.value().applyDirectStops(
+            isotropic_runtime,
+            isotropic_stop,
+            1);
+    if (!isotropic_changed.hasValue() ||
+        isotropic_runtime.find(2)->allowed_layer_count != 2 ||
+        isotropic_runtime.find(1)->allowed_layer_count != 3 ||
+        isotropic_runtime.find(2)->direct_reason !=
+            FaceStopReason::IsotropicHeightReached)
+    {
+        return 1;
+    }
+
     auto filtering_constraints = initial.value();
     filtering_constraints.find(2)->allowed_layer_count = 4;
     filtering_constraints.find(2)->limit_kind =
@@ -95,6 +112,9 @@ int main()
         candidate_step.previous_front_vertex_indices[index] = index;
     }
     candidate_step.previous_front_face_indices = {0, 1, 2};
+    candidate_step.accepted_stopped_faces = {
+        {1, 2, 6, FaceStopReason::IsotropicHeightReached},
+        {2, 4, 6, FaceStopReason::IsotropicHeightReached}};
     const auto filtered = propagator.value().filterCandidates(
         front.value(), candidate_step, filtering_constraints);
     assert(filtered.hasValue());
@@ -104,4 +124,9 @@ int main()
     assert(filtered.value().stopped_faces.front().source_face_id == 2);
     assert(filtered.value().stopped_faces.front().reason ==
            FaceStopReason::NeighborLayerConstraint);
+    if (filtered.value().accepted_stopped_faces.size() != 1 ||
+        filtered.value().accepted_stopped_faces.front().source_face_id != 4)
+    {
+        return 2;
+    }
 }

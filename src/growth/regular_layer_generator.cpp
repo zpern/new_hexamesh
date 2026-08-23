@@ -194,6 +194,124 @@ namespace boundary_mesh
                 },
                 previous_face);
         }
+
+        std::vector<VertexId> faceVertexIds(
+            const SurfaceFace &face)
+        {
+            return std::visit(
+                [](const auto &value)
+                {
+                    return std::vector<VertexId>{
+                        value.vertex_ids.begin(),
+                        value.vertex_ids.end()};
+                },
+                face);
+        }
+
+        struct ContinuingFront
+        {
+            GrowthFront front;
+            std::vector<VertexId> global_vertex_ids;
+        };
+
+        Result<ContinuingFront, InvalidFaceConstraintState>
+        buildContinuingFront(
+            const LayerStepResult &step,
+            const std::vector<VertexId> &global_vertex_ids,
+            const FaceLayerConstraintTable &constraints)
+        {
+            using BuildResult =
+                Result<ContinuingFront, InvalidFaceConstraintState>;
+            if (step.next_front.vertices.size() !=
+                    global_vertex_ids.size() ||
+                step.next_front.faces.size() !=
+                    step.next_front.source_face_ids.size())
+            {
+                return BuildResult::failure({0, step.layer});
+            }
+
+            std::vector<bool> keep(
+                step.next_front.faces.size(), false);
+            std::vector<bool> used(
+                step.next_front.vertices.size(), false);
+            for (std::size_t face_index = 0;
+                 face_index < step.next_front.faces.size();
+                 ++face_index)
+            {
+                const SurfaceFaceId source_face_id =
+                    step.next_front.source_face_ids[face_index];
+                const FaceLayerConstraint *constraint =
+                    constraints.find(source_face_id);
+                if (constraint == nullptr)
+                {
+                    return BuildResult::failure(
+                        {source_face_id, step.layer});
+                }
+                keep[face_index] =
+                    constraint->allowed_layer_count > step.layer;
+                if (!keep[face_index])
+                {
+                    continue;
+                }
+                for (const VertexId vertex_id :
+                     faceVertexIds(step.next_front.faces[face_index]))
+                {
+                    const std::size_t vertex_index =
+                        static_cast<std::size_t>(vertex_id);
+                    if (vertex_index >= used.size())
+                    {
+                        return BuildResult::failure(
+                            {source_face_id, step.layer});
+                    }
+                    used[vertex_index] = true;
+                }
+            }
+
+            ContinuingFront output;
+            output.front.layer = step.layer;
+            std::vector<VertexId> remap(
+                step.next_front.vertices.size(), VertexId{});
+            for (std::size_t vertex_index = 0;
+                 vertex_index < step.next_front.vertices.size();
+                 ++vertex_index)
+            {
+                if (!used[vertex_index])
+                {
+                    continue;
+                }
+                remap[vertex_index] = static_cast<VertexId>(
+                    output.front.vertices.size());
+                output.front.vertices.push_back(
+                    step.next_front.vertices[vertex_index]);
+                output.global_vertex_ids.push_back(
+                    global_vertex_ids[vertex_index]);
+            }
+
+            for (std::size_t face_index = 0;
+                 face_index < step.next_front.faces.size();
+                 ++face_index)
+            {
+                if (!keep[face_index])
+                {
+                    continue;
+                }
+                output.front.faces.push_back(std::visit(
+                    [&](const auto &value) -> SurfaceFace
+                    {
+                        auto face = value;
+                        for (VertexId &vertex_id : face.vertex_ids)
+                        {
+                            vertex_id = remap[
+                                static_cast<std::size_t>(vertex_id)];
+                        }
+                        return face;
+                    },
+                    step.next_front.faces[face_index]));
+                output.front.source_face_ids.push_back(
+                    step.next_front.source_face_ids[face_index]);
+            }
+            return BuildResult::success(std::move(output));
+        }
     }
 
     Result<RegularLayerGrowthResult, RegularLayerGrowthError>
@@ -337,12 +455,30 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(quality_step.error());
             }
+            const auto isotropic_propagation =
+                propagator.applyDirectStops(
+                    constraints,
+                    quality_step.value().accepted_stopped_faces,
+                    options.max_neighbor_layer_difference);
+            if (!isotropic_propagation.hasValue())
+            {
+                return GrowthResult::failure(
+                    isotropic_propagation.error());
+            }
+            const auto isotropic_step = propagator.filterCandidates(
+                current_front,
+                quality_step.value(),
+                constraints);
+            if (!isotropic_step.hasValue())
+            {
+                return GrowthResult::failure(isotropic_step.error());
+            }
             const auto obstacle_step =
                 LayerCollisionChecker{}.filterAgainstObstacles(
                     original_collision.value(),
                     exposed_boundary,
                     current_front,
-                    quality_step.value());
+                    isotropic_step.value());
             if (!obstacle_step.hasValue())
             {
                 return GrowthResult::failure(
@@ -354,7 +490,7 @@ namespace boundary_mesh
                 constraints,
                 addedCollisionStops(
                     obstacle_step.value().stopped_faces,
-                    quality_step.value().stopped_faces),
+                    isotropic_step.value().stopped_faces),
                 options.max_neighbor_layer_difference);
             if (!obstacle_propagation.hasValue())
             {
@@ -550,6 +686,37 @@ namespace boundary_mesh
                         InvalidLayerFrontMapping{current_front.layer});
                 }
                 ++record->accepted_layer_count;
+
+                const FaceLayerConstraint *constraint =
+                    constraints.find(source_face_id);
+                if (constraint == nullptr)
+                {
+                    return GrowthResult::failure(
+                        InvalidFaceConstraintState{
+                            source_face_id,
+                            step.layer});
+                }
+                if (constraint->allowed_layer_count == step.layer)
+                {
+                    record->stop_layer = step.layer + 1;
+                    if (constraint->limit_kind ==
+                        FaceLayerLimitKind::Requested)
+                    {
+                        record->status = FaceGrowthStatus::Completed;
+                        record->stop_reason =
+                            FaceStopReason::VertexLayerLimit;
+                    }
+                    else
+                    {
+                        record->status = FaceGrowthStatus::Stopped;
+                        record->stop_reason =
+                            constraint->limit_kind ==
+                                    FaceLayerLimitKind::DirectStop
+                                ? constraint->direct_reason
+                                : FaceStopReason::
+                                      NeighborLayerConstraint;
+                    }
+                }
             }
             for (const FaceStopEvent &event : step.stopped_faces)
             {
@@ -578,8 +745,17 @@ namespace boundary_mesh
                 record->stop_layer = event.layer;
             }
 
-            current_front = step.next_front;
-            current_global_ids = std::move(next_global_ids);
+            const auto continuing = buildContinuingFront(
+                step,
+                next_global_ids,
+                constraints);
+            if (!continuing.hasValue())
+            {
+                return GrowthResult::failure(continuing.error());
+            }
+            current_front = continuing.value().front;
+            current_global_ids =
+                continuing.value().global_vertex_ids;
         }
 
         const auto farfield_boundary = buildFarfieldBoundary(

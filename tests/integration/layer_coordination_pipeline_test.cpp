@@ -214,6 +214,47 @@ namespace
         return true;
     }
 
+    bool runIsotropicPropagation(
+        RegularLayerGrowthResult &output)
+    {
+        SurfaceMesh mesh = makeQualityPair();
+        for (Point3 &point : mesh.vertices)
+        {
+            if (point.x() == Scalar{1})
+            {
+                point.x() = Scalar{0.5};
+            }
+        }
+        const auto topology = SurfaceTopologyBuilder{}.build(mesh);
+        if (!topology.hasValue()) return false;
+        const auto patch = GrowthPatchBuilder{}.build(
+            mesh, topology.value());
+        if (!patch.hasValue()) return false;
+        const auto front = GrowthFrontBuilder{}.buildInitial(
+            mesh, patch.value());
+        if (!front.hasValue()) return false;
+
+        std::vector<SourceVertexGrowthProfile> profiles;
+        for (const PatchVertex &vertex : patch.value().vertices())
+        {
+            profiles.push_back(
+                {vertex.source_vertex_id, {0.1, 1.0, 4}});
+        }
+        RegularLayerGrowthOptions options;
+        options.isotropic_height = Scalar{0.12};
+        options.max_neighbor_layer_difference = 0;
+        const auto result = generateRegularLayers(
+            mesh,
+            topology.value(),
+            patch.value(),
+            front.value(),
+            profiles,
+            options);
+        if (!result.hasValue()) return false;
+        output = result.value();
+        return true;
+    }
+
     bool sameFace(const SurfaceFace &first, const SurfaceFace &second)
     {
         return std::visit(
@@ -495,5 +536,28 @@ int main()
         !sameGrowthResult(layer_difference, reversed_profiles))
     {
         return 28;
+    }
+
+
+    RegularLayerGrowthResult isotropic_propagation;
+    if (!runIsotropicPropagation(isotropic_propagation)) return 29;
+    const FaceGrowthRecord *isotropic_direct = faceRecord(
+        isotropic_propagation, SurfaceFaceId{2});
+    const FaceGrowthRecord *isotropic_neighbor = faceRecord(
+        isotropic_propagation, SurfaceFaceId{3});
+    if (isotropic_direct == nullptr || isotropic_neighbor == nullptr ||
+        isotropic_direct->accepted_layer_count != 1 ||
+        isotropic_direct->status != FaceGrowthStatus::Stopped ||
+        isotropic_direct->stop_reason !=
+            FaceStopReason::IsotropicHeightReached ||
+        isotropic_direct->stop_layer != 2 ||
+        isotropic_neighbor->accepted_layer_count != 1 ||
+        isotropic_neighbor->status != FaceGrowthStatus::Stopped ||
+        isotropic_neighbor->stop_reason !=
+            FaceStopReason::NeighborLayerConstraint ||
+        isotropic_neighbor->stop_layer != 2 ||
+        isotropic_propagation.mesh.cells.size() != 2)
+    {
+        return 30;
     }
 }
