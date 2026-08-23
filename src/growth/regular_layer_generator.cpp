@@ -47,6 +47,22 @@ namespace boundary_mesh
             return true;
         }
 
+        bool hasLayerAttempt(
+            const GrowthFront &front,
+            const FaceLayerConstraintTable &constraints)
+        {
+            return std::any_of(
+                front.source_face_ids.begin(),
+                front.source_face_ids.end(),
+                [&](const SurfaceFaceId source_face_id)
+                {
+                    const FaceLayerConstraint *constraint =
+                        constraints.find(source_face_id);
+                    return constraint != nullptr &&
+                           front.layer < constraint->allowed_layer_count;
+                });
+        }
+
         LayerVertexRecord *findLayerRecord(
             LayerVertexTable &records,
             VertexId source_vertex_id)
@@ -288,11 +304,16 @@ namespace boundary_mesh
         {
             const std::uint32_t target_layer =
                 current_front.layer + 1;
-            std::cout
-                << "generate "
-                << target_layer
-                << " boundarylayer"
-                << std::endl;
+            const bool report_layer =
+                hasLayerAttempt(current_front, constraints);
+            if (report_layer)
+            {
+                std::cout
+                    << "generate "
+                    << target_layer
+                    << " boundarylayer"
+                    << std::endl;
+            }
 
             const auto step_result = RegularLayerStepper{}.step(
                 current_front, profile_table, constraints, options);
@@ -488,13 +509,16 @@ namespace boundary_mesh
                 new_metadata.end());
             exposed_boundary.apply(boundary_update.value());
 
-            std::cout
-                << "finish "
-                << step.layer
-                << " boundarylayer. add "
-                << new_cells.size()
-                << " cell"
-                << std::endl;
+            if (report_layer)
+            {
+                std::cout
+                    << "finish "
+                    << step.layer
+                    << " boundarylayer. add "
+                    << new_cells.size()
+                    << " cell"
+                    << std::endl;
+            }
 
             for (std::size_t index = 0;
                  index < step.next_front.vertices.size();

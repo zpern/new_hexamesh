@@ -147,9 +147,7 @@ int main()
         "generate 1 boundarylayer\n"
         "finish 1 boundarylayer. add 2 cell\n"
         "generate 2 boundarylayer\n"
-        "finish 2 boundarylayer. add 2 cell\n"
-        "generate 3 boundarylayer\n"
-        "finish 3 boundarylayer. add 0 cell\n";
+        "finish 2 boundarylayer. add 2 cell\n";
     if (progress_output.str() != expected_progress)
     {
         std::cerr
