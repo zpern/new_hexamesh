@@ -28,7 +28,8 @@ namespace boundary_mesh
         LocallyInvertedCandidate, // 候选单元局部翻转
         SkewnessExceeded,         // 候选单元偏斜度超过阈值
         Collision,               // 候选单元发生非法几何接触
-        NeighborLayerConstraint  // 因共享边邻域层数上限传播而提前停止
+        NeighborLayerConstraint, // 因共享边邻域层数上限传播而提前停止
+        IsotropicHeightReached   // 当前单元已接受，达到各向同性阈值后停止
     };
 
     struct FaceStopEvent
@@ -46,6 +47,7 @@ namespace boundary_mesh
         std::vector<std::size_t> previous_front_vertex_indices; // 下一层局部点到上一层局部点
         std::vector<std::size_t> previous_front_face_indices; // 下一层局部面到上一层局部面
         std::vector<FaceStopEvent> stopped_faces; // 质量不合格的源面
+        std::vector<FaceStopEvent> accepted_stopped_faces; // 当前单元已接受、但不再进入后续层的源面
         std::vector<FaceStopEvent> completed_faces; // 达到层数上限的源面
     };
 
@@ -77,6 +79,7 @@ namespace boundary_mesh
     {
         VolumeCellQualityOptions cell_quality; // 阶段 04 的候选单元质量参数
         std::uint32_t max_neighbor_layer_difference{1}; // 共享边两侧最大允许层数差
+        Scalar isotropic_height{1}; // 平均侧边长度与底面尺度之比的停止阈值
     };
 
     struct RegularLayerGrowthResult

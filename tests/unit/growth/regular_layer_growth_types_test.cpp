@@ -43,10 +43,21 @@ int main()
         !step.previous_front_vertex_indices.empty() ||
         !step.previous_front_face_indices.empty() ||
         !step.stopped_faces.empty() ||
+        !step.accepted_stopped_faces.empty() ||
         !step.completed_faces.empty())
     {
         return 4;
     }
+
+    const RegularLayerGrowthOptions options;
+    if (options.isotropic_height != Scalar{1})
+    {
+        return 5;
+    }
+
+    static_assert(
+        static_cast<std::size_t>(
+            FaceStopReason::IsotropicHeightReached) == 8);
 
     return 0;
 }

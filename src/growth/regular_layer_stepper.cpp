@@ -37,6 +37,26 @@ namespace boundary_mesh
                 face);
         }
 
+        template <class Face>
+        Scalar averageSideLength(
+            const Face &face,
+            const GrowthFront &bottom,
+            const GrowthFront &top)
+        {
+            Scalar total = Scalar{0};
+            for (const VertexId vertex_id : face.vertex_ids)
+            {
+                const std::size_t vertex_index =
+                    static_cast<std::size_t>(vertex_id);
+                total +=
+                    (top.vertices[vertex_index].position -
+                     bottom.vertices[vertex_index].position)
+                        .norm();
+            }
+            return total /
+                static_cast<Scalar>(face.vertex_ids.size());
+        }
+
         bool validFrontShape(const GrowthFront &front)
         {
             if (front.faces.size() != front.source_face_ids.size())
@@ -147,6 +167,13 @@ namespace boundary_mesh
     {
         using StepResult =
             Result<LayerStepResult, RegularLayerGrowthError>;
+
+        if (!std::isfinite(options.isotropic_height) ||
+            options.isotropic_height <= Scalar{0})
+        {
+            return StepResult::failure(
+                InvalidIsotropicHeight{options.isotropic_height});
+        }
 
         if (!validFrontShape(current_front) ||
             current_front.layer ==
@@ -403,6 +430,30 @@ namespace boundary_mesh
             if (quality.value().acceptable)
             {
                 accepted_eligible_faces.push_back(eligible_face_index);
+                const Scalar current_base_area =
+                    front_evaluation.value()
+                        .faces[eligible_face_index]
+                        .value.area;
+                const Scalar isotropic_ratio = std::visit(
+                    [&](const auto &face)
+                    {
+                        return averageSideLength(
+                                   face,
+                                   eligible.front,
+                                   candidate_front) /
+                               std::sqrt(current_base_area);
+                    },
+                    eligible.front.faces[eligible_face_index]);
+                if (isotropic_ratio >= options.isotropic_height)
+                {
+                    output.accepted_stopped_faces.push_back(
+                        FaceStopEvent{
+                            previous_face_index,
+                            current_front.source_face_ids[
+                                previous_face_index],
+                            target_layer + 1,
+                            FaceStopReason::IsotropicHeightReached});
+                }
             }
             else
             {

@@ -1,3 +1,5 @@
+#include <array>
+#include <limits>
 #include <variant>
 #include <vector>
 
@@ -146,6 +148,32 @@ int main()
         !sameFront(front, front_before))
     {
         return 7;
+    }
+
+    const std::array<Scalar, 4> invalid_isotropic_heights{
+        Scalar{0},
+        Scalar{-1},
+        std::numeric_limits<Scalar>::quiet_NaN(),
+        std::numeric_limits<Scalar>::infinity()};
+    for (const Scalar value : invalid_isotropic_heights)
+    {
+        RegularLayerGrowthOptions options;
+        options.isotropic_height = value;
+        const auto failure = generateRegularLayers(
+            mesh,
+            topology.value(),
+            patch.value(),
+            front,
+            profiles,
+            options);
+        const auto *isotropic_error = failure.hasValue()
+            ? nullptr
+            : std::get_if<InvalidIsotropicHeight>(&failure.error());
+        if (isotropic_error == nullptr ||
+            !sameFront(front, front_before))
+        {
+            return 8;
+        }
     }
 
     return 0;

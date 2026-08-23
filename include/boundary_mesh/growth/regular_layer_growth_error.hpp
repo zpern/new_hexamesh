@@ -71,6 +71,11 @@ namespace boundary_mesh
         std::uint32_t layer{}; // 发现错误时的目标层号
     };
 
+    struct InvalidIsotropicHeight
+    {
+        Scalar value{}; // 非有限或非正的各向同性停止阈值
+    };
+
     using RegularLayerGrowthError = std::variant<
         GrowthProfileFailure,
         FrontEvaluationFailure,
@@ -82,5 +87,6 @@ namespace boundary_mesh
         VolumeVertexIdOverflow,
         CollisionInitializationFailure,
         CollisionStateFailure,
-        InvalidFaceConstraintState>; // 规则层生成过程中可诊断的程序级错误
+        InvalidFaceConstraintState,
+        InvalidIsotropicHeight>; // 规则层生成过程中可诊断的程序级错误
 }

@@ -158,6 +158,7 @@ int main()
         layer.previous_front_face_indices !=
             std::vector<std::size_t>{0} ||
         !layer.stopped_faces.empty() ||
+        !layer.accepted_stopped_faces.empty() ||
         !layer.completed_faces.empty())
     {
         return 6;
@@ -199,6 +200,46 @@ int main()
         quality.value().validity != VolumeCellValidity::Valid)
     {
         return 9;
+    }
+
+    RegularLayerGrowthOptions equal_isotropic_options;
+    equal_isotropic_options.isotropic_height =
+        Scalar{0.25} / std::sqrt(Scalar{0.5});
+    const auto equal_isotropic_step = RegularLayerStepper{}.step(
+        front.value(),
+        profiles.value(),
+        buildFaceLayerConstraints(
+            patch.value(), front.value(), profiles.value()).value(),
+        equal_isotropic_options);
+    if (!equal_isotropic_step.hasValue() ||
+        equal_isotropic_step.value().next_front.faces.size() != 1 ||
+        equal_isotropic_step.value().accepted_stopped_faces.size() != 1 ||
+        equal_isotropic_step.value().accepted_stopped_faces[0].layer != 2 ||
+        equal_isotropic_step.value().accepted_stopped_faces[0].reason !=
+            FaceStopReason::IsotropicHeightReached)
+    {
+        return 41;
+    }
+
+    GrowthFront scaled_front = front.value();
+    for (GrowthFrontVertex &vertex : scaled_front.vertices)
+    {
+        vertex.position.x() *= Scalar{2};
+        vertex.position.y() *= Scalar{2};
+    }
+    RegularLayerGrowthOptions dynamic_area_options;
+    dynamic_area_options.isotropic_height = Scalar{0.25};
+    const auto dynamic_area_step = RegularLayerStepper{}.step(
+        scaled_front,
+        profiles.value(),
+        buildFaceLayerConstraints(
+            patch.value(), front.value(), profiles.value()).value(),
+        dynamic_area_options);
+    if (!dynamic_area_step.hasValue() ||
+        dynamic_area_step.value().next_front.faces.size() != 1 ||
+        !dynamic_area_step.value().accepted_stopped_faces.empty())
+    {
+        return 42;
     }
 
     const SurfaceMesh hexa_mesh = makeHexaWithTopWall();
@@ -250,6 +291,25 @@ int main()
         hexa_quality.value().validity != VolumeCellValidity::Valid)
     {
         return 16;
+    }
+
+    RegularLayerGrowthOptions hexa_isotropic_options;
+    hexa_isotropic_options.isotropic_height = Scalar{0.5};
+    const auto hexa_isotropic_step = RegularLayerStepper{}.step(
+        hexa_front.value(),
+        hexa_profiles.value(),
+        buildFaceLayerConstraints(
+            hexa_patch.value(),
+            hexa_front.value(),
+            hexa_profiles.value()).value(),
+        hexa_isotropic_options);
+    if (!hexa_isotropic_step.hasValue() ||
+        hexa_isotropic_step.value().next_front.faces.size() != 1 ||
+        hexa_isotropic_step.value().accepted_stopped_faces.size() != 1 ||
+        hexa_isotropic_step.value().accepted_stopped_faces[0].reason !=
+            FaceStopReason::IsotropicHeightReached)
+    {
+        return 43;
     }
 
     const SurfaceMesh mixed_mesh = makeDisconnectedMixedWallMesh();
