@@ -17,7 +17,12 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompileOptions.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake")
 
 
-add_library(boundary_mesh_core STATIC src/mesh/surface_topology_builder.cpp)
+add_library(
+    boundary_mesh_core
+    STATIC
+        src/mesh/surface_topology_builder.cpp
+        src/mesh/surface_orientation.cpp
+)
 add_library(BoundaryMesh::Core ALIAS boundary_mesh_core)
 
 target_compile_features(boundary_mesh_core PUBLIC cxx_std_17)
