@@ -46,6 +46,22 @@ int main()
     expect_argument_error({
         "--input", "a.cgns", "--first-height", "0.1",
         "--growth-ratio", "1", "--layer-count", "4294967296"});
+    expect_argument_error({
+        "--input", "a.cgns", "--first-height", "0.1",
+        "--growth-ratio", "1", "--layer-count", "1",
+        "--isotropic-height", "0"});
+    expect_argument_error({
+        "--input", "a.cgns", "--first-height", "0.1",
+        "--growth-ratio", "1", "--layer-count", "1",
+        "--isotropic-height", "-1"});
+    expect_argument_error({
+        "--input", "a.cgns", "--first-height", "0.1",
+        "--growth-ratio", "1", "--layer-count", "1",
+        "--isotropic-height", "nan"});
+    expect_argument_error({
+        "--input", "a.cgns", "--first-height", "0.1",
+        "--growth-ratio", "1", "--layer-count", "1",
+        "--isotropic-height", "inf"});
 
     const auto directory =
         std::filesystem::temp_directory_path() /
@@ -78,6 +94,11 @@ int main()
            std::string::npos);
     assert(output.str().find("max_neighbor_layer_difference=1") !=
            std::string::npos);
+    if (output.str().find("isotropic_height=1") ==
+        std::string::npos)
+    {
+        return 20;
+    }
     assert(output.str().find("stop_none=") != std::string::npos);
     assert(output.str().find("stop_vertex_layer_limit=") !=
            std::string::npos);
@@ -92,6 +113,32 @@ int main()
     assert(output.str().find("stop_collision=") != std::string::npos);
     assert(output.str().find("stop_neighbor_layer_constraint=") !=
            std::string::npos);
+    if (output.str().find("stop_isotropic_height=") ==
+        std::string::npos)
+    {
+        return 21;
+    }
+
+    const auto isotropic_prefix = directory / "output" / "cube-isotropic";
+    const std::vector<std::string> isotropic_arguments{
+        "--input", input.string(),
+        "--first-height", "0.1",
+        "--growth-ratio", "1.0",
+        "--layer-count", "1",
+        "--isotropic-height", "0.75",
+        "--output-prefix", isotropic_prefix.string()};
+    std::ostringstream isotropic_output;
+    std::ostringstream isotropic_error;
+    if (boundary_mesh::runBoundaryMeshCommand(
+            isotropic_arguments,
+            isotropic_output,
+            isotropic_error) != 0 ||
+        !isotropic_error.str().empty() ||
+        isotropic_output.str().find("isotropic_height=0.75") ==
+            std::string::npos)
+    {
+        return 22;
+    }
 
     const auto volume_path =
         std::filesystem::path(prefix.string() + "_boundary_layer.vtk");
