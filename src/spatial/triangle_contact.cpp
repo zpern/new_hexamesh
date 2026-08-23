@@ -666,6 +666,8 @@ namespace boundary_mesh
         struct LocalSharedKeys
         {
             std::size_t count{};
+            std::array<std::size_t, 3> first_indices{};
+            std::array<std::size_t, 3> second_indices{};
         };
 
         LocalSharedKeys localSharedKeys(
@@ -685,12 +687,46 @@ namespace boundary_mesh
                             first.vertex_keys[first_index],
                             second.vertex_keys[second_index]))
                     {
+                        result.first_indices[result.count] = first_index;
+                        result.second_indices[result.count] = second_index;
                         ++result.count;
                         break;
                     }
                 }
             }
             return result;
+        }
+
+        bool oppositeEdgeIntersectsTriangle(
+            const CollisionTriangle &edge_source,
+            std::size_t shared_vertex,
+            const CollisionTriangle &target)
+        {
+            double line[2][3];
+            double face[3][3];
+            const std::size_t first = (shared_vertex + 1) % 3;
+            const std::size_t second = (shared_vertex + 2) % 3;
+            for (std::size_t axis = 0; axis < 3; ++axis)
+            {
+                line[0][axis] = edge_source.points[first][axis];
+                line[1][axis] = edge_source.points[second][axis];
+                for (std::size_t corner = 0; corner < 3; ++corner)
+                {
+                    face[corner][axis] = target.points[corner][axis];
+                }
+            }
+
+            int intersection_type{};
+            int intersection_code{};
+            double intersection_point[3]{};
+            bool epsilon = false;
+            return TiGER_GEOM_FUNC::lin_tri_intersect3d(
+                       line,
+                       face,
+                       &intersection_type,
+                       &intersection_code,
+                       intersection_point,
+                       epsilon) != 0;
         }
 
     }
@@ -793,9 +829,14 @@ namespace boundary_mesh
             feature.kind != SharedFeatureKind::None)
         {
             return Result<bool, SpatialError>::success(
-                evidence.value().kind != TriangleContactKind::VertexTouch &&
-                !(feature.kind == SharedFeatureKind::Segment &&
-                  evidence.value().kind == TriangleContactKind::EdgeTouch));
+                oppositeEdgeIntersectsTriangle(
+                    first,
+                    shared.first_indices[0],
+                    second) ||
+                oppositeEdgeIntersectsTriangle(
+                    second,
+                    shared.second_indices[0],
+                    first));
         }
         if (shared.count == 2 &&
             feature.kind == SharedFeatureKind::Segment)

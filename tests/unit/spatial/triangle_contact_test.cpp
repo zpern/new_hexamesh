@@ -293,4 +293,54 @@ int main()
         {{{40, 1}, {41, 1}, {43, 0}, {}}},
         3);
     assert(!hasIllegalTriangleContact(oblique_edge_a, oblique_edge_b).value());
+
+    const std::array<Point3, 4> stable_side_points{{
+        {277.05828857421875,
+         -8.6681995391845703,
+         5.5710625648498535},
+        {277.06350708007812,
+         -1.3930141855493061e-15,
+         -5.0188627243041992},
+        {277.06400608917522,
+         -5.7471709895226817e-07,
+         -5.0188941820653712},
+        {277.05878806531337,
+         -8.6682017197777892,
+         5.5710850123761118}}};
+    const std::array<CollisionVertexKey, 4> stable_side_keys{{
+        {470, 0}, {471, 0}, {471, 1}, {470, 1}}};
+    const CollisionTriangle stable_side_split = makeCollisionTriangle(
+        {{stable_side_points[0],
+          stable_side_points[1],
+          stable_side_points[2]}},
+        {{stable_side_keys[0],
+          stable_side_keys[1],
+          stable_side_keys[2]}},
+        stable_side_points,
+        stable_side_keys,
+        4);
+    const TrianglePoints stable_source_points{{
+        stable_side_points[1],
+        {277.05831909179688,
+         -8.6283016204833984,
+         -9.9756555557250977},
+        {277.06350708007812,
+         -4.1445868445403895e-15,
+         -14.93244743347168}}};
+    const CollisionTriangle stable_source_triangle = makeCollisionTriangle(
+        stable_source_points,
+        {{{471, 0}, {44368, 0}, {472, 0}}},
+        {{stable_source_points[0],
+          stable_source_points[1],
+          stable_source_points[2],
+          Point3{}}},
+        {{{471, 0}, {44368, 0}, {472, 0}, {}}},
+        3);
+    if (hasIllegalTriangleContact(
+            stable_side_split,
+            stable_source_triangle)
+            .value())
+    {
+        return 1;
+    }
 }

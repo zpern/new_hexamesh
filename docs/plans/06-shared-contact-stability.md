@@ -29,7 +29,7 @@
 - Consumes: `hasIllegalTriangleContact(const CollisionTriangle &, const CollisionTriangle &)`
 - Produces: 合法局部单 key 接触和非共享对边穿插的回归断言
 
-- [ ] **Step 1: 增加合法邻接 RED 用例**
+- [x] **Step 1: 增加合法邻接 RED 用例**
 
 构造两个完整边界面共享 `CollisionVertexKey{50, 1}` 与 `{51, 1}`，但当前两个拆分三角形只共同包含 `{50, 1}`。使用非轴对齐大坐标和 `0.001` 层高，使两个三角形只在允许公共特征内接触：
 
@@ -58,7 +58,9 @@ assert(!hasIllegalTriangleContact(stable_top, stable_side_split).value());
 
 若该几何被 TiGER 判为分离而不能触发旧错误，只允许调整 `side_lower` 和 `top_other` 的非共享坐标，保持完整边界共享 key、局部单共享 key 和 `0.001` 尺度不变，直到当前实现稳定返回非法。
 
-- [ ] **Step 2: 增加真实越界保护用例**
+实际执行时，初始合成坐标没有触发误判，因此从 `2dot5_cf` 捕获完整 double 精度的合法候选侧面—源面共享顶点夹具（源 key 470/471/472），当前实现稳定返回非法。
+
+- [x] **Step 2: 增加真实越界保护用例**
 
 复制合法用例，移动 `side_lower` 使其非共享对边穿过 `stable_top` 内部：
 
@@ -71,7 +73,9 @@ stable_side_cross.points[2] =
 assert(hasIllegalTriangleContact(stable_top, stable_side_cross).value());
 ```
 
-- [ ] **Step 3: 运行 RED**
+实际执行复用了同文件既有 `shared_vertex_cross` 非共享对边穿插用例；它在修复前后均返回非法。
+
+- [x] **Step 3: 运行 RED**
 
 ```powershell
 cmake --build build --config Debug --target boundary_mesh_spatial_triangle_contact_test
@@ -90,7 +94,7 @@ ctest --test-dir build -C Debug -R "^boundary_mesh_spatial_triangle_contact_test
 - Consumes: 两个 `CollisionTriangle`、局部共享 key 的双方顶点索引
 - Produces: `oppositeEdgeIntersectsTriangle(...)` 私有辅助函数和稳定的合法接触判断
 
-- [ ] **Step 1: 扩展局部共享 key 结果**
+- [x] **Step 1: 扩展局部共享 key 结果**
 
 将私有 `LocalSharedKeys` 扩展为：
 
@@ -105,7 +109,7 @@ struct LocalSharedKeys
 
 `localSharedKeys(...)` 每发现一个相同 key，就保存双方局部索引后增加 `count`。
 
-- [ ] **Step 2: 增加非共享对边检测**
+- [x] **Step 2: 增加非共享对边检测**
 
 在 `triangle_contact.cpp` 私有命名空间内增加：
 
@@ -142,7 +146,7 @@ bool oppositeEdgeIntersectsTriangle(
 }
 ```
 
-- [ ] **Step 3: 替换局部单 key 的重建交点判断**
+- [x] **Step 3: 替换局部单 key 的重建交点判断**
 
 在 `hasIllegalTriangleContact(const CollisionTriangle &, ...)` 中保留 `Disjoint`、完整共享面和双 key 公共边分支。对 `shared.count == 1 && feature.kind != SharedFeatureKind::None` 改为：
 
@@ -156,7 +160,7 @@ return Result<bool, SpatialError>::success(
 
 只有非共享对边进入另一个三角形才判为非法；公共点或公共边内部的接触不依赖重建交点的严格共线判断。
 
-- [ ] **Step 4: 运行目标 GREEN**
+- [x] **Step 4: 运行目标 GREEN**
 
 ```powershell
 cmake --build build --config Debug --target boundary_mesh_spatial_triangle_contact_test boundary_mesh_spatial_collision_index_test boundary_mesh_layer_collision_checker_test
@@ -165,7 +169,7 @@ ctest --test-dir build -C Debug -R "boundary_mesh_(spatial_(triangle_contact|col
 
 预期：三项专项测试全部通过。
 
-- [ ] **Step 5: 提交稳定接触实现**
+- [x] **Step 5: 提交稳定接触实现**
 
 ```powershell
 git add src/spatial/triangle_contact.cpp tests/unit/spatial/triangle_contact_test.cpp docs/plans/06-shared-contact-stability.md
