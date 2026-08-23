@@ -188,7 +188,7 @@ git commit -m "fix: stabilize shared collision contacts"
 - Consumes: 修正后的 Release CLI
 - Produces: 一层双高度对照、十层单元统计和 VTK 完整性证据
 
-- [ ] **Step 1: 运行 Debug 和 Release 全量回归**
+- [x] **Step 1: 运行 Debug 和 Release 全量回归**
 
 ```powershell
 cmake --build build --config Debug -- /m:1
@@ -199,21 +199,21 @@ ctest --test-dir build -C Release --output-on-failure
 
 预期：两个配置均为 47/47 通过。
 
-- [ ] **Step 2: 运行首层双高度对照**
+- [x] **Step 2: 运行首层双高度对照**
 
 分别以 `--first-height 0.1` 和 `--first-height 0.001`、`--layer-count 1` 运行 CLI。记录 `volume_cells`、`stop_collision` 及其他停止原因。
 
 验收：高度缩小 100 倍后，`stop_collision` 不得从 17,705 上升到 39,705；两个高度下的合法邻接误停均应显著低于修复前。
 
-- [ ] **Step 3: 运行十层案例**
+- [x] **Step 3: 运行十层案例**
 
 使用 `first_height=0.1`、`growth_ratio=1.0`、`layer_count=10`、`maximum_skewness=0.95`、`max_neighbor_layer_difference=1`。记录每层新增体单元、总 `volume_cells`、`farfield_faces` 和停止原因。
 
-- [ ] **Step 4: 检查 VTK**
+- [x] **Step 4: 检查 VTK**
 
 确认边界层与远场 VTK 均包含 `POINTS`、`CELLS`、`CELL_TYPES`，且数值中没有 NaN/Inf。
 
-- [ ] **Step 5: 更新设计实测结果并提交**
+- [x] **Step 5: 更新设计实测结果并提交**
 
 将修复后双高度和十层实测结果追加到 `docs/design/modules/collision-shared-contact-stability.md`，然后：
 
