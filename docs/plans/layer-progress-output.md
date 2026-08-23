@@ -32,13 +32,15 @@
 
 - [ ] **Step 1: 写失败测试**
 
-在测试中引入 `<iostream>`、`<sstream>`、`<string>`，把第一次 `generateRegularLayers(...)` 调用包在 `std::cout.rdbuf()` 重定向中，并在调用后恢复原缓冲区。断言捕获文本等于：
+在测试中引入 `<iostream>`、`<sstream>`、`<string>`，把第一次 `generateRegularLayers(...)` 调用包在 `std::cout.rdbuf()` 重定向中，并在调用后恢复原缓冲区。两个有效生长层之后还会执行一次零单元终止轮次，断言捕获文本等于：
 
 ```text
 generate 1 boundarylayer
 finish 1 boundarylayer. add 2 cell
 generate 2 boundarylayer
 finish 2 boundarylayer. add 2 cell
+generate 3 boundarylayer
+finish 3 boundarylayer. add 0 cell
 ```
 
 使用 RAII 辅助对象恢复 `std::cout`，避免测试提前返回时污染进程输出。
@@ -138,4 +140,3 @@ git commit -m "feat: report boundary layer progress"
 - [ ] **Step 2: 检查生成物**
 
 记录每层 `add X cell`、最终 `volume_cells`、`farfield_faces` 和各停止原因；检查两个 VTK 的 `POINTS`、`CELLS`、`CELL_TYPES`，并确认文本中不存在 `nan` 或 `inf` 数值。
-

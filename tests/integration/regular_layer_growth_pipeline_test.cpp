@@ -1,4 +1,7 @@
 #include <cstddef>
+#include <iostream>
+#include <sstream>
+#include <string>
 #include <type_traits>
 #include <variant>
 #include <vector>
@@ -11,6 +14,26 @@
 namespace
 {
     using namespace boundary_mesh;
+
+    class ScopedCoutRedirect
+    {
+    public:
+        explicit ScopedCoutRedirect(std::ostringstream &output)
+            : original_(std::cout.rdbuf(output.rdbuf()))
+        {
+        }
+
+        ~ScopedCoutRedirect()
+        {
+            std::cout.rdbuf(original_);
+        }
+
+        ScopedCoutRedirect(const ScopedCoutRedirect &) = delete;
+        ScopedCoutRedirect &operator=(const ScopedCoutRedirect &) = delete;
+
+    private:
+        std::streambuf *original_;
+    };
 
     SurfaceMesh makeMixedMesh()
     {
@@ -107,13 +130,34 @@ int main()
             {vertex.source_vertex_id, {0.1, 2.0, 2}});
     }
 
-    const auto result = generateRegularLayers(
-        surface,
-        topology.value(),
-        patch.value(),
-        front.value(),
-        profiles);
+    std::ostringstream progress_output;
+    const auto result = [&]
+    {
+        ScopedCoutRedirect redirect(progress_output);
+        return generateRegularLayers(
+            surface,
+            topology.value(),
+            patch.value(),
+            front.value(),
+            profiles);
+    }();
     if (!result.hasValue()) return 4;
+
+    const std::string expected_progress =
+        "generate 1 boundarylayer\n"
+        "finish 1 boundarylayer. add 2 cell\n"
+        "generate 2 boundarylayer\n"
+        "finish 2 boundarylayer. add 2 cell\n"
+        "generate 3 boundarylayer\n"
+        "finish 3 boundarylayer. add 0 cell\n";
+    if (progress_output.str() != expected_progress)
+    {
+        std::cerr
+            << "Unexpected progress output:\n"
+            << progress_output.str();
+        return 14;
+    }
+
     const RegularLayerGrowthResult &growth = result.value();
 
     if (growth.mesh.vertices.size() != 21 ||

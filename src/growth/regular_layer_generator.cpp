@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <type_traits>
@@ -285,6 +286,14 @@ namespace boundary_mesh
         ExposedBoundaryTracker exposed_boundary;
         while (!current_front.faces.empty())
         {
+            const std::uint32_t target_layer =
+                current_front.layer + 1;
+            std::cout
+                << "generate "
+                << target_layer
+                << " boundarylayer"
+                << std::endl;
+
             const auto step_result = RegularLayerStepper{}.step(
                 current_front, profile_table, constraints, options);
             if (!step_result.hasValue())
@@ -478,6 +487,14 @@ namespace boundary_mesh
                 new_metadata.begin(),
                 new_metadata.end());
             exposed_boundary.apply(boundary_update.value());
+
+            std::cout
+                << "finish "
+                << step.layer
+                << " boundarylayer. add "
+                << new_cells.size()
+                << " cell"
+                << std::endl;
 
             for (std::size_t index = 0;
                  index < step.next_front.vertices.size();
