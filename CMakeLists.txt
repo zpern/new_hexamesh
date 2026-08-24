@@ -134,6 +134,7 @@ add_library(
         src/growth/incident_face_fan.cpp
         src/growth/multi_normal_split_planner.cpp
         src/growth/multi_normal_topology_builder.cpp
+        src/growth/multi_normal_transition_builder.cpp
         src/growth/front_evaluator.cpp
         src/growth/growth_direction.cpp
         src/growth/growth_field_smoother.cpp
