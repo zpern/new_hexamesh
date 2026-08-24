@@ -737,3 +737,16 @@ add_test(
     NAME boundary_mesh_triangle_transition_template_test
     COMMAND boundary_mesh_triangle_transition_template_test
 )
+
+add_executable(
+    boundary_mesh_quad_hexa_decomposition_test
+    unit/transition/quad_hexa_decomposition_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_quad_hexa_decomposition_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_quad_hexa_decomposition_test
+    COMMAND boundary_mesh_quad_hexa_decomposition_test
+)
