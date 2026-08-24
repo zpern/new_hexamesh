@@ -317,5 +317,74 @@ int main()
         return 18;
     }
 
+    SurfaceMesh zero_layer_surface = makeMixedMesh();
+    zero_layer_surface.vertices[12].y() = Scalar{0.2};
+    const auto zero_layer_topology =
+        SurfaceTopologyBuilder{}.build(zero_layer_surface);
+    if (!zero_layer_topology.hasValue()) return 19;
+    const auto zero_layer_patch = GrowthPatchBuilder{}.build(
+        zero_layer_surface,
+        zero_layer_topology.value());
+    if (!zero_layer_patch.hasValue()) return 20;
+    const auto zero_layer_front = GrowthFrontBuilder{}.buildInitial(
+        zero_layer_surface,
+        zero_layer_patch.value());
+    if (!zero_layer_front.hasValue()) return 21;
+
+    std::vector<SourceVertexGrowthProfile> zero_layer_profiles;
+    for (const PatchVertex &vertex : zero_layer_patch.value().vertices())
+    {
+        zero_layer_profiles.push_back(
+            {vertex.source_vertex_id, {0.1, 1.0, 1}});
+    }
+    RegularLayerGrowthOptions zero_layer_options;
+    zero_layer_options.cell_quality.maximum_skewness = Scalar{0.1};
+    std::ostringstream zero_layer_progress;
+    const auto zero_layer_result = [&]
+    {
+        ScopedCoutRedirect redirect(zero_layer_progress);
+        return generateRegularLayers(
+            zero_layer_surface,
+            zero_layer_topology.value(),
+            zero_layer_patch.value(),
+            zero_layer_front.value(),
+            zero_layer_profiles,
+            zero_layer_options);
+    }();
+    if (!zero_layer_result.hasValue()) return 22;
+
+    const RegularLayerGrowthResult &zero_growth =
+        zero_layer_result.value();
+    if (!zero_growth.mesh.cells.empty() ||
+        zero_growth.faces.size() != 2 ||
+        zero_growth.faces[0].accepted_layer_count != 0 ||
+        zero_growth.faces[1].accepted_layer_count != 0)
+    {
+        return 23;
+    }
+
+    std::size_t interface_count = 0;
+    bool triangle_region_found = false;
+    bool quad_region_found = false;
+    for (const SurfaceBoundaryTag &tag :
+         zero_growth.farfield_boundary.face_tags)
+    {
+        if (tag.kind != SurfaceBoundaryKind::BoundaryLayerInterface)
+        {
+            continue;
+        }
+        ++interface_count;
+        triangle_region_found =
+            triangle_region_found || tag.region_id == 10;
+        quad_region_found =
+            quad_region_found || tag.region_id == 11;
+    }
+    if (interface_count != 2 ||
+        !triangle_region_found ||
+        !quad_region_found)
+    {
+        return 24;
+    }
+
     return 0;
 }

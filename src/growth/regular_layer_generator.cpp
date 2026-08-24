@@ -758,8 +758,19 @@ namespace boundary_mesh
                 continuing.value().global_vertex_ids;
         }
 
+        // 一层都未接受的 Wall 面不在外露边界跟踪器中，显式补回最终接口。
+        std::vector<SurfaceFaceId> zero_layer_source_face_ids;
+        for (const FaceGrowthRecord &record : result.faces)
+        {
+            if (record.accepted_layer_count == 0)
+            {
+                zero_layer_source_face_ids.push_back(record.source_face_id);
+            }
+        }
         const auto farfield_boundary = buildFarfieldBoundary(
-            surface_mesh, exposed_boundary, {});
+            surface_mesh,
+            exposed_boundary,
+            zero_layer_source_face_ids);
         if (!farfield_boundary.hasValue())
         {
             return GrowthResult::failure(
