@@ -34,6 +34,61 @@ namespace boundary_mesh
                 quad.points[index] = points[ids[index]];
             return chooseQuadDiagonal(quad, tolerance);
         }
+
+        void appendSideTransition(
+            SourceTransitionResult &result,
+            const QuadTransitionInput &input,
+            QuadDiagonal diagonal,
+            std::uint32_t occupied)
+        {
+            const std::size_t edge = *input.high_edge_local_index;
+            const auto &low = input.layer_vertex_ids[occupied];
+            const auto &high = input.layer_vertex_ids[occupied + 1];
+            const VertexId a = low[edge];
+            const VertexId b = low[(edge + 1) % 4];
+            const VertexId d = low[(edge + 2) % 4];
+            const VertexId c = low[(edge + 3) % 4];
+            const VertexId e = high[edge];
+            const VertexId f = high[(edge + 1) % 4];
+            const bool diagonal_ad =
+                (edge % 2 == 0 && diagonal == QuadDiagonal::ZeroTwo) ||
+                (edge % 2 == 1 && diagonal == QuadDiagonal::OneThree);
+
+            Pyramid pyramid;
+            Tetra tetra;
+            if (diagonal_ad)
+            {
+                pyramid = Pyramid{{e, f, a, b, d}};
+                tetra = Tetra{{a, c, d, e}};
+                result.top_faces = {
+                    Triangle{{a, e, c}},
+                    Triangle{{e, d, c}},
+                    Triangle{{e, f, d}},
+                    Triangle{{f, b, d}}};
+            }
+            else
+            {
+                pyramid = Pyramid{{f, e, b, a, c}};
+                tetra = Tetra{{b, d, c, f}};
+                result.top_faces = {
+                    Triangle{{b, f, d}},
+                    Triangle{{f, c, d}},
+                    Triangle{{f, e, c}},
+                    Triangle{{e, a, c}}};
+            }
+            result.side_cells.push_back(pyramid);
+            result.side_cells.push_back(tetra);
+            result.volume_cells.push_back(pyramid);
+            result.volume_cells.push_back(tetra);
+            result.metadata.push_back(CellMetadata{
+                CellRole::Transition,
+                input.source_face_id,
+                occupied + 1});
+            result.metadata.push_back(CellMetadata{
+                CellRole::Transition,
+                input.source_face_id,
+                occupied + 1});
+        }
     }
 
     TransitionTemplateResult buildQuadTransition(
@@ -75,9 +130,17 @@ namespace boundary_mesh
                 return TransitionTemplateResult::failure(
                     TransitionTemplateError{diagonal.error()});
             }
-            result.top_faces.assign(
-                diagonal.value().triangles.begin(),
-                diagonal.value().triangles.end());
+            if (input.high_edge_local_index.has_value())
+            {
+                appendSideTransition(
+                    result, input, diagonal.value().diagonal, 0);
+            }
+            else
+            {
+                result.top_faces.assign(
+                    diagonal.value().triangles.begin(),
+                    diagonal.value().triangles.end());
+            }
             return TransitionTemplateResult::success(std::move(result));
         }
 
@@ -145,9 +208,20 @@ namespace boundary_mesh
             CellRole::Transition, input.source_face_id, regular + 1});
         result.metadata.push_back(CellMetadata{
             CellRole::Transition, input.source_face_id, regular + 1});
-        result.top_faces.assign(
-            diagonal.value().triangles.begin(),
-            diagonal.value().triangles.end());
+        if (input.high_edge_local_index.has_value())
+        {
+            appendSideTransition(
+                result,
+                input,
+                diagonal.value().diagonal,
+                regular + 1);
+        }
+        else
+        {
+            result.top_faces.assign(
+                diagonal.value().triangles.begin(),
+                diagonal.value().triangles.end());
+        }
         return TransitionTemplateResult::success(std::move(result));
     }
 }
