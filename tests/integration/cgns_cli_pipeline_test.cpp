@@ -18,6 +18,28 @@ namespace
             std::istreambuf_iterator<char>(input),
             std::istreambuf_iterator<char>());
     }
+
+    bool vtkContainsOnlyTriangles(const std::filesystem::path &path)
+    {
+        std::ifstream input(path);
+        std::string token;
+        std::size_t count = 0;
+        while (input >> token)
+        {
+            if (token == "CELL_TYPES")
+            {
+                input >> count;
+                for (std::size_t index = 0; index < count; ++index)
+                {
+                    int type = 0;
+                    input >> type;
+                    if (type != 5) return false;
+                }
+                return count > 0;
+            }
+        }
+        return false;
+    }
 }
 
 int main()
@@ -144,8 +166,15 @@ int main()
         std::filesystem::path(prefix.string() + "_boundary_layer.vtk");
     const auto surface_path =
         std::filesystem::path(prefix.string() + "_farfield_boundary.vtk");
+    const auto top_path =
+        std::filesystem::path(prefix.string() + "_boundary_layer_top.vtk");
     assert(std::filesystem::file_size(volume_path) > 0);
     assert(std::filesystem::file_size(surface_path) > 0);
+    if (!std::filesystem::exists(top_path) ||
+        !vtkContainsOnlyTriangles(top_path))
+    {
+        return 23;
+    }
 
     const auto reversed_input = directory / "cube-reversed.cgns";
     boundary_mesh::test::writeClosedCubeSurface(
@@ -173,8 +202,11 @@ int main()
         reversed_prefix.string() + "_boundary_layer.vtk");
     const auto reversed_surface_path = std::filesystem::path(
         reversed_prefix.string() + "_farfield_boundary.vtk");
+    const auto reversed_top_path = std::filesystem::path(
+        reversed_prefix.string() + "_boundary_layer_top.vtk");
     assert(fileText(reversed_volume_path) == fileText(volume_path));
     assert(fileText(reversed_surface_path) == fileText(surface_path));
+    assert(fileText(reversed_top_path) == fileText(top_path));
 
     std::filesystem::remove_all(directory);
     return 0;

@@ -234,7 +234,7 @@ if(BOUNDARY_MESH_ENABLE_CGNS_IO)
         boundary_mesh_cli_support
         PUBLIC
             BoundaryMesh::IO
-            BoundaryMesh::BoundaryLayer
+            BoundaryMesh::Transition
     )
 
     add_executable(
