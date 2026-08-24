@@ -163,3 +163,51 @@ This phase is complete when:
 - a true Release `2dot5_cf` 20-layer benchmark is reported;
 - the aggregate result is consistent with ParaView/Verdict, or any remaining
   difference is isolated and explained before optimizer work resumes.
+
+## Verification Results (2026-08-25)
+
+The implementation was verified in the isolated feature worktree at commit
+`3a0ada1`.
+
+- The true MSVC Release compile command contains `/O2`, `/Ob2`, and `NDEBUG`.
+- The CGNS Release CLI size is 3,329,024 bytes.
+- The non-CGNS Release build succeeded and all 44 registered tests passed.
+- New tests cover a planar reflex quadrilateral with an analytic expected
+  value, reversed ordering, a stable warped quadrilateral, translation and
+  positive uniform scaling, cancelling polygon orientation, and hexahedron
+  propagation above one.
+- Existing locally inverted prism/hexahedron diagnostics remain available:
+  a face with a cancelling area vector is treated as degenerate quality by
+  the volume aggregator without replacing the fixed-subtet validity class.
+
+The `2dot5_cf` A/B benchmark used first height `0.1`, growth ratio `1.2`, 20
+layers, maximum skewness `1.0`, and maximum neighbor-layer difference `1`.
+Its results were:
+
+| Measurement | Disabled baseline | Enabled refinement |
+| --- | ---: | ---: |
+| Growth time | 292.821 s | 323.350 s |
+| Skewness stops | 6 | 0 |
+| Final volume cells | not written by benchmark | 917,031 |
+
+Enabled-refinement diagnostics were:
+
+- activated vertex-layer instances: 27,472;
+- updated directions: 1,937;
+- maximum candidate skewness before refinement: `1.0533`;
+- maximum candidate skewness after refinement: `0.991509`;
+- locally inverted stops: 15;
+- collision stops: 50;
+- neighbor-layer-constraint stops: 29,339;
+- peak working set: 660,000,768 bytes.
+
+The corrected metric therefore exposes a finite value above one that the old
+clamp hid, and the existing direction refinement reduces that observed
+candidate maximum below one. The generated mesh is:
+
+`build-cgns/2dot5_verdict_skew_layer20/2dot5_cf_boundary_layer.vtk`
+
+No ParaView command-line runtime was found on this machine, so the final
+aggregate comparison against ParaView/Verdict remains a manual review step.
+Agreement is not claimed until that value is measured. No skewness cell-data
+array was added to the VTK output.
