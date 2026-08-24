@@ -101,7 +101,7 @@ namespace boundary_mesh
 }
 ```
 
-In the test, construct a disconnected front containing one unit equilateral triangle and one unit square. Give every candidate vertex a normal displacement of `1.0`, build adjacency with `buildFrontAdjacency`, and assert both faces stop at `isotropic_height == 1.0`:
+In the test, construct a disconnected front containing one unit equilateral triangle and one unit square. Give every candidate vertex a normal displacement of `1.1`, build adjacency with `buildFrontAdjacency`, and assert both faces stop at `isotropic_height == 1.0`. The displacement is above the ordinary BLMesh boundary `1 / 0.95` while remaining below both hard guards:
 
 ```cpp
 const auto result = IsotropicStopEvaluator{}.evaluate(
@@ -283,7 +283,7 @@ In `regular_layer_stepper_test.cpp`, remove the old triangle threshold based on 
 
 ```cpp
 options.isotropic_height = Scalar{1};
-// At normalized actual side height 1, current cell is accepted and
+// Above the normalized ordinary boundary 1 / 0.95, current cell is accepted and
 // accepted_stopped_faces contains one IsotropicHeightReached event.
 ```
 

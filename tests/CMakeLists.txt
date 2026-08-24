@@ -136,6 +136,19 @@ add_test(
     COMMAND boundary_mesh_front_adjacency_test
 )
 
+add_executable(
+    boundary_mesh_isotropic_stop_evaluator_test
+    unit/growth/isotropic_stop_evaluator_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_isotropic_stop_evaluator_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_isotropic_stop_evaluator_test
+    COMMAND boundary_mesh_isotropic_stop_evaluator_test
+)
+
 # 12
 add_executable(
     boundary_mesh_front_evaluator_test
