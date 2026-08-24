@@ -177,6 +177,7 @@ add_library(
         src/transition/quad_diagonal.cpp
         src/transition/triangle_transition_template.cpp
         src/transition/quad_transition_template.cpp
+        src/transition/reserved_layer_transition.cpp
 )
 add_library(BoundaryMesh::Transition ALIAS boundary_mesh_transition)
 target_compile_features(boundary_mesh_transition PUBLIC cxx_std_17)

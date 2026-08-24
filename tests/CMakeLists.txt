@@ -763,3 +763,16 @@ add_test(
     NAME boundary_mesh_quad_side_transition_template_test
     COMMAND boundary_mesh_quad_side_transition_template_test
 )
+
+add_executable(
+    boundary_mesh_reserved_layer_transition_pipeline_test
+    integration/reserved_layer_transition_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_reserved_layer_transition_pipeline_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_reserved_layer_transition_pipeline_test
+    COMMAND boundary_mesh_reserved_layer_transition_pipeline_test
+)
