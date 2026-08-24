@@ -109,7 +109,7 @@ namespace
                 (Scalar{1} + std::exp(Scalar{-0.5} * relative)) -
             Scalar{0.5};
         return std::clamp(
-            base_heights[vertex_index] /
+            base_heights[vertex_index] *
                 (Scalar{1} + correction),
             Scalar{0.5} * base_heights[vertex_index],
             Scalar{1.5} * base_heights[vertex_index]);
