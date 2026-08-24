@@ -52,7 +52,8 @@ namespace boundary_mesh
 
     Result<SurfaceMesh, SpatialError> buildFarfieldBoundary(
         const SurfaceMesh &original_surface,
-        const ExposedBoundaryTracker &exposed_boundary)
+        const ExposedBoundaryTracker &exposed_boundary,
+        const std::vector<SurfaceFaceId> &zero_layer_source_face_ids)
     {
         if (original_surface.faces.size() !=
             original_surface.face_tags.size())
@@ -112,6 +113,70 @@ namespace boundary_mesh
             }
             output.faces.push_back(face_result.value());
             output.face_tags.push_back(original_surface.face_tags[face_index]);
+        }
+
+        // 零层生长的 Wall 面未进入外露边界跟踪器，需要以相反绕向补回接口。
+        std::vector<bool> selected(
+            original_surface.faces.size(),
+            false);
+        for (const SurfaceFaceId face_id : zero_layer_source_face_ids)
+        {
+            const std::size_t face_index =
+                static_cast<std::size_t>(face_id);
+            if (face_index >= original_surface.faces.size() ||
+                selected[face_index] ||
+                original_surface.face_tags[face_index].kind !=
+                    SurfaceBoundaryKind::Wall)
+            {
+                return Result<SurfaceMesh, SpatialError>::failure(
+                    SpatialError::InvalidTopologyReference);
+            }
+            selected[face_index] = true;
+
+            const auto face_result = std::visit(
+                [&](const auto &face)
+                    -> Result<SurfaceFace, SpatialError>
+                {
+                    using Face = std::decay_t<decltype(face)>;
+                    Face remapped;
+                    for (std::size_t corner = 0;
+                         corner < face.vertex_ids.size();
+                         ++corner)
+                    {
+                        const VertexId source_id = face.vertex_ids[
+                            face.vertex_ids.size() - 1 - corner];
+                        const std::size_t source_index =
+                            static_cast<std::size_t>(source_id);
+                        if (source_index >= original_surface.vertices.size())
+                        {
+                            return Result<SurfaceFace, SpatialError>::failure(
+                                SpatialError::InvalidTopologyReference);
+                        }
+                        const auto id = appendVertex(
+                            output,
+                            output_keys,
+                            {source_id, 0},
+                            original_surface.vertices[source_index]);
+                        if (!id.hasValue())
+                        {
+                            return Result<SurfaceFace, SpatialError>::failure(
+                                id.error());
+                        }
+                        remapped.vertex_ids[corner] = id.value();
+                    }
+                    return Result<SurfaceFace, SpatialError>::success(
+                        remapped);
+                },
+                original_surface.faces[face_index]);
+            if (!face_result.hasValue())
+            {
+                return Result<SurfaceMesh, SpatialError>::failure(
+                    face_result.error());
+            }
+            output.faces.push_back(face_result.value());
+            output.face_tags.push_back(
+                {SurfaceBoundaryKind::BoundaryLayerInterface,
+                 original_surface.face_tags[face_index].region_id});
         }
 
         for (const BoundaryFace &face : exposed_boundary.faces())

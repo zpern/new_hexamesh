@@ -35,7 +35,7 @@ int main()
     assert(update.hasValue());
     tracker.apply(update.value());
 
-    const auto result = buildFarfieldBoundary(original, tracker);
+    const auto result = buildFarfieldBoundary(original, tracker, {});
     assert(result.hasValue());
     assert(result.value().faces.size() == 5);
     assert(result.value().faces.size() == result.value().face_tags.size());
@@ -85,4 +85,73 @@ int main()
     {
         assert(referenced);
     }
+
+    SurfaceMesh zero_layer_original;
+    zero_layer_original.vertices = {
+        {0, 0, 2}, {1, 0, 2}, {0, 1, 2},
+        {0, 0, 0}, {1, 0, 0}, {0, 1, 0},
+        {2, 0, 0}, {3, 0, 0}, {3, 1, 0}, {2, 1, 0}};
+    zero_layer_original.faces = {
+        Triangle{{0, 1, 2}},
+        Triangle{{3, 4, 5}},
+        Quad{{6, 7, 8, 9}}};
+    zero_layer_original.face_tags = {
+        {SurfaceBoundaryKind::Farfield, 4},
+        {SurfaceBoundaryKind::Wall, 9},
+        {SurfaceBoundaryKind::Wall, 10}};
+
+    const auto zero_layer = buildFarfieldBoundary(
+        zero_layer_original,
+        ExposedBoundaryTracker{},
+        {SurfaceFaceId{1}, SurfaceFaceId{2}});
+    assert(zero_layer.hasValue());
+    assert(zero_layer.value().faces.size() == 3);
+    assert(zero_layer.value().face_tags.size() == 3);
+    assert(zero_layer.value().face_tags[1].kind ==
+           SurfaceBoundaryKind::BoundaryLayerInterface);
+    assert(zero_layer.value().face_tags[1].region_id == 9);
+    assert(zero_layer.value().face_tags[2].kind ==
+           SurfaceBoundaryKind::BoundaryLayerInterface);
+    assert(zero_layer.value().face_tags[2].region_id == 10);
+
+    const auto *fallback_triangle =
+        std::get_if<Triangle>(&zero_layer.value().faces[1]);
+    const auto *fallback_quad =
+        std::get_if<Quad>(&zero_layer.value().faces[2]);
+    assert(fallback_triangle != nullptr);
+    assert(fallback_quad != nullptr);
+
+    const auto normalZ = [&](const auto &face)
+    {
+        const Point3 &first = zero_layer.value().vertices[
+            static_cast<std::size_t>(face.vertex_ids[0])];
+        const Point3 &second = zero_layer.value().vertices[
+            static_cast<std::size_t>(face.vertex_ids[1])];
+        const Point3 &third = zero_layer.value().vertices[
+            static_cast<std::size_t>(face.vertex_ids[2])];
+        return (second - first).cross(third - first).z();
+    };
+    assert(normalZ(*fallback_triangle) < 0.0);
+    assert(normalZ(*fallback_quad) < 0.0);
+
+    const auto duplicate = buildFarfieldBoundary(
+        zero_layer_original,
+        ExposedBoundaryTracker{},
+        {SurfaceFaceId{1}, SurfaceFaceId{1}});
+    assert(!duplicate.hasValue());
+    assert(duplicate.error() == SpatialError::InvalidTopologyReference);
+
+    const auto out_of_range = buildFarfieldBoundary(
+        zero_layer_original,
+        ExposedBoundaryTracker{},
+        {SurfaceFaceId{99}});
+    assert(!out_of_range.hasValue());
+    assert(out_of_range.error() == SpatialError::InvalidTopologyReference);
+
+    const auto non_wall = buildFarfieldBoundary(
+        zero_layer_original,
+        ExposedBoundaryTracker{},
+        {SurfaceFaceId{0}});
+    assert(!non_wall.hasValue());
+    assert(non_wall.error() == SpatialError::InvalidTopologyReference);
 }

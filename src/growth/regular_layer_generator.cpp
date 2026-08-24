@@ -759,7 +759,7 @@ namespace boundary_mesh
         }
 
         const auto farfield_boundary = buildFarfieldBoundary(
-            surface_mesh, exposed_boundary);
+            surface_mesh, exposed_boundary, {});
         if (!farfield_boundary.hasValue())
         {
             return GrowthResult::failure(
