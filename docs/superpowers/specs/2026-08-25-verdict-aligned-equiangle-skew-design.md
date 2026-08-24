@@ -46,12 +46,15 @@ For each ordered triangle or quadrilateral:
 2. Construct a stable reference normal from the ordered polygon. The normal
    must reverse when the vertex order reverses and must fail explicitly when
    the polygon has no numerically stable orientation.
-3. At each vertex, combine the edge dot product with the signed cross-product
-   component along the reference normal to determine the oriented interior
-   angle.
-4. Represent convex corners in `(0, pi]` and reflex corners in `(pi, 2*pi)`.
-5. Use the minimum and maximum oriented interior angles in the existing
-   equiangle-skew formula.
+3. At each vertex, use the full three-dimensional edge dot and cross-product
+   magnitude to calculate the minor angle, matching Verdict's `acos` result.
+4. Use the signed corner cross product along the common reference normal to
+   detect whether any quadrilateral corner has negative oriented area.
+5. Match Verdict's `quad_minimum_maximum_angle` behavior: retain the smallest
+   minor angle and, when any negative corner exists, replace the largest minor
+   angle by its `2*pi` complement.
+6. Use those minimum and maximum angles in the existing equiangle-skew
+   formula.
 
 For a warped quadrilateral, all corners use the same stable ordered-polygon
 reference orientation. This makes reflex classification deterministic and
@@ -172,10 +175,10 @@ The implementation was verified in the isolated feature worktree at commit
 - The true MSVC Release compile command contains `/O2`, `/Ob2`, and `NDEBUG`.
 - The CGNS Release CLI size is 3,329,024 bytes.
 - The non-CGNS Release build succeeded and all 44 registered tests passed.
-- New tests cover a planar reflex quadrilateral with an analytic expected
-  value, reversed ordering, a stable warped quadrilateral, translation and
-  positive uniform scaling, cancelling polygon orientation, and hexahedron
-  propagation above one.
+- New tests cover a planar reflex quadrilateral, reversed ordering, a stable
+  warped quadrilateral, translation and positive uniform scaling, cancelling
+  polygon orientation, prism/hexahedron propagation above one, and Verdict's
+  published `quad_simple2`, `quad_chevron`, and `quad_bowtie` reference values.
 - Existing locally inverted prism/hexahedron diagnostics remain available:
   a face with a cancelling area vector is treated as degenerate quality by
   the volume aggregator without replacing the fixed-subtet validity class.
@@ -186,7 +189,7 @@ Its results were:
 
 | Measurement | Disabled baseline | Enabled refinement |
 | --- | ---: | ---: |
-| Growth time | 292.821 s | 323.350 s |
+| Growth time | 287.216 s | 303.229 s |
 | Skewness stops | 6 | 0 |
 | Final volume cells | not written by benchmark | 917,031 |
 
@@ -199,7 +202,7 @@ Enabled-refinement diagnostics were:
 - locally inverted stops: 15;
 - collision stops: 50;
 - neighbor-layer-constraint stops: 29,339;
-- peak working set: 660,000,768 bytes.
+- peak working set: 657,149,952 bytes.
 
 The corrected metric therefore exposes a finite value above one that the old
 clamp hid, and the existing direction refinement reduces that observed
