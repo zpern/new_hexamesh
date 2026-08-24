@@ -98,5 +98,110 @@ int main()
         return 5;
     }
 
+    const std::array<Point3, 4> concave_quad{
+        Point3{0.0, 0.0, 0.0},
+        Point3{2.0, 0.0, 0.0},
+        Point3{1.0, 0.5, 0.0},
+        Point3{2.0, 1.0, 0.0}};
+
+    const auto concave_result =
+        quadEquiangularSkewness(
+            concave_quad,
+            length_tolerance);
+
+    if (!concave_result.hasValue() ||
+        !(concave_result.value() > Scalar{1}))
+    {
+        return 6;
+    }
+
+    const Scalar pi = std::acos(Scalar{-1});
+    const Scalar concave_minor_angle =
+        std::atan2(Scalar{0.8}, Scalar{0.6});
+    const Scalar expected_concave_skewness =
+        (Scalar{2} * pi - concave_minor_angle - pi / Scalar{2}) /
+        (pi / Scalar{2});
+    if (!near(
+            concave_result.value(),
+            expected_concave_skewness))
+    {
+        return 7;
+    }
+
+    const std::array<Point3, 4> reversed_concave_quad{
+        concave_quad[3],
+        concave_quad[2],
+        concave_quad[1],
+        concave_quad[0]};
+
+    const auto reversed_concave_result =
+        quadEquiangularSkewness(
+            reversed_concave_quad,
+            length_tolerance);
+
+    if (!reversed_concave_result.hasValue() ||
+        !near(
+            reversed_concave_result.value(),
+            concave_result.value()))
+    {
+        return 8;
+    }
+
+    const std::array<Point3, 4> warped_quad{
+        Point3{0.0, 0.0, 0.0},
+        Point3{2.0, 0.0, 0.2},
+        Point3{2.0, 1.0, 0.0},
+        Point3{0.0, 1.0, -0.1}};
+    const std::array<Point3, 4> reversed_warped_quad{
+        warped_quad[3],
+        warped_quad[2],
+        warped_quad[1],
+        warped_quad[0]};
+    const auto warped_result = quadEquiangularSkewness(
+        warped_quad,
+        length_tolerance);
+    const auto reversed_warped_result = quadEquiangularSkewness(
+        reversed_warped_quad,
+        length_tolerance);
+    if (!warped_result.hasValue() ||
+        !reversed_warped_result.hasValue() ||
+        !near(
+            warped_result.value(),
+            reversed_warped_result.value()))
+    {
+        return 9;
+    }
+
+    std::array<Point3, 4> transformed_warped_quad = warped_quad;
+    for (Point3 &point : transformed_warped_quad)
+    {
+        point = Scalar{3} * point + Point3{4.0, -2.0, 7.0};
+    }
+    const auto transformed_warped_result = quadEquiangularSkewness(
+        transformed_warped_quad,
+        length_tolerance);
+    if (!transformed_warped_result.hasValue() ||
+        !near(
+            warped_result.value(),
+            transformed_warped_result.value()))
+    {
+        return 10;
+    }
+
+    const std::array<Point3, 4> cancelling_quad{
+        Point3{0.0, 0.0, 0.0},
+        Point3{1.0, 1.0, 0.0},
+        Point3{0.0, 1.0, 0.0},
+        Point3{1.0, 0.0, 0.0}};
+    const auto cancelling_result = quadEquiangularSkewness(
+        cancelling_quad,
+        length_tolerance);
+    if (cancelling_result.hasValue() ||
+        cancelling_result.error() !=
+            FaceEvaluationError::DegenerateAreaVector)
+    {
+        return 11;
+    }
+
     return 0;
 }

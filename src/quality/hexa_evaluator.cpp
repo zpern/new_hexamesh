@@ -84,6 +84,12 @@ namespace boundary_mesh
                     Scalar{0});
                 if (!result.hasValue())
                 {
+                    if (result.error() ==
+                        FaceEvaluationError::DegenerateAreaVector)
+                    {
+                        degenerate = true;
+                        continue;
+                    }
                     return std::nullopt;
                 }
                 skewness = std::max(skewness, result.value());

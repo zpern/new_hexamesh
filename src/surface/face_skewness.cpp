@@ -2,6 +2,8 @@
 #include <cmath>
 #include <limits>
 
+#include <Eigen/Geometry>
+
 #include <boundary_mesh/surface/face_skewness.hpp>
 
 namespace boundary_mesh
@@ -19,6 +21,40 @@ namespace boundary_mesh
             return std::isfinite(point.x()) &&
                    std::isfinite(point.y()) &&
                    std::isfinite(point.z());
+        }
+
+        template <std::size_t VertexCount>
+        Result<Vector3, FaceEvaluationError>
+        orderedUnitNormal(
+            const std::array<Point3, VertexCount> &points,
+            Scalar length_tolerance)
+        {
+            using NormalResult =
+                Result<Vector3, FaceEvaluationError>;
+
+            Vector3 area_vector = Vector3::Zero();
+            const Point3 &origin = points[0];
+            for (std::size_t index = 0;
+                 index < VertexCount;
+                 ++index)
+            {
+                area_vector += (points[index] - origin).cross(
+                    points[(index + 1) % VertexCount] - origin);
+            }
+
+            const Scalar area_vector_length = area_vector.norm();
+            const Scalar area_tolerance =
+                length_tolerance * length_tolerance;
+            if (!area_vector.allFinite() ||
+                !std::isfinite(area_vector_length) ||
+                area_vector_length <= area_tolerance)
+            {
+                return NormalResult::failure(
+                    FaceEvaluationError::DegenerateAreaVector);
+            }
+
+            return NormalResult::success(
+                area_vector / area_vector_length);
         }
 
         template <std::size_t VertexCount>
@@ -43,9 +79,19 @@ namespace boundary_mesh
                 }
             }
 
-            Scalar minimum_cosine =
+            const auto normal_result = orderedUnitNormal(
+                points,
+                length_tolerance);
+            if (!normal_result.hasValue())
+            {
+                return SkewnessResult::failure(
+                    normal_result.error());
+            }
+            const Vector3 &unit_normal = normal_result.value();
+
+            Scalar minimum_angle =
                 std::numeric_limits<Scalar>::infinity();
-            Scalar maximum_cosine =
+            Scalar maximum_angle =
                 -std::numeric_limits<Scalar>::infinity();
 
             for (std::size_t index = 0;
@@ -84,33 +130,39 @@ namespace boundary_mesh
                             DegenerateEdge);
                 }
 
-                const Scalar cosine = first_unit.dot(second_unit);
+                const Vector3 corner_cross =
+                    first_unit.cross(second_unit);
+                const Scalar cosine = std::clamp(
+                    first_unit.dot(second_unit),
+                    Scalar{-1},
+                    Scalar{1});
+                const Scalar minor_angle = std::atan2(
+                    corner_cross.norm(),
+                    cosine);
+                const Scalar orientation =
+                    corner_cross.dot(unit_normal);
 
-                if (!std::isfinite(cosine))
+                if (!corner_cross.allFinite() ||
+                    !std::isfinite(cosine) ||
+                    !std::isfinite(minor_angle) ||
+                    !std::isfinite(orientation))
                 {
                     return SkewnessResult::failure(
                         FaceEvaluationError::
                             DegenerateEdge);
                 }
 
-                minimum_cosine = std::min(
-                    minimum_cosine,
-                    cosine);
-                maximum_cosine = std::max(
-                    maximum_cosine,
-                    cosine);
+                const Scalar interior_angle =
+                    orientation > Scalar{0}
+                        ? Scalar{2} * pi - minor_angle
+                        : minor_angle;
+                minimum_angle = std::min(
+                    minimum_angle,
+                    interior_angle);
+                maximum_angle = std::max(
+                    maximum_angle,
+                    interior_angle);
             }
-
-            const Scalar maximum_angle = std::acos(
-                std::clamp(
-                    minimum_cosine,
-                    Scalar{-1},
-                    Scalar{1}));
-            const Scalar minimum_angle = std::acos(
-                std::clamp(
-                    maximum_cosine,
-                    Scalar{-1},
-                    Scalar{1}));
 
             if (!std::isfinite(maximum_angle) ||
                 !std::isfinite(minimum_angle))
@@ -133,11 +185,7 @@ namespace boundary_mesh
                         DegenerateEdge);
             }
 
-            return SkewnessResult::success(
-                std::clamp(
-                    skewness,
-                    Scalar{0},
-                    Scalar{1}));
+            return SkewnessResult::success(skewness);
         }
     }
 
