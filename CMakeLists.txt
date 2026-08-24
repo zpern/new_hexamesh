@@ -132,6 +132,7 @@ add_library(
         src/growth/growth_front_builder.cpp
         src/growth/front_adjacency.cpp
         src/growth/incident_face_fan.cpp
+        src/growth/multi_normal_split_planner.cpp
         src/growth/front_evaluator.cpp
         src/growth/growth_direction.cpp
         src/growth/growth_field_smoother.cpp
