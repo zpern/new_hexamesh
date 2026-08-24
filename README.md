@@ -297,6 +297,7 @@ max_neighbor_layer_difference=1
 | `stop_skewness_exceeded` | 候选体单元 skewness 超过上限 |
 | `stop_collision` | 候选单元发生非法几何接触或碰撞 |
 | `stop_neighbor_layer_constraint` | 为限制相邻区域层数差而提前停止 |
+| `stop_isotropic_height` | 当前单元已接受；BLMesh 风格局部/全局尺度及邻域共识达到停止条件 |
 
 `stop_vertex_layer_limit` 通常表示正常完成请求层数，不是错误。
 
@@ -363,8 +364,11 @@ ctest --test-dir build -C Debug `
 - skewness 超过阈值；
 - 撞到原始表面、已提交边界层或同层其他候选；
 - 相邻区域层数差超过允许值。
+- 当前实际层高相对前沿的平均、几何平均和最短周边尺度达到各向同性停止条件。
 
 不要仅通过放宽 skewness 判断碰撞问题；应先根据对应停止原因定位。
+
+`stop_isotropic_height` 不表示当前单元被丢弃。当前 Prism/Hexa 已经通过质量检查并写入网格，只是不再生成下一层。判据对 Triangle 使用 3 条周边边、对 Quad 使用 4 条周边边，并要求直接相邻活动顶点形成停止共识；它不使用 `sqrt(face_area)`。
 
 ### 12.4 为什么没有生成命令行程序
 
