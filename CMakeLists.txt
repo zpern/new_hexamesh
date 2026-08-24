@@ -134,6 +134,7 @@ add_library(
         src/growth/front_evaluator.cpp
         src/growth/growth_direction.cpp
         src/growth/growth_field_smoother.cpp
+        src/growth/skewness_direction_refiner.cpp
         src/growth/symmetry_constraint_builder.cpp
         src/growth/growth_profile_builder.cpp
         src/growth/regular_layer_stepper.cpp
