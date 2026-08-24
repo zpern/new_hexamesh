@@ -115,19 +115,6 @@ int main()
         return 6;
     }
 
-    const Scalar pi = std::acos(Scalar{-1});
-    const Scalar concave_minor_angle =
-        std::atan2(Scalar{0.8}, Scalar{0.6});
-    const Scalar expected_concave_skewness =
-        (Scalar{2} * pi - concave_minor_angle - pi / Scalar{2}) /
-        (pi / Scalar{2});
-    if (!near(
-            concave_result.value(),
-            expected_concave_skewness))
-    {
-        return 7;
-    }
-
     const std::array<Point3, 4> reversed_concave_quad{
         concave_quad[3],
         concave_quad[2],
@@ -144,7 +131,7 @@ int main()
             reversed_concave_result.value(),
             concave_result.value()))
     {
-        return 8;
+        return 7;
     }
 
     const std::array<Point3, 4> warped_quad{
@@ -169,7 +156,7 @@ int main()
             warped_result.value(),
             reversed_warped_result.value()))
     {
-        return 9;
+        return 8;
     }
 
     std::array<Point3, 4> transformed_warped_quad = warped_quad;
@@ -185,7 +172,7 @@ int main()
             warped_result.value(),
             transformed_warped_result.value()))
     {
-        return 10;
+        return 9;
     }
 
     const std::array<Point3, 4> cancelling_quad{
@@ -200,7 +187,60 @@ int main()
         cancelling_result.error() !=
             FaceEvaluationError::DegenerateAreaVector)
     {
+        return 10;
+    }
+
+    // Verdict quad_simple2 reference fixture.
+    const std::array<Point3, 4> verdict_warped_quad{
+        Point3{2.0, 0.0, 0.0},
+        Point3{1.0, 1.0, 2.0},
+        Point3{0.0, 1.0, 0.0},
+        Point3{0.0, 0.0, 0.0}};
+    const auto verdict_warped_result = quadEquiangularSkewness(
+        verdict_warped_quad,
+        length_tolerance);
+    if (!verdict_warped_result.hasValue() ||
+        !near(
+            verdict_warped_result.value(),
+            Scalar{0.36901011957},
+            Scalar{1e-10}))
+    {
         return 11;
+    }
+
+    // Verdict quad_chevron reference fixture with a reflex angle.
+    const std::array<Point3, 4> verdict_chevron_quad{
+        Point3{1.0, 1.0, 1.0},
+        Point3{3.0, 1.0, 2.0},
+        Point3{5.0, 0.8, 1.3},
+        Point3{2.0, 1.1, 3.7}};
+    const auto verdict_chevron_result = quadEquiangularSkewness(
+        verdict_chevron_quad,
+        length_tolerance);
+    if (!verdict_chevron_result.hasValue() ||
+        !near(
+            verdict_chevron_result.value(),
+            Scalar{1.5122294809},
+            Scalar{1e-10}))
+    {
+        return 12;
+    }
+
+    const std::array<Point3, 4> verdict_bowtie_quad{
+        Point3{-1.0, -1.0, -1.0},
+        Point3{6.0, 2.0, -1.1},
+        Point3{3.0, -2.5, -1.15},
+        Point3{4.5, 4.3, -0.9}};
+    const auto verdict_bowtie_result = quadEquiangularSkewness(
+        verdict_bowtie_quad,
+        length_tolerance);
+    if (!verdict_bowtie_result.hasValue() ||
+        !near(
+            verdict_bowtie_result.value(),
+            Scalar{2.6262710934},
+            Scalar{1e-10}))
+    {
+        return 13;
     }
 
     return 0;

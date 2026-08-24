@@ -95,7 +95,8 @@ namespace boundary_mesh
                 skewness = std::max(skewness, result.value());
             }
 
-            return degenerate ? std::optional<Scalar>{Scalar{1}}
+            return degenerate ? std::optional<Scalar>{
+                                    std::max(skewness, Scalar{1})}
                               : std::optional<Scalar>{skewness};
         }
 
@@ -167,6 +168,7 @@ namespace boundary_mesh
         evaluation.skewness = *skewness;
         evaluation.acceptable =
             evaluation.validity == VolumeCellValidity::Valid &&
+            !face_degenerate &&
             evaluation.skewness <= options.maximum_skewness;
 
         return EvaluationResult::success(evaluation);

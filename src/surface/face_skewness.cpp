@@ -93,6 +93,7 @@ namespace boundary_mesh
                 std::numeric_limits<Scalar>::infinity();
             Scalar maximum_angle =
                 -std::numeric_limits<Scalar>::infinity();
+            bool has_reflex_corner = false;
 
             for (std::size_t index = 0;
                  index < VertexCount;
@@ -152,16 +153,29 @@ namespace boundary_mesh
                             DegenerateEdge);
                 }
 
-                const Scalar interior_angle =
-                    orientation > Scalar{0}
-                        ? Scalar{2} * pi - minor_angle
-                        : minor_angle;
                 minimum_angle = std::min(
                     minimum_angle,
-                    interior_angle);
+                    minor_angle);
                 maximum_angle = std::max(
                     maximum_angle,
-                    interior_angle);
+                    minor_angle);
+                if constexpr (VertexCount == 4)
+                {
+                    has_reflex_corner =
+                        has_reflex_corner ||
+                        orientation > Scalar{0};
+                }
+            }
+
+            // Verdict 的 quad_minimum_maximum_angle 使用完整三维
+            // 边夹角；任一角点有向面积为负时，将最大角转换为反角。
+            if constexpr (VertexCount == 4)
+            {
+                if (has_reflex_corner)
+                {
+                    maximum_angle =
+                        Scalar{2} * pi - maximum_angle;
+                }
             }
 
             if (!std::isfinite(maximum_angle) ||
