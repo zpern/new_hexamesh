@@ -14,6 +14,7 @@
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 #include <boundary_mesh/growth/farfield_boundary_builder.hpp>
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
+#include <boundary_mesh/growth/multi_normal_transition_builder.hpp>
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
 #include <boundary_mesh/growth/termination_propagator.hpp>
@@ -372,16 +373,36 @@ namespace boundary_mesh
             return GrowthResult::failure(initial_propagation.error());
         }
 
-        RegularLayerGrowthResult result;
-        result.mesh.vertices.reserve(initial_front.vertices.size());
-        for (const GrowthFrontVertex &vertex : initial_front.vertices)
+        const auto transition = prepareMultiNormalTransition(
+            initial_front, options.multi_normal);
+        if (!transition.hasValue())
         {
-            result.mesh.vertices.push_back(vertex.position);
+            return GrowthResult::failure(
+                MultiNormalTransitionFailure{transition.error()});
+        }
+
+        RegularLayerGrowthResult result;
+        GrowthFront current_front = transition.value().applied
+            ? transition.value().transformed_front
+            : initial_front;
+        if (transition.value().applied)
+        {
+            result.mesh = transition.value().transition_cells;
+            result.omitted_quad_transitions =
+                transition.value().omitted_quad_transitions;
+        }
+        else
+        {
+            result.mesh.vertices.reserve(initial_front.vertices.size());
+            for (const GrowthFrontVertex &vertex : initial_front.vertices)
+            {
+                result.mesh.vertices.push_back(vertex.position);
+            }
         }
         std::vector<VertexId> current_global_ids;
-        current_global_ids.reserve(initial_front.vertices.size());
+        current_global_ids.reserve(current_front.vertices.size());
         for (std::size_t index = 0;
-             index < initial_front.vertices.size();
+              index < initial_front.vertices.size();
              ++index)
         {
             if (index > static_cast<std::size_t>(
@@ -391,7 +412,10 @@ namespace boundary_mesh
                     VolumeVertexIdOverflow{index});
             }
             const VertexId global_id = static_cast<VertexId>(index);
-            current_global_ids.push_back(global_id);
+            if (!transition.value().applied)
+            {
+                current_global_ids.push_back(global_id);
+            }
             result.layer_vertices.push_back(
                 LayerVertexRecord{
                     initial_front.vertices[index].source_vertex_id,
@@ -409,6 +433,36 @@ namespace boundary_mesh
                     *profile,
                     0});
         }
+
+        if (transition.value().applied)
+        {
+            const std::size_t bottom_count =
+                result.mesh.vertices.size() - current_front.vertices.size();
+            for (std::size_t index = 0;
+                 index < current_front.vertices.size();
+                 ++index)
+            {
+                const std::size_t global_index = bottom_count + index;
+                if (global_index > static_cast<std::size_t>(
+                        std::numeric_limits<VertexId>::max()))
+                {
+                    return GrowthResult::failure(
+                        VolumeVertexIdOverflow{global_index});
+                }
+                const VertexId global_id =
+                    static_cast<VertexId>(global_index);
+                current_global_ids.push_back(global_id);
+                LayerVertexRecord *record = findLayerRecord(
+                    result.layer_vertices,
+                    current_front.vertices[index].source_vertex_id);
+                if (record == nullptr)
+                {
+                    return GrowthResult::failure(
+                        InvalidLayerFrontMapping{0});
+                }
+                record->layer_vertex_ids.push_back(global_id);
+            }
+        }
         for (const SurfaceFaceId source_face_id :
              initial_front.source_face_ids)
         {
@@ -416,7 +470,6 @@ namespace boundary_mesh
                 FaceGrowthRecord{source_face_id});
         }
 
-        GrowthFront current_front = initial_front;
         ExposedBoundaryTracker exposed_boundary;
         while (!current_front.faces.empty())
         {
@@ -685,7 +738,9 @@ namespace boundary_mesh
                     return GrowthResult::failure(
                         InvalidLayerFrontMapping{current_front.layer});
                 }
-                ++record->accepted_layer_count;
+                record->accepted_layer_count = std::max(
+                    record->accepted_layer_count,
+                    step.layer);
 
                 const FaceLayerConstraint *constraint =
                     constraints.find(source_face_id);

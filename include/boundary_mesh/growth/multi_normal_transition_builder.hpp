@@ -11,4 +11,9 @@ namespace boundary_mesh
     buildMultiNormalTransition(
         const MultiNormalTopology &topology,
         const MultiNormalOptions &options);
+
+    Result<MultiNormalTransitionResult, MultiNormalError>
+    prepareMultiNormalTransition(
+        const GrowthFront &front,
+        const MultiNormalOptions &options);
 }

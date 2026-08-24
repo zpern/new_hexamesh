@@ -6,6 +6,7 @@
 
 #include <boundary_mesh/growth/growth_front.hpp>
 #include <boundary_mesh/growth/growth_profile.hpp>
+#include <boundary_mesh/growth/multi_normal_types.hpp>
 #include <boundary_mesh/mesh/mesh_volume.hpp>
 #include <boundary_mesh/mesh/mesh_surface.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluation.hpp>
@@ -80,6 +81,7 @@ namespace boundary_mesh
         VolumeCellQualityOptions cell_quality; // 阶段 04 的候选单元质量参数
         std::uint32_t max_neighbor_layer_difference{1}; // 共享边两侧最大允许层数差
         Scalar isotropic_height{1}; // 平均侧边长度与底面尺度之比的停止阈值
+        MultiNormalOptions multi_normal; // 规则层之前的多法向拓扑过渡配置
     };
 
     struct RegularLayerGrowthResult
@@ -89,5 +91,6 @@ namespace boundary_mesh
         std::vector<VertexGrowthRecord> vertices; // 逐源顶点请求值和实际接受层数
         std::vector<FaceGrowthRecord> faces; // 逐源面状态、层数和停止原因
         SurfaceMesh farfield_boundary; // 原始 Farfield 与边界层最终外露接口组成的远场边界
+        std::vector<OmittedQuadTransition> omitted_quad_transitions; // 用户后续手动补分割的 Quad 过渡区
     };
 }

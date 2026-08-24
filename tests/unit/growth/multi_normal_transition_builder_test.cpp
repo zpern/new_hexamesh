@@ -132,5 +132,29 @@ int main()
         return 7;
     }
 
+    GrowthFront cube_corner;
+    cube_corner.vertices = {
+        {Point3{0, 0, 0}, 70}, {Point3{1, 0, 0}, 71},
+        {Point3{0, 1, 0}, 72}, {Point3{0, 0, 1}, 73},
+        {Point3{1, 1, 0}, 74}, {Point3{1, 0, 1}, 75},
+        {Point3{0, 1, 1}, 76}};
+    cube_corner.faces = {
+        Quad{{0, 2, 4, 1}},
+        Quad{{0, 1, 5, 3}},
+        Quad{{0, 3, 6, 2}}};
+    cube_corner.source_face_ids = {80, 81, 82};
+    MultiNormalOptions corner_options = options;
+    corner_options.split_skewness_threshold = Scalar{0.5};
+    const auto corner_result = prepareMultiNormalTransition(
+        cube_corner, corner_options);
+    if (!corner_result.hasValue() || !corner_result.value().applied ||
+        corner_result.value().transformed_front.vertices.size() != 9 ||
+        corner_result.value().transformed_front.faces.size() != 6 ||
+        corner_result.value().omitted_quad_transitions.size() != 3 ||
+        corner_result.value().transition_cells.cells.size() != 3)
+    {
+        return 8;
+    }
+
     return 0;
 }

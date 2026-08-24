@@ -45,6 +45,7 @@ namespace boundary_mesh
 
     struct MultiNormalTransitionResult
     {
+        bool applied{};
         VolumeMesh transition_cells;
         GrowthFront transformed_front;
         std::vector<SplitVertexMapping> vertex_mapping;
