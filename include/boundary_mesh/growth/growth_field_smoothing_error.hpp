@@ -14,7 +14,8 @@ namespace boundary_mesh
         std::uint32_t direction_layer{}; // 原始方向所属层号
         std::size_t vertex_count{}; // 当前活动点数量
         std::size_t direction_count{}; // 原始方向数量
-        std::size_t height_count{}; // 基准步长数量
+        std::size_t reference_height_count{}; // 理论基准步长数量
+        std::size_t provisional_height_count{}; // 临时预测步长数量
     };
 
     struct NonFiniteGrowthFieldInput
@@ -36,7 +37,7 @@ namespace boundary_mesh
     {
         std::size_t front_vertex_index{}; // 非法基准步长对应的活动点下标
         VertexId source_vertex_id{}; // 对应输入 Wall 顶点编号
-        Scalar base_height{}; // 非有限或非正的本层基准步长
+        Scalar base_height{}; // 非有限或非正的理论或临时步长
         std::uint32_t layer{}; // 发生错误的活动层号
     };
 

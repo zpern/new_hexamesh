@@ -302,8 +302,10 @@ namespace boundary_mesh
                     direction_result.error()});
         }
 
-        std::vector<Scalar> base_heights;
-        base_heights.reserve(eligible.front.vertices.size());
+        std::vector<Scalar> reference_heights;
+        std::vector<Scalar> provisional_heights;
+        reference_heights.reserve(eligible.front.vertices.size());
+        provisional_heights.reserve(eligible.front.vertices.size());
         for (const GrowthFrontVertex &vertex : eligible.front.vertices)
         {
             const VertexGrowthProfile *profile =
@@ -316,18 +318,32 @@ namespace boundary_mesh
                         target_layer});
             }
 
-            const Scalar base_height = target_layer == 1
-                ? profile->first_height
+            const auto reference_result =
+                profiles.height(
+                    vertex.source_vertex_id,
+                    target_layer);
+            if (!reference_result.hasValue())
+            {
+                return StepResult::failure(
+                    reference_result.error());
+            }
+            const Scalar reference_height =
+                reference_result.value();
+            const Scalar provisional_height = target_layer == 1
+                ? reference_height
                 : vertex.actual_height * profile->growth_ratio;
-            if (!std::isfinite(base_height) ||
-                base_height <= Scalar{0})
+            if (!std::isfinite(reference_height) ||
+                reference_height <= Scalar{0} ||
+                !std::isfinite(provisional_height) ||
+                provisional_height <= Scalar{0})
             {
                 return StepResult::failure(
                     NonFiniteLayerHeight{
                         vertex.source_vertex_id,
                         target_layer});
             }
-            base_heights.push_back(base_height);
+            reference_heights.push_back(reference_height);
+            provisional_heights.push_back(provisional_height);
         }
 
         const auto field_result = GrowthFieldSmoother{}.smooth(
@@ -335,7 +351,8 @@ namespace boundary_mesh
             front_evaluation.value(),
             adjacency_result.value(),
             direction_result.value(),
-            base_heights);
+            reference_heights,
+            provisional_heights);
         if (!field_result.hasValue())
         {
             return StepResult::failure(

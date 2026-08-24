@@ -85,7 +85,8 @@ namespace boundary_mesh
             const FrontEvaluation &evaluation,
             const FrontAdjacency &adjacency,
             const GrowthDirections &raw_directions,
-            const std::vector<Scalar> &base_heights)
+            const std::vector<Scalar> &reference_heights,
+            const std::vector<Scalar> &provisional_heights)
         {
             const std::size_t count = front.vertices.size();
             if (front.layer != evaluation.layer ||
@@ -95,7 +96,8 @@ namespace boundary_mesh
                 adjacency.vertex_neighbors.size() != count ||
                 adjacency.vertex_incident_faces.size() != count ||
                 raw_directions.vertices.size() != count ||
-                base_heights.size() != count)
+                reference_heights.size() != count ||
+                provisional_heights.size() != count)
             {
                 return false;
             }
@@ -120,7 +122,8 @@ namespace boundary_mesh
             const FrontEvaluation &evaluation,
             const FrontAdjacency &adjacency,
             const GrowthDirections &raw_directions,
-            const std::vector<Scalar> &base_heights)
+            const std::vector<Scalar> &reference_heights,
+            const std::vector<Scalar> &provisional_heights)
         {
             using DirectionBufferResult =
                 Result<std::vector<Vector3>, GrowthFieldSmoothingError>;
@@ -145,14 +148,24 @@ namespace boundary_mesh
                             vertex.source_vertex_id,
                             front.layer});
                 }
-                if (!std::isfinite(base_heights[index]) ||
-                    base_heights[index] <= Scalar{0})
+                if (!std::isfinite(reference_heights[index]) ||
+                    reference_heights[index] <= Scalar{0})
                 {
                     return DirectionBufferResult::failure(
                         InvalidGrowthFieldBaseHeight{
                             index,
                             vertex.source_vertex_id,
-                            base_heights[index],
+                            reference_heights[index],
+                            front.layer});
+                }
+                if (!std::isfinite(provisional_heights[index]) ||
+                    provisional_heights[index] <= Scalar{0})
+                {
+                    return DirectionBufferResult::failure(
+                        InvalidGrowthFieldBaseHeight{
+                            index,
+                            vertex.source_vertex_id,
+                            provisional_heights[index],
                             front.layer});
                 }
                 if (adjacency.vertex_incident_faces[index].empty())
@@ -422,7 +435,8 @@ namespace boundary_mesh
         const FrontEvaluation &evaluation,
         const FrontAdjacency &adjacency,
         const GrowthDirections &raw_directions,
-        const std::vector<Scalar> &base_heights) const
+        const std::vector<Scalar> &reference_heights,
+        const std::vector<Scalar> &provisional_heights) const
     {
         using SmoothingResult =
             Result<SmoothedGrowthFields, GrowthFieldSmoothingError>;
@@ -431,7 +445,8 @@ namespace boundary_mesh
                 evaluation,
                 adjacency,
                 raw_directions,
-                base_heights))
+                reference_heights,
+                provisional_heights))
         {
             return SmoothingResult::failure(
                 GrowthFieldInputMismatch{
@@ -439,7 +454,8 @@ namespace boundary_mesh
                     raw_directions.layer,
                     front.vertices.size(),
                     raw_directions.vertices.size(),
-                    base_heights.size()});
+                    reference_heights.size(),
+                    provisional_heights.size()});
         }
 
         auto initialized = validateAndInitialize(
@@ -447,7 +463,8 @@ namespace boundary_mesh
             evaluation,
             adjacency,
             raw_directions,
-            base_heights);
+            reference_heights,
+            provisional_heights);
         if (!initialized.hasValue())
         {
             return SmoothingResult::failure(initialized.error());
@@ -533,7 +550,7 @@ namespace boundary_mesh
         {
             predicted_positions.push_back(
                 front.vertices[index].position +
-                base_heights[index] * current[index]);
+                provisional_heights[index] * current[index]);
         }
 
         std::vector<Scalar> actual_heights(
@@ -546,7 +563,7 @@ namespace boundary_mesh
                 adjacency.vertex_neighbors[index];
             if (neighbors.empty())
             {
-                actual_heights[index] = base_heights[index];
+                actual_heights[index] = reference_heights[index];
                 continue;
             }
 
@@ -562,8 +579,8 @@ namespace boundary_mesh
                 static_cast<Scalar>(neighbors.size());
 
             const Scalar relative =
-                (predicted_height - base_heights[index]) /
-                base_heights[index];
+                (predicted_height - reference_heights[index]) /
+                reference_heights[index];
             const Scalar logistic_argument =
                 Scalar{0.5} * relative;
             Scalar sigmoid = Scalar{0};
@@ -585,10 +602,10 @@ namespace boundary_mesh
             const Scalar correction =
                 sigmoid - Scalar{0.5};
             const Scalar actual = std::clamp(
-                base_heights[index] *
+                reference_heights[index] *
                     (Scalar{1} + correction),
-                Scalar{0.5} * base_heights[index],
-                Scalar{1.5} * base_heights[index]);
+                Scalar{0.5} * reference_heights[index],
+                Scalar{1.5} * reference_heights[index]);
             if (!std::isfinite(predicted_height) ||
                 !std::isfinite(relative) ||
                 !std::isfinite(actual) ||

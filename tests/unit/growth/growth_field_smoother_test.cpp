@@ -87,7 +87,8 @@ namespace
         const GrowthFront &front,
         const FrontAdjacency &adjacency,
         const std::vector<Vector3> &directions,
-        const std::vector<Scalar> &base_heights)
+        const std::vector<Scalar> &reference_heights,
+        const std::vector<Scalar> &provisional_heights)
     {
         Scalar predicted = Scalar{0};
         for (const std::size_t neighbor :
@@ -95,24 +96,25 @@ namespace
         {
             predicted +=
                 ((front.vertices[neighbor].position +
-                  base_heights[neighbor] * directions[neighbor]) -
+                  provisional_heights[neighbor] *
+                      directions[neighbor]) -
                  front.vertices[vertex_index].position)
                     .dot(directions[vertex_index]);
         }
         predicted /= static_cast<Scalar>(
             adjacency.vertex_neighbors[vertex_index].size());
         const Scalar relative =
-            (predicted - base_heights[vertex_index]) /
-            base_heights[vertex_index];
+            (predicted - reference_heights[vertex_index]) /
+            reference_heights[vertex_index];
         const Scalar correction =
             Scalar{1} /
                 (Scalar{1} + std::exp(Scalar{-0.5} * relative)) -
             Scalar{0.5};
         return std::clamp(
-            base_heights[vertex_index] *
+            reference_heights[vertex_index] *
                 (Scalar{1} + correction),
-            Scalar{0.5} * base_heights[vertex_index],
-            Scalar{1.5} * base_heights[vertex_index]);
+            Scalar{0.5} * reference_heights[vertex_index],
+            Scalar{1.5} * reference_heights[vertex_index]);
     }
 }
 
@@ -125,16 +127,20 @@ int main()
     if (!adjacency.hasValue()) return 1;
     const FrontEvaluation evaluation = makeEvaluation(front);
     const GrowthDirections raw = makeDirections(front.layer);
-    const std::vector<Scalar> base_heights{
+    const std::vector<Scalar> reference_heights{
         Scalar{0.10}, Scalar{0.08}, Scalar{0.12},
         Scalar{0.09}, Scalar{0.11}};
+    const std::vector<Scalar> provisional_heights{
+        Scalar{0.15}, Scalar{0.12}, Scalar{0.18},
+        Scalar{0.135}, Scalar{0.165}};
 
     const auto result = GrowthFieldSmoother{}.smooth(
         front,
         evaluation,
         adjacency.value(),
         raw,
-        base_heights);
+        reference_heights,
+        provisional_heights);
     if (!result.hasValue() ||
         result.value().layer != front.layer ||
         result.value().directions.size() != front.vertices.size() ||
@@ -164,7 +170,8 @@ int main()
             front,
             adjacency.value(),
             result.value().directions,
-            base_heights);
+            reference_heights,
+            provisional_heights);
         if (std::abs(
                 result.value().actual_heights[index] - expected) >
             Scalar{1e-12})
@@ -185,7 +192,8 @@ int main()
         makeEvaluation(permuted),
         permuted_adjacency.value(),
         raw,
-        base_heights);
+        reference_heights,
+        provisional_heights);
     if (!permuted_result.hasValue() ||
         !sameDirections(
             result.value().directions,
@@ -205,7 +213,8 @@ int main()
         evaluation,
         coincident_adjacency.value(),
         raw,
-        base_heights);
+        reference_heights,
+        provisional_heights);
     if (coincident_result.hasValue() ||
         std::get_if<DegenerateGrowthFieldNeighbor>(
             &coincident_result.error()) == nullptr)
@@ -221,12 +230,48 @@ int main()
         evaluation,
         adjacency.value(),
         nonfinite,
-        base_heights);
+        reference_heights,
+        provisional_heights);
     if (nonfinite_result.hasValue() ||
         std::get_if<NonFiniteGrowthFieldInput>(
             &nonfinite_result.error()) == nullptr)
     {
         return 9;
+    }
+
+    std::vector<Scalar> missing_provisional =
+        provisional_heights;
+    missing_provisional.pop_back();
+    const auto mismatch_result = GrowthFieldSmoother{}.smooth(
+        front,
+        evaluation,
+        adjacency.value(),
+        raw,
+        reference_heights,
+        missing_provisional);
+    if (mismatch_result.hasValue() ||
+        std::get_if<GrowthFieldInputMismatch>(
+            &mismatch_result.error()) == nullptr)
+    {
+        return 11;
+    }
+
+    std::vector<Scalar> invalid_provisional =
+        provisional_heights;
+    invalid_provisional[0] = Scalar{0};
+    const auto invalid_height_result =
+        GrowthFieldSmoother{}.smooth(
+            front,
+            evaluation,
+            adjacency.value(),
+            raw,
+            reference_heights,
+            invalid_provisional);
+    if (invalid_height_result.hasValue() ||
+        std::get_if<InvalidGrowthFieldBaseHeight>(
+            &invalid_height_result.error()) == nullptr)
+    {
+        return 12;
     }
 
     return 0;

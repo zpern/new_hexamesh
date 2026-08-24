@@ -367,10 +367,22 @@ int main()
         buildFaceLayerConstraints(
             patch.value(), front.value(), ratio_profiles.value()).value());
     if (!ratio_step.hasValue()) return 32;
+    const Scalar reference_height = Scalar{0.5};
+    const Scalar provisional_height = Scalar{0.16};
+    const Scalar relative =
+        (provisional_height - reference_height) /
+        reference_height;
+    const Scalar correction =
+        Scalar{1} /
+            (Scalar{1} + std::exp(Scalar{-0.5} * relative)) -
+        Scalar{0.5};
+    const Scalar expected_height =
+        reference_height * (Scalar{1} + correction);
     for (std::size_t index = 0; index < 3; ++index)
     {
         const Point3 expected =
-            layer1.vertices[index].position + Vector3{0.0, 0.0, 0.16};
+            layer1.vertices[index].position +
+            expected_height * Vector3::UnitZ();
         if ((ratio_step.value().next_front.vertices[index].position -
              expected).norm() > 1e-12)
         {

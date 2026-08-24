@@ -30,6 +30,7 @@ namespace boundary_mesh
             const FrontEvaluation &evaluation,
             const FrontAdjacency &adjacency,
             const GrowthDirections &raw_directions,
-            const std::vector<Scalar> &base_heights) const;
+            const std::vector<Scalar> &reference_heights,
+            const std::vector<Scalar> &provisional_heights) const;
     };
 }
