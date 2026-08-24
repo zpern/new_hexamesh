@@ -18,7 +18,7 @@ namespace boundary_mesh
         std::uint32_t layer_count{}; // 全部 Wall 顶点的请求层数
         Scalar maximum_skewness{0.95}; // 候选体单元允许的最大 skewness
         std::uint32_t max_neighbor_layer_difference{1}; // 相邻源面的最大层数差
-        Scalar isotropic_height{1}; // 平均侧边长度与底面尺度之比的停止阈值
+        Scalar isotropic_height{1}; // BLMesh 风格实际层高与前沿多尺度的停止阈值
         std::filesystem::path output_prefix; // 两个 VTK 输出的公共前缀
     };
 

@@ -79,7 +79,7 @@ namespace boundary_mesh
     {
         VolumeCellQualityOptions cell_quality; // 阶段 04 的候选单元质量参数
         std::uint32_t max_neighbor_layer_difference{1}; // 共享边两侧最大允许层数差
-        Scalar isotropic_height{1}; // 平均侧边长度与底面尺度之比的停止阈值
+        Scalar isotropic_height{1}; // BLMesh 风格实际层高与前沿多尺度的停止阈值
     };
 
     struct RegularLayerGrowthResult
