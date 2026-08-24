@@ -50,6 +50,7 @@ namespace boundary_mesh
         std::vector<FaceStopEvent> stopped_faces; // 质量不合格的源面
         std::vector<FaceStopEvent> accepted_stopped_faces; // 当前单元已接受、但不再进入后续层的源面
         std::vector<FaceStopEvent> completed_faces; // 达到层数上限的源面
+        GrowthFieldSmoothingDiagnostics smoothing_diagnostics; // 当前目标层的法向优化统计
     };
 
     struct LayerVertexRecord

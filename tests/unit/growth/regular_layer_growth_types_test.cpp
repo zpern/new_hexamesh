@@ -44,7 +44,9 @@ int main()
         !step.previous_front_face_indices.empty() ||
         !step.stopped_faces.empty() ||
         !step.accepted_stopped_faces.empty() ||
-        !step.completed_faces.empty())
+        !step.completed_faces.empty() ||
+        step.smoothing_diagnostics.activated_vertices != 0 ||
+        step.smoothing_diagnostics.updated_vertices != 0)
     {
         return 4;
     }
