@@ -698,3 +698,16 @@ add_test(
     NAME boundary_mesh_reserved_layer_growth_test
     COMMAND boundary_mesh_reserved_layer_growth_test
 )
+
+add_executable(
+    boundary_mesh_transition_layer_coordinator_test
+    unit/transition/transition_layer_coordinator_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_transition_layer_coordinator_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_transition_layer_coordinator_test
+    COMMAND boundary_mesh_transition_layer_coordinator_test
+)

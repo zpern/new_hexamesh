@@ -173,6 +173,7 @@ add_library(
     boundary_mesh_transition
     STATIC
         src/transition/reserved_layer_growth.cpp
+        src/transition/transition_layer_coordinator.cpp
 )
 add_library(BoundaryMesh::Transition ALIAS boundary_mesh_transition)
 target_compile_features(boundary_mesh_transition PUBLIC cxx_std_17)
