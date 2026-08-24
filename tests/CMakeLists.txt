@@ -122,6 +122,19 @@ add_test(
     COMMAND boundary_mesh_growth_front_test
 )
 
+add_executable(
+    boundary_mesh_multi_normal_types_test
+    unit/growth/multi_normal_types_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_multi_normal_types_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_multi_normal_types_test
+    COMMAND boundary_mesh_multi_normal_types_test
+)
+
 # 当前活动前沿的一环顶点和关联面邻接
 add_executable(
     boundary_mesh_front_adjacency_test

@@ -38,6 +38,8 @@ namespace boundary_mesh
         Scalar actual_height{}; // 最近一层真正采用的推出步长
         Scalar visibility_cosine{1}; // 原始法向对最不利关联面的点积
         bool complex_corner{}; // 是否属于低可见性复杂角点
+        std::uint32_t branch_id{}; // 同一源点的多法向分支编号，普通点为 0
+        bool multi_normal_branch{}; // 当前点是否由多法向拆点产生
     };
 
     /// 当前生长层的紧凑活动前沿及其源实体映射。
