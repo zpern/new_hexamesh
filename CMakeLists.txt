@@ -169,6 +169,27 @@ target_link_libraries(
         BoundaryMesh::Spatial
 )
 
+add_library(
+    boundary_mesh_transition
+    STATIC
+        src/transition/reserved_layer_growth.cpp
+)
+add_library(BoundaryMesh::Transition ALIAS boundary_mesh_transition)
+target_compile_features(boundary_mesh_transition PUBLIC cxx_std_17)
+target_include_directories(
+    boundary_mesh_transition
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(
+    boundary_mesh_transition
+    PUBLIC
+        BoundaryMesh::BoundaryLayer
+        BoundaryMesh::Surface
+        BoundaryMesh::Core
+)
+
 if(BOUNDARY_MESH_ENABLE_CGNS_IO)
     add_library(
         boundary_mesh_io

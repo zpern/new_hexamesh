@@ -685,3 +685,16 @@ if(BOUNDARY_MESH_ENABLE_CGNS_IO)
             BoundaryMesh::CGNS
     )
 endif()
+
+add_executable(
+    boundary_mesh_reserved_layer_growth_test
+    unit/transition/reserved_layer_growth_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_reserved_layer_growth_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_reserved_layer_growth_test
+    COMMAND boundary_mesh_reserved_layer_growth_test
+)
