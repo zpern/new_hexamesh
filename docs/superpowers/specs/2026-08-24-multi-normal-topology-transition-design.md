@@ -52,8 +52,11 @@ input GrowthFront
     -> transition VolumeMesh + directly written transformed GrowthFront
 ```
 
-Failure is atomic per accepted transition plan. A partially constructed local
-topology or volume is never committed.
+Geometric failures in implemented Triangle transition construction are atomic
+per accepted transition plan. Quad-based transition regions are an explicit
+temporary exception: their volume cells may be omitted while their accepted
+split topology and displaced output surface are retained for the user's later
+manual volume decomposition.
 
 ## Ordered Mixed-Face Fans
 
@@ -179,11 +182,13 @@ The reserved operation consumes:
 - the source face ID and transition layer metadata.
 
 It produces zero or more standard `VolumeCell` values with matching metadata.
-Until the user supplies the implementation, a Quad with no moving split copy
-produces no transition cell, while a Quad requiring transition-volume
-decomposition returns an explicit `UnsupportedQuadMultiNormalTransition`
-error. The system must not silently triangulate the Quad, guess a diagonal,
-or commit an incomplete transition.
+Until the user supplies the implementation, every Quad-based transition
+region produces no transition cell. This omission does not discard the split
+vertices, remapped original faces, stitching triangles, accepted displacement,
+or directly written transformed front. The system must not silently
+triangulate the Quad or guess a diagonal; the intentionally omitted region is
+reported in transition diagnostics so the user can locate and manually
+decompose it later.
 
 ## Direct Post-Transition Surface
 
@@ -218,14 +223,19 @@ struct MultiNormalTransitionResult
     GrowthFront transformed_front;
     std::vector<SplitVertexMapping> vertex_mapping;
     std::vector<TransitionFaceOrigin> transition_face_origins;
+    std::vector<OmittedQuadTransition> omitted_quad_transitions;
 };
 ```
 
 `vertex_mapping` preserves the source vertex and branch identity for every
 transformed-front vertex. `transition_face_origins` records the split edge or
 complex vertex and all contributing source faces for generated stitching
-faces. The exact storage integration with the existing growth result is fixed
-in the implementation plan, but no origin information may be discarded.
+faces. Each `OmittedQuadTransition` records the source face ID, ordered
+topology vertex IDs, merged bottom IDs, and moved-corner mask needed to locate
+and later implement or manually replace the missing Quad-based transition
+volume. The exact storage integration with the existing growth result is fixed
+in the implementation plan, but no origin or omission information may be
+discarded.
 
 ## Validation and Atomic Fallback
 
@@ -239,11 +249,13 @@ Before committing a transition plan, validate:
 - no illegal transition-cell overlap or original-surface collision;
 - a complete mapping from transformed vertices and faces to their origins.
 
-On recoverable geometric failure, reduce only the involved split-copy heights
-and retry within a fixed limit. If the local plan remains invalid, discard the
-entire plan and retain its original vertices, faces, and single-normal
-behavior. Unsupported Quad transition decomposition is reported explicitly
-instead of being treated as a geometric fallback.
+On recoverable geometric failure in implemented Triangle transition regions,
+reduce only the involved split-copy heights and retry within a fixed limit. If
+the local plan remains invalid, discard the entire plan and retain its
+original vertices, faces, and single-normal behavior. Omitted Quad transition
+regions are not treated as geometric failures: retain their topology and new
+surface, emit no corresponding volume cells, and record their source face and
+topology vertex IDs in diagnostics.
 
 ## Code Boundaries
 
@@ -279,10 +291,10 @@ Required coverage includes:
 - ordinary vertices retaining exactly zero transition displacement;
 - direct transformed-front connectivity matching the topology-stage output;
 - absence of any volume-derived surface extraction;
-- atomic rollback after invalid Tetra or collision failure;
+- atomic rollback after invalid Triangle-derived Tetra or collision failure;
 - unchanged Quads producing no transition cell;
-- affected Quads returning `UnsupportedQuadMultiNormalTransition` until the
-  user-provided decomposition is installed;
+- affected Quads producing no transition cell while retaining their split,
+  displaced transformed-front faces and an omission diagnostic;
 - subsequent regular Triangle-to-Prism and Quad-to-Hexa growth from a valid
   transformed front.
 
@@ -296,9 +308,13 @@ Required coverage includes:
   point-ID-ordered Tetra behavior.
 - Quad transition decomposition is isolated behind the documented extension
   boundary and contains no guessed implementation.
+- Omitted Quad transition regions do not suppress or roll back the directly
+  constructed post-transition surface and are identifiable in diagnostics.
 - The transformed front is written directly from split surface topology and
   accepted moved coordinates.
 - No transition surface is extracted from volume-cell boundary faces.
-- Failure never commits partial topology or partial transition cells.
+- Implemented Triangle-region failure never commits partial local topology or
+  partial Triangle transition cells; Quad-region volume omission is the sole
+  documented exception.
 - Existing regular Triangle/Quad growth remains compatible with the resulting
   transformed front.
