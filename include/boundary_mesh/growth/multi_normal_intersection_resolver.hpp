@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <set>
 #include <vector>
 
 #include <boundary_mesh/core/result.hpp>
@@ -14,6 +15,10 @@ namespace boundary_mesh
         std::size_t shrink_iterations{};
         bool used_zero_retry{};
     };
+
+    std::set<std::size_t> findMultiNormalIntersectionBadPoints(
+        const MultiNormalTopology &topology,
+        const MultiNormalTransitionResult &candidate);
 
     Result<ResolvedMultiNormalLengths, MultiNormalError>
     resolveMultiNormalLengths(
