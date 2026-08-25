@@ -279,6 +279,19 @@ add_test(
 )
 
 add_executable(
+    boundary_mesh_boundary_layer_generation_pipeline_test
+    integration/boundary_layer_generation_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_boundary_layer_generation_pipeline_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_boundary_layer_generation_pipeline_test
+    COMMAND boundary_mesh_boundary_layer_generation_pipeline_test
+)
+
+add_executable(
     boundary_mesh_multi_normal_mesh_merge_test
     unit/growth/multi_normal_mesh_merge_test.cpp
 )

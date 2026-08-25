@@ -159,6 +159,7 @@ add_library(
         src/growth/multi_normal_intersection_resolver.cpp
         src/growth/multi_normal_transition_generator.cpp
         src/growth/multi_normal_mesh_merge.cpp
+        src/growth/boundary_layer_generator.cpp
         src/growth/front_evaluator.cpp
         src/growth/growth_direction.cpp
         src/growth/growth_field_smoother.cpp
