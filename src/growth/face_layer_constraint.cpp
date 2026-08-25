@@ -63,8 +63,7 @@ namespace boundary_mesh
             InvalidFaceConstraintState>;
         if (initial_front.layer != 0 ||
             initial_front.faces.size() !=
-                initial_front.source_face_ids.size() ||
-            initial_front.source_face_ids != patch.sourceFaceIds())
+                initial_front.source_face_ids.size())
         {
             return ConstraintResult::failure({0, 0});
         }
@@ -76,7 +75,10 @@ namespace boundary_mesh
         {
             const SurfaceFaceId source_face_id =
                 initial_front.source_face_ids[face_index];
-            if (table.find(source_face_id) != nullptr)
+            if (std::find(
+                    patch.sourceFaceIds().begin(),
+                    patch.sourceFaceIds().end(),
+                    source_face_id) == patch.sourceFaceIds().end())
             {
                 return ConstraintResult::failure({source_face_id, 0});
             }
@@ -99,12 +101,28 @@ namespace boundary_mesh
                 }
                 requested = std::min(requested, profile->layer_count);
             }
-            table.entries_.push_back(
-                {source_face_id,
-                 requested,
-                 requested,
-                 FaceLayerLimitKind::Requested,
-                 FaceStopReason::None});
+            const auto existing = std::find_if(
+                table.entries_.begin(), table.entries_.end(),
+                [&](const FaceLayerConstraint &entry)
+                {
+                    return entry.source_face_id == source_face_id;
+                });
+            if (existing == table.entries_.end())
+            {
+                table.entries_.push_back(
+                    {source_face_id,
+                     requested,
+                     requested,
+                     FaceLayerLimitKind::Requested,
+                     FaceStopReason::None});
+            }
+            else
+            {
+                existing->requested_layer_count = std::min(
+                    existing->requested_layer_count, requested);
+                existing->allowed_layer_count = std::min(
+                    existing->allowed_layer_count, requested);
+            }
         }
         std::sort(
             table.entries_.begin(),

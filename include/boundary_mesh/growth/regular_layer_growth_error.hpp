@@ -9,7 +9,6 @@
 #include <boundary_mesh/growth/growth_field_smoothing_error.hpp>
 #include <boundary_mesh/growth/growth_profile.hpp>
 #include <boundary_mesh/growth/growth_profile_error.hpp>
-#include <boundary_mesh/growth/multi_normal_error.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluation_error.hpp>
 #include <boundary_mesh/spatial/spatial_error.hpp>
 
@@ -77,11 +76,6 @@ namespace boundary_mesh
         Scalar value{}; // 非有限或非正的各向同性停止阈值
     };
 
-    struct MultiNormalTransitionFailure
-    {
-        MultiNormalError cause;
-    };
-
     using RegularLayerGrowthError = std::variant<
         GrowthProfileFailure,
         FrontEvaluationFailure,
@@ -94,6 +88,5 @@ namespace boundary_mesh
         CollisionInitializationFailure,
         CollisionStateFailure,
         InvalidFaceConstraintState,
-        InvalidIsotropicHeight,
-        MultiNormalTransitionFailure>; // 规则层生成过程中可诊断的程序级错误
+        InvalidIsotropicHeight>; // 规则层生成过程中可诊断的程序级错误
 }

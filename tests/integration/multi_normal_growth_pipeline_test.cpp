@@ -1,5 +1,9 @@
+#include <algorithm>
+#include <variant>
+
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
+#include <boundary_mesh/growth/multi_normal_transition_generator.hpp>
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 
@@ -10,12 +14,17 @@ int main()
     SurfaceMesh mesh;
     mesh.vertices = {
         Point3{0, 0, 0}, Point3{1, 0, 0},
-        Point3{0, 1, 0}, Point3{0, 0, 1}};
+        Point3{1, 1, 0}, Point3{0, 1, 0},
+        Point3{0, 0, 1}, Point3{1, 0, 1},
+        Point3{1, 1, 1}, Point3{0, 1, 1}};
     mesh.faces = {
-        Triangle{{0, 2, 1}}, Triangle{{0, 1, 3}},
-        Triangle{{1, 2, 3}}, Triangle{{2, 0, 3}}};
+        Quad{{0, 3, 2, 1}}, Quad{{4, 5, 6, 7}},
+        Quad{{0, 1, 5, 4}}, Quad{{1, 2, 6, 5}},
+        Quad{{2, 3, 7, 6}}, Quad{{3, 0, 4, 7}}};
     mesh.face_tags = {
         {SurfaceBoundaryKind::Wall, 10},
+        {SurfaceBoundaryKind::Farfield, 20},
+        {SurfaceBoundaryKind::Farfield, 20},
         {SurfaceBoundaryKind::Farfield, 20},
         {SurfaceBoundaryKind::Farfield, 20},
         {SurfaceBoundaryKind::Farfield, 20}};
@@ -24,29 +33,52 @@ int main()
     if (!topology.hasValue()) return 1;
     const auto patch = GrowthPatchBuilder{}.build(mesh, topology.value());
     if (!patch.hasValue()) return 2;
-    const auto front = GrowthFrontBuilder{}.buildInitial(
+    const auto initial = GrowthFrontBuilder{}.buildInitial(
         mesh, patch.value());
-    if (!front.hasValue()) return 3;
+    if (!initial.hasValue() || initial.value().faces.size() != 1 ||
+        !std::holds_alternative<Quad>(initial.value().faces[0]))
+    {
+        return 3;
+    }
+
+    MultiNormalOptions multi_normal_options;
+    const auto transition = generateMultiNormalTransition(
+        initial.value(), multi_normal_options);
+    if (!transition.hasValue() || transition.value().applied)
+    {
+        return 4;
+    }
+
+    GrowthFront transformed = transition.value().transformed_front;
+    const Quad quad = std::get<Quad>(transformed.faces[0]);
+    transformed.faces = {
+        Triangle{{quad.vertex_ids[0], quad.vertex_ids[1], quad.vertex_ids[2]}},
+        Triangle{{quad.vertex_ids[0], quad.vertex_ids[2], quad.vertex_ids[3]}}};
+    transformed.source_face_ids = {
+        initial.value().source_face_ids[0],
+        initial.value().source_face_ids[0]};
 
     std::vector<SourceVertexGrowthProfile> profiles;
     for (const PatchVertex &vertex : patch.value().vertices())
     {
-        profiles.push_back({vertex.source_vertex_id, {0.1, 1.0, 1}});
+        profiles.push_back({vertex.source_vertex_id, {0.1, 1.0, 0}});
     }
 
-    RegularLayerGrowthOptions options;
-    options.multi_normal.enabled = true;
-    options.multi_normal.transition_height = 0.05;
-    const auto result = generateRegularLayers(
-        mesh, topology.value(), patch.value(), front.value(),
-        profiles, options);
-    if (!result.hasValue() || result.value().mesh.cells.size() != 1 ||
-        !result.value().omitted_quad_transitions.empty() ||
-        result.value().faces.size() != 1 ||
-        result.value().faces.front().accepted_layer_count != 1)
-    {
-        return 4;
-    }
+    RegularLayerGrowthOptions regular_options;
+    const auto regular = generateRegularLayers(
+        mesh, topology.value(), patch.value(), transformed,
+        profiles, regular_options);
+    if (!regular.hasValue()) return 5;
+    if (!regular.value().mesh.cells.empty()) return 6;
+    if (regular.value().faces.size() != 1) return 7;
+    if (regular.value().faces[0].accepted_layer_count != 0) return 8;
+    if (std::any_of(
+            regular.value().mesh.metadata.begin(),
+            regular.value().mesh.metadata.end(),
+            [](const CellMetadata &metadata)
+            {
+                return metadata.role != CellRole::RegularLayer;
+            })) return 9;
 
     return 0;
 }
