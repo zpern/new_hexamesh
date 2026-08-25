@@ -21,6 +21,10 @@ namespace boundary_mesh
     struct NonFiniteMultiNormalDisplacement { VertexId source_vertex_id{}; };
     struct DegenerateTriangleTransition { SurfaceFaceId source_face_id{}; };
     struct InvertedTriangleTransition { SurfaceFaceId source_face_id{}; };
+    struct UnresolvedMultiNormalIntersection
+    {
+        std::size_t bad_face_count{};
+    };
     struct MultiNormalDebugOutputFailure { VtkWriteError cause; };
 
     using MultiNormalError = std::variant<
@@ -32,5 +36,6 @@ namespace boundary_mesh
         NonFiniteMultiNormalDisplacement,
         DegenerateTriangleTransition,
         InvertedTriangleTransition,
+        UnresolvedMultiNormalIntersection,
         MultiNormalDebugOutputFailure>;
 }

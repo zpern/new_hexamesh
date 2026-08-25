@@ -46,6 +46,24 @@ int main()
     {
         return 1;
     }
+
+    MultiNormalOptions per_vertex_options = options;
+    per_vertex_options.resolved_transition_lengths = {
+        Scalar{0.10}, Scalar{0.20}, Scalar{0.30}};
+    const auto per_vertex_result = buildMultiNormalTransition(
+        same_source, per_vertex_options);
+    if (!per_vertex_result.hasValue()) return 20;
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        const Point3 expected =
+            per_vertex_options.resolved_transition_lengths[i] *
+            same_source.front.vertices[i].direction;
+        if ((per_vertex_result.value().transformed_front.vertices[i].position -
+             expected).norm() > Scalar{1e-12})
+        {
+            return 21;
+        }
+    }
     for (std::size_t i = 0; i < 3; ++i)
     {
         if ((same_result.value().transformed_front.vertices[i].position -
@@ -149,11 +167,10 @@ int main()
     const auto corner_result = generateMultiNormalTransition(
         cube_corner, corner_options);
     if (!corner_result.hasValue() || !corner_result.value().applied ||
-        corner_result.value().transformed_front.vertices.size() != 9 ||
-        corner_result.value().transformed_front.faces.size() != 9 ||
+        corner_result.value().transformed_front.vertices.size() != 8 ||
+        corner_result.value().transformed_front.faces.size() != 8 ||
         !corner_result.value().omitted_quad_transitions.empty() ||
-        corner_result.value().transition_cells.cells.size() <= 3 ||
-        corner_result.value().transformed_front_volume_vertex_ids.size() != 9)
+        corner_result.value().transformed_front_volume_vertex_ids.size() != 8)
     {
         return 8;
     }

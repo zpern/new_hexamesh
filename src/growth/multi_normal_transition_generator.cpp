@@ -1,10 +1,12 @@
 #include <cmath>
 #include <filesystem>
 #include <utility>
+#include <vector>
 
 #include <boundary_mesh/growth/front_evaluator.hpp>
 #include <boundary_mesh/growth/incident_face_fan.hpp>
 #include <boundary_mesh/growth/multi_normal_quad_triangulator.hpp>
+#include <boundary_mesh/growth/multi_normal_intersection_resolver.hpp>
 #include <boundary_mesh/growth/multi_normal_split_planner.hpp>
 #include <boundary_mesh/growth/multi_normal_topology_builder.hpp>
 #include <boundary_mesh/growth/multi_normal_transition_builder.hpp>
@@ -122,8 +124,28 @@ namespace boundary_mesh
         {
             return GeneratorResult::failure(triangulated.error());
         }
+        std::vector<Scalar> initial_lengths(
+            triangulated.value().front.vertices.size(), Scalar{0});
+        for (std::size_t index = 0;
+             index < initial_lengths.size(); ++index)
+        {
+            if (triangulated.value().front.vertices[index]
+                    .multi_normal_branch)
+            {
+                initial_lengths[index] = options.transition_height;
+            }
+        }
+        const auto resolved = resolveMultiNormalLengths(
+            triangulated.value(), std::move(initial_lengths), options);
+        if (!resolved.hasValue())
+        {
+            return GeneratorResult::failure(resolved.error());
+        }
+        MultiNormalOptions resolved_options = options;
+        resolved_options.resolved_transition_lengths =
+            resolved.value().lengths;
         auto transition = buildMultiNormalTransition(
-            triangulated.value(), options);
+            triangulated.value(), resolved_options);
         if (!transition.hasValue())
         {
             return GeneratorResult::failure(transition.error());

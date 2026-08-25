@@ -227,6 +227,19 @@ add_test(
 )
 
 add_executable(
+    boundary_mesh_multi_normal_intersection_resolver_test
+    unit/growth/multi_normal_intersection_resolver_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_multi_normal_intersection_resolver_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_multi_normal_intersection_resolver_test
+    COMMAND boundary_mesh_multi_normal_intersection_resolver_test
+)
+
+add_executable(
     boundary_mesh_multi_normal_transition_generator_test
     integration/multi_normal_transition_generator_test.cpp
 )

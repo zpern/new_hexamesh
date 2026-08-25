@@ -154,6 +154,7 @@ add_library(
         src/growth/multi_normal_topology_builder.cpp
         src/growth/multi_normal_quad_triangulator.cpp
         src/growth/multi_normal_transition_builder.cpp
+        src/growth/multi_normal_intersection_resolver.cpp
         src/growth/multi_normal_transition_generator.cpp
         src/growth/multi_normal_mesh_merge.cpp
         src/growth/front_evaluator.cpp
@@ -276,6 +277,7 @@ if(BOUNDARY_MESH_ENABLE_CGNS_IO)
             PRIVATE Psapi
         )
     endif()
+
 endif()
 
 include(CTest)

@@ -29,6 +29,7 @@ namespace boundary_mesh
         Scalar plane_skewness_threshold{-0.10};
         Scalar convex_skewness_threshold{0.20};
         std::size_t maximum_strategy_count{20};
+        std::vector<Scalar> resolved_transition_lengths;
         MultiNormalDebugOutput debug_output;
     };
 

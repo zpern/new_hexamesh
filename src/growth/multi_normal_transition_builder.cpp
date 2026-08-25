@@ -104,7 +104,18 @@ namespace boundary_mesh
                         NonFiniteMultiNormalDisplacement{
                             source.source_vertex_id});
                 }
-                target.position += options.transition_height *
+                const Scalar displacement =
+                    options.resolved_transition_lengths.size() ==
+                            topology.front.vertices.size()
+                        ? options.resolved_transition_lengths[topology_id]
+                        : options.transition_height;
+                if (!std::isfinite(displacement) || displacement < Scalar{0})
+                {
+                    return TransitionResult::failure(
+                        NonFiniteMultiNormalDisplacement{
+                            source.source_vertex_id});
+                }
+                target.position += displacement *
                     (source.direction / direction_length);
             }
             if (!target.position.allFinite())
