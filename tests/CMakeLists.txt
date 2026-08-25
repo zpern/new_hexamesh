@@ -175,6 +175,19 @@ add_test(
 )
 
 add_executable(
+    boundary_mesh_blmesh_geometry_parity_test
+    unit/growth/blmesh_geometry_parity_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_blmesh_geometry_parity_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_blmesh_geometry_parity_test
+    COMMAND boundary_mesh_blmesh_geometry_parity_test
+)
+
+add_executable(
     boundary_mesh_multi_normal_topology_builder_test
     unit/growth/multi_normal_topology_builder_test.cpp
 )
