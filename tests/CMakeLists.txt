@@ -175,6 +175,19 @@ add_test(
 )
 
 add_executable(
+    boundary_mesh_multi_normal_quad_triangulator_test
+    unit/growth/multi_normal_quad_triangulator_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_multi_normal_quad_triangulator_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_multi_normal_quad_triangulator_test
+    COMMAND boundary_mesh_multi_normal_quad_triangulator_test
+)
+
+add_executable(
     boundary_mesh_multi_normal_transition_builder_test
     unit/growth/multi_normal_transition_builder_test.cpp
 )
