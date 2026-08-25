@@ -117,6 +117,7 @@ namespace boundary_mesh
                 output.transition_cells.vertices.size());
             output.transition_cells.vertices.push_back(target.position);
         }
+        output.transformed_front_volume_vertex_ids = upper_ids;
 
         const auto addTet = [&](std::array<VertexId, 4> ids,
                                 SurfaceFaceId source_face_id)
@@ -266,51 +267,4 @@ namespace boundary_mesh
         return TransitionResult::success(std::move(output));
     }
 
-    Result<MultiNormalTransitionResult, MultiNormalError>
-    prepareMultiNormalTransition(
-        const GrowthFront &front,
-        const MultiNormalOptions &options)
-    {
-        MultiNormalTransitionResult unchanged;
-        unchanged.transformed_front = front;
-        if (!options.enabled)
-        {
-            return TransitionResult::success(std::move(unchanged));
-        }
-        if (!std::isfinite(options.transition_height) ||
-            options.transition_height <= Scalar{0})
-        {
-            return TransitionResult::failure(MultiNormalInputMismatch{
-                front.vertices.size(), front.faces.size()});
-        }
-
-        const auto evaluation = FrontEvaluator{}.evaluate(front);
-        if (!evaluation.hasValue())
-        {
-            return TransitionResult::failure(MultiNormalInputMismatch{
-                front.vertices.size(), front.faces.size()});
-        }
-        const auto fans = buildIncidentFaceFans(front, evaluation.value());
-        if (!fans.hasValue())
-        {
-            return TransitionResult::failure(fans.error());
-        }
-        const auto plans = planMultiNormalSplits(
-            front, fans.value(), options);
-        if (!plans.hasValue())
-        {
-            return TransitionResult::failure(plans.error());
-        }
-        if (plans.value().empty())
-        {
-            return TransitionResult::success(std::move(unchanged));
-        }
-        const auto topology = buildMultiNormalTopology(
-            front, plans.value());
-        if (!topology.hasValue())
-        {
-            return TransitionResult::failure(topology.error());
-        }
-        return buildMultiNormalTransition(topology.value(), options);
-    }
 }

@@ -14,7 +14,7 @@
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 #include <boundary_mesh/growth/farfield_boundary_builder.hpp>
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
-#include <boundary_mesh/growth/multi_normal_transition_builder.hpp>
+#include <boundary_mesh/growth/multi_normal_transition_generator.hpp>
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
 #include <boundary_mesh/growth/termination_propagator.hpp>
@@ -373,7 +373,7 @@ namespace boundary_mesh
             return GrowthResult::failure(initial_propagation.error());
         }
 
-        const auto transition = prepareMultiNormalTransition(
+        const auto transition = generateMultiNormalTransition(
             initial_front, options.multi_normal);
         if (!transition.hasValue())
         {

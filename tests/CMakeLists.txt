@@ -201,6 +201,19 @@ add_test(
 )
 
 add_executable(
+    boundary_mesh_multi_normal_transition_generator_test
+    integration/multi_normal_transition_generator_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_multi_normal_transition_generator_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_multi_normal_transition_generator_test
+    COMMAND boundary_mesh_multi_normal_transition_generator_test
+)
+
+add_executable(
     boundary_mesh_multi_normal_growth_pipeline_test
     integration/multi_normal_growth_pipeline_test.cpp
 )

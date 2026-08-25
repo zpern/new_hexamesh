@@ -3,6 +3,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <string>
 #include <vector>
 
 #include <boundary_mesh/core/types.hpp>
@@ -11,6 +13,14 @@
 
 namespace boundary_mesh
 {
+    struct MultiNormalDebugOutput
+    {
+        bool enabled{};
+        std::filesystem::path directory;
+        std::string transition_filename{"multi_normal_transition.vtk"};
+        std::string front_filename{"multi_normal_front.vtk"};
+    };
+
     struct MultiNormalOptions
     {
         bool enabled{false};
@@ -19,6 +29,7 @@ namespace boundary_mesh
         Scalar plane_skewness_threshold{-0.10};
         Scalar convex_skewness_threshold{0.20};
         std::size_t maximum_strategy_count{20};
+        MultiNormalDebugOutput debug_output;
     };
 
     struct SplitVertexMapping
@@ -51,5 +62,6 @@ namespace boundary_mesh
         std::vector<SplitVertexMapping> vertex_mapping;
         std::vector<TransitionFaceOrigin> transition_face_origins;
         std::vector<OmittedQuadTransition> omitted_quad_transitions;
+        std::vector<VertexId> transformed_front_volume_vertex_ids;
     };
 }

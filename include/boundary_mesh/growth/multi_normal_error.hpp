@@ -4,6 +4,7 @@
 #include <variant>
 
 #include <boundary_mesh/core/types.hpp>
+#include <boundary_mesh/io/vtk_write_error.hpp>
 
 namespace boundary_mesh
 {
@@ -20,6 +21,7 @@ namespace boundary_mesh
     struct NonFiniteMultiNormalDisplacement { VertexId source_vertex_id{}; };
     struct DegenerateTriangleTransition { SurfaceFaceId source_face_id{}; };
     struct InvertedTriangleTransition { SurfaceFaceId source_face_id{}; };
+    struct MultiNormalDebugOutputFailure { VtkWriteError cause; };
 
     using MultiNormalError = std::variant<
         MultiNormalInputMismatch,
@@ -29,5 +31,6 @@ namespace boundary_mesh
         InvalidMultiNormalTopology,
         NonFiniteMultiNormalDisplacement,
         DegenerateTriangleTransition,
-        InvertedTriangleTransition>;
+        InvertedTriangleTransition,
+        MultiNormalDebugOutputFailure>;
 }

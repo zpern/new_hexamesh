@@ -2,6 +2,7 @@
 #include <variant>
 
 #include <boundary_mesh/growth/multi_normal_transition_builder.hpp>
+#include <boundary_mesh/growth/multi_normal_transition_generator.hpp>
 
 namespace
 {
@@ -145,13 +146,14 @@ int main()
     cube_corner.source_face_ids = {80, 81, 82};
     MultiNormalOptions corner_options = options;
     corner_options.split_skewness_threshold = Scalar{0.5};
-    const auto corner_result = prepareMultiNormalTransition(
+    const auto corner_result = generateMultiNormalTransition(
         cube_corner, corner_options);
     if (!corner_result.hasValue() || !corner_result.value().applied ||
         corner_result.value().transformed_front.vertices.size() != 9 ||
-        corner_result.value().transformed_front.faces.size() != 6 ||
-        corner_result.value().omitted_quad_transitions.size() != 3 ||
-        corner_result.value().transition_cells.cells.size() != 3)
+        corner_result.value().transformed_front.faces.size() != 9 ||
+        !corner_result.value().omitted_quad_transitions.empty() ||
+        corner_result.value().transition_cells.cells.size() <= 3 ||
+        corner_result.value().transformed_front_volume_vertex_ids.size() != 9)
     {
         return 8;
     }

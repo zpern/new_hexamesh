@@ -136,6 +136,7 @@ add_library(
         src/growth/multi_normal_topology_builder.cpp
         src/growth/multi_normal_quad_triangulator.cpp
         src/growth/multi_normal_transition_builder.cpp
+        src/growth/multi_normal_transition_generator.cpp
         src/growth/front_evaluator.cpp
         src/growth/growth_direction.cpp
         src/growth/growth_field_smoother.cpp
@@ -191,6 +192,10 @@ target_include_directories(
 target_link_libraries(
     boundary_mesh_io
     PUBLIC BoundaryMesh::Core
+)
+target_link_libraries(
+    boundary_mesh_boundary_layer
+    PUBLIC BoundaryMesh::IO
 )
 
 if(BOUNDARY_MESH_ENABLE_CGNS_IO)
