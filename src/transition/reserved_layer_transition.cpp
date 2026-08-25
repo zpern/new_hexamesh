@@ -23,31 +23,6 @@ namespace boundary_mesh
             return ids;
         }
 
-        std::vector<std::array<VertexId, 3>> triangularCellFaces(
-            const VolumeCell &cell)
-        {
-            return std::visit(
-                [](const auto &value)
-                {
-                    using Cell = std::decay_t<decltype(value)>;
-                    const auto &v = value.vertex_ids;
-                    if constexpr (std::is_same_v<Cell, Tetra>)
-                        return std::vector<std::array<VertexId, 3>>{
-                            {v[0],v[1],v[2]}, {v[0],v[3],v[1]},
-                            {v[1],v[3],v[2]}, {v[2],v[3],v[0]}};
-                    else if constexpr (std::is_same_v<Cell, Pyramid>)
-                        return std::vector<std::array<VertexId, 3>>{
-                            {v[0],v[1],v[4]}, {v[1],v[2],v[4]},
-                            {v[2],v[3],v[4]}, {v[3],v[0],v[4]}};
-                    else if constexpr (std::is_same_v<Cell, Prism>)
-                        return std::vector<std::array<VertexId, 3>>{
-                            {v[0],v[1],v[2]}, {v[3],v[4],v[5]}};
-                    else
-                        return std::vector<std::array<VertexId, 3>>{};
-                },
-                cell);
-        }
-
         const LayerVertexRecord *findLayerVertices(
             const LayerVertexTable &table,
             VertexId source_id)
@@ -99,14 +74,12 @@ namespace boundary_mesh
         }
     }
 
-    std::vector<bool> externallyExposedTopTriangles(
-        const std::vector<Triangle> &candidates,
-        const std::vector<VolumeCell> &cells)
+    std::vector<bool> nonDuplicatedTopTriangles(
+        const std::vector<Triangle> &candidates)
     {
         std::map<std::array<VertexId, 3>, std::size_t> incidence;
-        for (const VolumeCell &cell : cells)
-            for (const auto &face : triangularCellFaces(cell))
-                ++incidence[triangleKey(face)];
+        for (const Triangle &candidate : candidates)
+            ++incidence[triangleKey(candidate.vertex_ids)];
 
         std::vector<bool> exposed(candidates.size(), false);
         for (std::size_t candidate_index = 0;
@@ -259,8 +232,7 @@ namespace boundary_mesh
         candidates.reserve(output.boundary_layer_top.faces.size());
         for (const SurfaceFace &face : output.boundary_layer_top.faces)
             candidates.push_back(std::get<Triangle>(face));
-        const auto exposed = externallyExposedTopTriangles(
-            candidates, output.mesh.cells);
+        const auto exposed = nonDuplicatedTopTriangles(candidates);
         SurfaceMesh filtered_top;
         filtered_top.vertices = output.mesh.vertices;
         for (std::size_t index = 0; index < candidates.size(); ++index)

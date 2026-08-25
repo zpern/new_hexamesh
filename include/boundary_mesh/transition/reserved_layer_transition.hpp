@@ -11,9 +11,8 @@
 
 namespace boundary_mesh
 {
-    std::vector<bool> externallyExposedTopTriangles(
-        const std::vector<Triangle> &candidates,
-        const std::vector<VolumeCell> &cells);
+    std::vector<bool> nonDuplicatedTopTriangles(
+        const std::vector<Triangle> &candidates);
 
     struct ReservedLayerTransitionResult
     {

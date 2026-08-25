@@ -13,11 +13,11 @@ using namespace boundary_mesh;
 int main()
 {
     const std::vector<Triangle> candidates{
-        Triangle{{0, 1, 2}}, Triangle{{0, 1, 3}}};
-    const std::vector<VolumeCell> covering_cells{
-        Tetra{{0, 1, 2, 3}}, Tetra{{0, 1, 2, 4}}};
-    assert((externallyExposedTopTriangles(candidates, covering_cells) ==
-            std::vector<bool>{false, true}));
+        Triangle{{0, 1, 2}}, Triangle{{2, 1, 0}},
+        Triangle{{0, 1, 3}},
+        Triangle{{5, 6, 7}}};
+    assert((nonDuplicatedTopTriangles(candidates) ==
+            std::vector<bool>{false, false, true, true}));
 
     SurfaceMesh mesh;
     mesh.vertices = {
