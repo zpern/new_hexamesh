@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -21,6 +22,46 @@ namespace boundary_mesh
         {
             return MergeResult::failure(
                 MultiNormalMergeInputMismatch{});
+        }
+        const auto invalidReference = [](
+            const VolumeMesh &mesh)
+            -> std::optional<MultiNormalMergeInvalidVertexReference>
+        {
+            for (std::size_t cell_index = 0;
+                 cell_index < mesh.cells.size();
+                 ++cell_index)
+            {
+                std::optional<VertexId> invalid;
+                std::visit(
+                    [&](const auto &cell)
+                    {
+                        for (const VertexId id : cell.vertex_ids)
+                        {
+                            if (static_cast<std::size_t>(id) >=
+                                mesh.vertices.size())
+                            {
+                                invalid = id;
+                                return;
+                            }
+                        }
+                    },
+                    mesh.cells[cell_index]);
+                if (invalid.has_value())
+                {
+                    return MultiNormalMergeInvalidVertexReference{
+                        cell_index, *invalid};
+                }
+            }
+            return std::nullopt;
+        };
+        if (const auto invalid = invalidReference(
+                transition.transition_cells))
+        {
+            return MergeResult::failure(*invalid);
+        }
+        if (const auto invalid = invalidReference(regular))
+        {
+            return MergeResult::failure(*invalid);
         }
         if (!transition.applied)
         {

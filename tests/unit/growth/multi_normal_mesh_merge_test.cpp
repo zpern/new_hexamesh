@@ -84,5 +84,17 @@ int main()
         return 5;
     }
 
+    MultiNormalTransitionResult bad_transition = transition;
+    std::get<Tetra>(bad_transition.transition_cells.cells[0]).vertex_ids[3] =
+        99;
+    const auto transition_reference_failure =
+        mergeMultiNormalAndRegularMeshes(bad_transition, regular);
+    if (transition_reference_failure.hasValue() ||
+        !std::holds_alternative<MultiNormalMergeInvalidVertexReference>(
+            transition_reference_failure.error()))
+    {
+        return 6;
+    }
+
     return 0;
 }
