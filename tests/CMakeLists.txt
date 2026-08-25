@@ -291,6 +291,19 @@ add_test(
     COMMAND boundary_mesh_multi_normal_mesh_merge_test
 )
 
+add_executable(
+    boundary_mesh_blmesh_topology_stitching_test
+    unit/growth/blmesh_topology_stitching_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_blmesh_topology_stitching_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_blmesh_topology_stitching_test
+    COMMAND boundary_mesh_blmesh_topology_stitching_test
+)
+
 # 当前活动前沿的一环顶点和关联面邻接
 add_executable(
     boundary_mesh_front_adjacency_test

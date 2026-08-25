@@ -135,6 +135,7 @@ add_library(
         src/growth/blmesh_splitter.cpp
         src/growth/blmesh_geometry.cpp
         src/growth/blmesh_intersection_checker.cpp
+        src/growth/blmesh_topology_stitching.cpp
         third/blmesh_mnormal/src/combineoptimizer.cpp
         third/blmesh_mnormal/src/mergeoptimizer.cpp
         third/blmesh_mnormal/src/meshevaluation.cpp
