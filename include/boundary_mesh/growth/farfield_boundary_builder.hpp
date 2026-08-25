@@ -16,6 +16,11 @@ namespace boundary_mesh
         const ExposedBoundaryTracker &exposed_boundary,
         const std::vector<SurfaceFaceId> &zero_layer_source_face_ids);
 
+    Result<SurfaceMesh, SpatialError> buildFarfieldBoundary(
+        const SurfaceMesh &original_surface,
+        const ExposedBoundaryTracker &exposed_boundary,
+        const std::vector<SurfaceFaceId> &zero_layer_source_face_ids);
+
     Result<SurfaceMesh, SpatialError> extractBoundaryLayerTop(
         const SurfaceMesh &farfield_boundary);
 }

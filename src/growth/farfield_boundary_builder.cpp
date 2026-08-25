@@ -306,4 +306,48 @@ namespace boundary_mesh
         }
         return Result<SurfaceMesh, SpatialError>::success(std::move(output));
     }
+
+    Result<SurfaceMesh, SpatialError> buildFarfieldBoundary(
+        const SurfaceMesh &original_surface,
+        const ExposedBoundaryTracker &exposed_boundary,
+        const std::vector<SurfaceFaceId> &zero_layer_source_face_ids)
+    {
+        GrowthFront original_front;
+        original_front.vertices.reserve(original_surface.vertices.size());
+        for (std::size_t index = 0;
+             index < original_surface.vertices.size();
+             ++index)
+        {
+            if (index > static_cast<std::size_t>(
+                            std::numeric_limits<VertexId>::max()))
+            {
+                return Result<SurfaceMesh, SpatialError>::failure(
+                    SpatialError::PrimitiveIdOverflow);
+            }
+            original_front.vertices.emplace_back(
+                original_surface.vertices[index],
+                static_cast<VertexId>(index));
+        }
+        original_front.faces = original_surface.faces;
+        original_front.source_face_ids.reserve(
+            original_surface.faces.size());
+        for (std::size_t index = 0;
+             index < original_surface.faces.size();
+             ++index)
+        {
+            if (index > static_cast<std::size_t>(
+                            std::numeric_limits<SurfaceFaceId>::max()))
+            {
+                return Result<SurfaceMesh, SpatialError>::failure(
+                    SpatialError::PrimitiveIdOverflow);
+            }
+            original_front.source_face_ids.push_back(
+                static_cast<SurfaceFaceId>(index));
+        }
+        return buildFarfieldBoundary(
+            original_surface,
+            original_front,
+            exposed_boundary,
+            zero_layer_source_face_ids);
+    }
 }
