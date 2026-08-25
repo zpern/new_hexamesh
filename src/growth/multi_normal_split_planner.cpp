@@ -3,6 +3,9 @@
 #include <cstddef>
 #include <limits>
 #include <vector>
+#include <array>
+#include <map>
+#include <type_traits>
 
 #include <boundary_mesh/growth/multi_normal_split_planner.hpp>
 
@@ -22,6 +25,99 @@ namespace boundary_mesh
             if (cosine < Scalar{0}) return Scalar{1};
             return std::acos(std::clamp(cosine, Scalar{-1}, Scalar{1})) /
                 (pi / Scalar{2});
+        }
+
+        struct BlmeshFan
+        {
+            bool closed{};
+            std::vector<VertexId> neighbors;
+            std::vector<std::size_t> face_indices;
+            std::vector<Vector3> normals;
+        };
+
+        BlmeshFan buildBlmeshFan(const GrowthFront &front, std::size_t center)
+        {
+            std::vector<std::array<VertexId, 3>> graph;
+            std::vector<std::size_t> incident_faces;
+            for (std::size_t face_index = 0; face_index < front.faces.size(); ++face_index)
+            {
+                const Triangle *triangle = std::get_if<Triangle>(&front.faces[face_index]);
+                if (triangle == nullptr)
+                {
+                    const bool contains = std::visit([&](const auto &face) {
+                        return std::find(face.vertex_ids.begin(), face.vertex_ids.end(),
+                                         static_cast<VertexId>(center)) != face.vertex_ids.end();
+                    }, front.faces[face_index]);
+                    if (contains) return {};
+                    continue;
+                }
+                auto connector = triangle->vertex_ids;
+                bool contains = false;
+                for (const VertexId id : connector) contains = contains || id == center;
+                if (!contains) continue;
+                if (connector[0] == center)
+                {
+                    connector[0] = connector[1];
+                    connector[1] = connector[2];
+                }
+                else if (connector[1] == center)
+                {
+                    connector[1] = connector[0];
+                    connector[0] = connector[2];
+                }
+                graph.push_back(connector);
+                incident_faces.push_back(face_index);
+            }
+            if (graph.empty()) return {};
+
+            std::map<VertexId, int> counts;
+            for (const auto &edge : graph) ++counts[edge[0]];
+            for (const auto &edge : graph)
+                if (counts.find(edge[1]) != counts.end()) ++counts[edge[1]];
+            VertexId start = graph.front()[0];
+            bool closed = true;
+            for (const auto &[vertex, count] : counts)
+                if (count == 1) { start = vertex; closed = false; break; }
+
+            BlmeshFan result;
+            result.closed = closed;
+            VertexId position = start;
+            do
+            {
+                bool reached_end = true;
+                for (const auto &edge : graph)
+                    if (edge[0] == position)
+                    {
+                        position = edge[1];
+                        result.neighbors.push_back(position);
+                        reached_end = false;
+                        break;
+                    }
+                if (position == start || reached_end) break;
+            } while (result.neighbors.size() <= graph.size());
+            if (result.neighbors.size() != graph.size()) return {};
+
+            const Point3 &coordinate = front.vertices[center].position;
+            for (std::size_t i = 0; i < result.neighbors.size(); ++i)
+            {
+                const std::size_t j = (i + 1) % result.neighbors.size();
+                const Point3 &first = front.vertices[result.neighbors[j]].position;
+                const Point3 &second = front.vertices[result.neighbors[i]].position;
+                result.normals.push_back(
+                    ((second - first).cross(first - coordinate)).normalized());
+                std::array<VertexId, 3> wanted{
+                    result.neighbors[i], result.neighbors[j],
+                    static_cast<VertexId>(center)};
+                std::sort(wanted.begin(), wanted.end());
+                for (const std::size_t face_index : incident_faces)
+                {
+                    auto actual = std::get<Triangle>(front.faces[face_index]).vertex_ids;
+                    std::sort(actual.begin(), actual.end());
+                    if (actual == wanted) { result.face_indices.push_back(face_index); break; }
+                }
+            }
+            if (result.face_indices.size() != result.neighbors.size()) return {};
+            return result;
         }
     }
 
@@ -54,22 +150,37 @@ namespace boundary_mesh
                 !fan.closed || fan.sectors.size() < 2)
                 continue;
 
+            BlmeshFan blmesh_fan = buildBlmeshFan(front, vertex);
+            if (blmesh_fan.neighbors.empty() && fan.closed)
+            {
+                blmesh_fan.closed = true;
+                for (const IncidentFaceSector &sector : fan.sectors)
+                {
+                    blmesh_fan.neighbors.push_back(sector.previous_vertex);
+                    blmesh_fan.face_indices.push_back(sector.face_index);
+                    blmesh_fan.normals.push_back(sector.unit_normal);
+                }
+            }
+            if (!blmesh_fan.closed || blmesh_fan.neighbors.size() < 2)
+                continue;
+
             ComplexNode &node = nodes[vertex];
             std::vector<BLVector> normals;
-            for (const IncidentFaceSector &sector : fan.sectors)
+            for (std::size_t sector_index = 0;
+                 sector_index < blmesh_fan.neighbors.size(); ++sector_index)
             {
                 const std::size_t neighbor =
-                    static_cast<std::size_t>(sector.previous_vertex);
+                    static_cast<std::size_t>(blmesh_fan.neighbors[sector_index]);
                 if (neighbor >= nodes.size())
                     return PlanResult::failure(
                         InvalidMultiNormalTopology{
                             front.vertices[vertex].source_vertex_id});
                 node.neighbour_node_.push_back(nodes.begin() + neighbor);
                 node.neighbour_front_direction_.push_back(
-                    toBl(sector.unit_normal));
+                    toBl(blmesh_fan.normals[sector_index]));
                 node.neighbour_front_index_.push_back(
-                    static_cast<int>(sector.face_index));
-                normals.push_back(toBl(sector.unit_normal));
+                    static_cast<int>(blmesh_fan.face_indices[sector_index]));
+                normals.push_back(toBl(blmesh_fan.normals[sector_index]));
             }
             node.single_normal_ =
                 GEEOMETRY_FUNCTION::getMostNormal(normals).normalized();
@@ -132,20 +243,17 @@ namespace boundary_mesh
                                 plan.source_vertex_id});
                     branch.face_indices.push_back(
                         static_cast<std::size_t>(face_id));
-                    const auto sector = std::find_if(
-                        fan.sectors.begin(), fan.sectors.end(),
-                        [&](const IncidentFaceSector &item)
-                        {
-                            return item.face_index ==
-                                static_cast<std::size_t>(face_id);
-                        });
-                    if (sector == fan.sectors.end())
+                    const auto sector = std::find(
+                        blmesh_fan.face_indices.begin(), blmesh_fan.face_indices.end(),
+                        static_cast<std::size_t>(face_id));
+                    if (sector == blmesh_fan.face_indices.end())
                         return PlanResult::failure(
                             InvalidMultiNormalTopology{
                                 plan.source_vertex_id});
                     branch.visibility_cosine = std::min(
                         branch.visibility_cosine,
-                        branch.direction.dot(sector->unit_normal));
+                        branch.direction.dot(blmesh_fan.normals[
+                            static_cast<std::size_t>(sector - blmesh_fan.face_indices.begin())]));
                 }
                 plan.branches.push_back(std::move(branch));
             }

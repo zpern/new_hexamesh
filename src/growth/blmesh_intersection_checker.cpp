@@ -22,6 +22,9 @@ namespace boundary_mesh
         const TrianglePoints &first,
         const TrianglePoints &second)
     {
+        static const double predicate_initialization =
+            TiGER_GEOM_FUNC::exactinit();
+        (void)predicate_initialization;
         int same_count = 0;
         int first_shared = 0;
         int second_shared = 0;

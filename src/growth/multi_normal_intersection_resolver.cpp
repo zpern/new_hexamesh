@@ -11,6 +11,8 @@
 #include <boundary_mesh/growth/multi_normal_intersection_resolver.hpp>
 #include <boundary_mesh/growth/multi_normal_transition_builder.hpp>
 #include <boundary_mesh/growth/blmesh_intersection_checker.hpp>
+#include <boundary_mesh/spatial/aabb.hpp>
+#include <boundary_mesh/spatial/binary_aabb_tree.hpp>
 
 namespace boundary_mesh
 {
@@ -157,11 +159,28 @@ namespace boundary_mesh
         }
 
         std::set<std::size_t> bad_points;
+        std::vector<Aabb> bounds;
+        bounds.reserve(triangles.size());
+        for (const TaggedTriangle &triangle : triangles)
+        {
+            const auto box = makeAabb(
+                triangle.triangle[0], triangle.triangle[1], triangle.triangle[2]);
+            if (!box.hasValue()) return {};
+            bounds.push_back(box.value());
+        }
+        const auto built_tree = BinaryAabbTree::build(bounds);
+        if (!built_tree.hasValue()) return {};
+        const BinaryAabbTree &tree = built_tree.value();
+
         for (const TaggedTriangle &query : triangles)
         {
             if (!query.top) continue;
-            for (const TaggedTriangle &other : triangles)
+            const auto query_box = makeAabb(
+                query.triangle[0], query.triangle[1], query.triangle[2]);
+            if (!query_box.hasValue()) continue;
+            for (const std::size_t candidate_index : tree.query(query_box.value()))
             {
+                const TaggedTriangle &other = triangles[candidate_index];
                 if (!blmeshTrianglesIntersect(query.triangle, other.triangle))
                     continue;
                 for (const VertexId id : query.vertex_ids)
