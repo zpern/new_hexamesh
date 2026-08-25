@@ -386,6 +386,7 @@ namespace boundary_mesh
 
         RegularLayerGrowthResult result;
         GrowthFront current_front = initial_front;
+        std::vector<SurfaceFaceId> pending_stop_cells;
         result.mesh.vertices.reserve(initial_front.vertices.size());
         for (const GrowthFrontVertex &vertex : initial_front.vertices)
         {
@@ -461,6 +462,20 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(step_result.error());
             }
+            result.smoothing_diagnostics.activated_vertices +=
+                step_result.value().smoothing_diagnostics.activated_vertices;
+            result.smoothing_diagnostics.updated_vertices +=
+                step_result.value().smoothing_diagnostics.updated_vertices;
+            result.smoothing_diagnostics.maximum_skewness_before =
+                std::max(
+                    result.smoothing_diagnostics.maximum_skewness_before,
+                    step_result.value().smoothing_diagnostics
+                        .maximum_skewness_before);
+            result.smoothing_diagnostics.maximum_skewness_after =
+                std::max(
+                    result.smoothing_diagnostics.maximum_skewness_after,
+                    step_result.value().smoothing_diagnostics
+                        .maximum_skewness_after);
             const auto quality_propagation = propagator.applyDirectStops(
                 constraints,
                 directQualityStops(step_result.value().stopped_faces),
@@ -549,10 +564,17 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(self_propagation.error());
             }
-            const auto final_step = propagator.filterCandidates(
-                current_front,
-                collision_step.value(),
-                constraints);
+            const auto final_step = options.enforce_single_high_edge
+                ? propagator.filterSingleHighEdgeCandidates(
+                      current_front,
+                      collision_step.value(),
+                      constraints,
+                      options.max_neighbor_layer_difference,
+                      pending_stop_cells)
+                : propagator.filterCandidates(
+                      current_front,
+                      collision_step.value(),
+                      constraints);
             if (!final_step.hasValue())
             {
                 return GrowthResult::failure(final_step.error());

@@ -38,11 +38,28 @@ namespace boundary_mesh
             const LayerStepResult &step,
             const FaceLayerConstraintTable &constraints) const;
 
+        Result<LayerStepResult, InvalidFaceConstraintState>
+        filterSingleHighEdgeCandidates(
+            const GrowthFront &current_front,
+            const LayerStepResult &step,
+            FaceLayerConstraintTable &constraints,
+            std::uint32_t max_difference,
+            std::vector<SurfaceFaceId> &pending_stop_cells) const;
+
     private:
         struct NeighborEntry
         {
+            struct EdgeRule
+            {
+                SurfaceFaceId neighbor{};
+                std::vector<VertexId> non_contact_vertices;
+                std::vector<SurfaceFaceId> non_contact_corner_faces;
+            };
+
             SurfaceFaceId source_face_id{}; // 当前 Patch 源面编号
+            std::size_t local_edge_count{};
             std::vector<SurfaceFaceId> neighbors; // 仅共享完整边的 Patch 邻面
+            std::vector<EdgeRule> edge_rules; // 按源面的局部边顺序保存
         };
 
         Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>

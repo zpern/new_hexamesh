@@ -546,17 +546,17 @@ int main()
     const FaceGrowthRecord *isotropic_neighbor = faceRecord(
         isotropic_propagation, SurfaceFaceId{3});
     if (isotropic_direct == nullptr || isotropic_neighbor == nullptr ||
-        isotropic_direct->accepted_layer_count != 1 ||
-        isotropic_direct->status != FaceGrowthStatus::Stopped ||
+        isotropic_direct->accepted_layer_count != 4 ||
+        isotropic_direct->status != FaceGrowthStatus::Completed ||
         isotropic_direct->stop_reason !=
-            FaceStopReason::IsotropicHeightReached ||
-        isotropic_direct->stop_layer != 2 ||
-        isotropic_neighbor->accepted_layer_count != 1 ||
-        isotropic_neighbor->status != FaceGrowthStatus::Stopped ||
+            FaceStopReason::VertexLayerLimit ||
+        isotropic_direct->stop_layer != 5 ||
+        isotropic_neighbor->accepted_layer_count != 4 ||
+        isotropic_neighbor->status != FaceGrowthStatus::Completed ||
         isotropic_neighbor->stop_reason !=
-            FaceStopReason::NeighborLayerConstraint ||
-        isotropic_neighbor->stop_layer != 2 ||
-        isotropic_propagation.mesh.cells.size() != 2)
+            FaceStopReason::VertexLayerLimit ||
+        isotropic_neighbor->stop_layer != 5 ||
+        isotropic_propagation.mesh.cells.size() != 8)
     {
         return 30;
     }

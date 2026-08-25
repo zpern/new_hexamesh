@@ -11,6 +11,7 @@
 #include <boundary_mesh/growth/front_evaluator.hpp>
 #include <boundary_mesh/growth/growth_direction.hpp>
 #include <boundary_mesh/growth/growth_field_smoother.hpp>
+#include <boundary_mesh/growth/isotropic_stop_evaluator.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
@@ -35,26 +36,6 @@ namespace boundary_mesh
                         value.vertex_ids.end()};
                 },
                 face);
-        }
-
-        template <class Face>
-        Scalar averageSideLength(
-            const Face &face,
-            const GrowthFront &bottom,
-            const GrowthFront &top)
-        {
-            Scalar total = Scalar{0};
-            for (const VertexId vertex_id : face.vertex_ids)
-            {
-                const std::size_t vertex_index =
-                    static_cast<std::size_t>(vertex_id);
-                total +=
-                    (top.vertices[vertex_index].position -
-                     bottom.vertices[vertex_index].position)
-                        .norm();
-            }
-            return total /
-                static_cast<Scalar>(face.vertex_ids.size());
         }
 
         bool validFrontShape(const GrowthFront &front)
@@ -352,7 +333,8 @@ namespace boundary_mesh
             adjacency_result.value(),
             direction_result.value(),
             reference_heights,
-            provisional_heights);
+            provisional_heights,
+            options.field_smoothing);
         if (!field_result.hasValue())
         {
             return StepResult::failure(
@@ -360,6 +342,7 @@ namespace boundary_mesh
                     target_layer,
                     field_result.error()});
         }
+        output.smoothing_diagnostics = field_result.value().diagnostics;
 
         GrowthFront candidate_front = eligible.front;
         candidate_front.layer = target_layer;
@@ -389,6 +372,16 @@ namespace boundary_mesh
                         candidate_vertex.source_vertex_id,
                         target_layer});
             }
+        }
+
+        const auto isotropic = IsotropicStopEvaluator{}.evaluate(
+            eligible.front,
+            candidate_front,
+            adjacency_result.value(),
+            options.isotropic_height);
+        if (!isotropic.hasValue())
+        {
+            return StepResult::failure(isotropic.error());
         }
 
         std::vector<std::size_t> accepted_eligible_faces;
@@ -447,21 +440,8 @@ namespace boundary_mesh
             if (quality.value().acceptable)
             {
                 accepted_eligible_faces.push_back(eligible_face_index);
-                const Scalar current_base_area =
-                    front_evaluation.value()
-                        .faces[eligible_face_index]
-                        .value.area;
-                const Scalar isotropic_ratio = std::visit(
-                    [&](const auto &face)
-                    {
-                        return averageSideLength(
-                                   face,
-                                   eligible.front,
-                                   candidate_front) /
-                               std::sqrt(current_base_area);
-                    },
-                    eligible.front.faces[eligible_face_index]);
-                if (isotropic_ratio >= options.isotropic_height)
+                if (isotropic.value().face_stops[
+                        eligible_face_index])
                 {
                     output.accepted_stopped_faces.push_back(
                         FaceStopEvent{

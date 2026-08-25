@@ -160,9 +160,11 @@ add_library(
         src/growth/multi_normal_transition_generator.cpp
         src/growth/multi_normal_mesh_merge.cpp
         src/growth/boundary_layer_generator.cpp
+        src/growth/isotropic_stop_evaluator.cpp
         src/growth/front_evaluator.cpp
         src/growth/growth_direction.cpp
         src/growth/growth_field_smoother.cpp
+        src/growth/skewness_direction_refiner.cpp
         src/growth/symmetry_constraint_builder.cpp
         src/growth/growth_profile_builder.cpp
         src/growth/regular_layer_stepper.cpp
@@ -199,6 +201,32 @@ target_link_libraries(
         BoundaryMesh::Surface
         BoundaryMesh::Quality
         BoundaryMesh::Spatial
+)
+
+add_library(
+    boundary_mesh_transition
+    STATIC
+        src/transition/reserved_layer_growth.cpp
+        src/transition/transition_layer_coordinator.cpp
+        src/transition/quad_diagonal.cpp
+        src/transition/triangle_transition_template.cpp
+        src/transition/quad_transition_template.cpp
+        src/transition/reserved_layer_transition.cpp
+)
+add_library(BoundaryMesh::Transition ALIAS boundary_mesh_transition)
+target_compile_features(boundary_mesh_transition PUBLIC cxx_std_17)
+target_include_directories(
+    boundary_mesh_transition
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(
+    boundary_mesh_transition
+    PUBLIC
+        BoundaryMesh::BoundaryLayer
+        BoundaryMesh::Surface
+        BoundaryMesh::Core
 )
 
 add_library(
@@ -253,6 +281,7 @@ if(BOUNDARY_MESH_ENABLE_CGNS_IO)
         PUBLIC
             BoundaryMesh::IO
             BoundaryMesh::BoundaryLayer
+            BoundaryMesh::Transition
     )
 
     add_executable(

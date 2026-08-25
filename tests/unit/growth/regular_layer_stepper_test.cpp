@@ -202,23 +202,37 @@ int main()
         return 9;
     }
 
-    RegularLayerGrowthOptions equal_isotropic_options;
-    equal_isotropic_options.isotropic_height =
-        Scalar{0.25} / std::sqrt(Scalar{0.5});
-    const auto equal_isotropic_step = RegularLayerStepper{}.step(
+    RegularLayerGrowthOptions prism_continue_options;
+    prism_continue_options.isotropic_height = Scalar{0.25};
+    const auto prism_continue_step = RegularLayerStepper{}.step(
         front.value(),
         profiles.value(),
         buildFaceLayerConstraints(
             patch.value(), front.value(), profiles.value()).value(),
-        equal_isotropic_options);
-    if (!equal_isotropic_step.hasValue() ||
-        equal_isotropic_step.value().next_front.faces.size() != 1 ||
-        equal_isotropic_step.value().accepted_stopped_faces.size() != 1 ||
-        equal_isotropic_step.value().accepted_stopped_faces[0].layer != 2 ||
-        equal_isotropic_step.value().accepted_stopped_faces[0].reason !=
-            FaceStopReason::IsotropicHeightReached)
+        prism_continue_options);
+    if (!prism_continue_step.hasValue() ||
+        prism_continue_step.value().next_front.faces.size() != 1 ||
+        !prism_continue_step.value().accepted_stopped_faces.empty())
     {
         return 41;
+    }
+
+    RegularLayerGrowthOptions prism_stop_options;
+    prism_stop_options.isotropic_height = Scalar{0.2};
+    const auto prism_stop_step = RegularLayerStepper{}.step(
+        front.value(),
+        profiles.value(),
+        buildFaceLayerConstraints(
+            patch.value(), front.value(), profiles.value()).value(),
+        prism_stop_options);
+    if (!prism_stop_step.hasValue() ||
+        prism_stop_step.value().next_front.faces.size() != 1 ||
+        prism_stop_step.value().accepted_stopped_faces.size() != 1 ||
+        prism_stop_step.value().accepted_stopped_faces[0].layer != 2 ||
+        prism_stop_step.value().accepted_stopped_faces[0].reason !=
+            FaceStopReason::IsotropicHeightReached)
+    {
+        return 44;
     }
 
     GrowthFront scaled_front = front.value();
@@ -305,11 +319,28 @@ int main()
         hexa_isotropic_options);
     if (!hexa_isotropic_step.hasValue() ||
         hexa_isotropic_step.value().next_front.faces.size() != 1 ||
-        hexa_isotropic_step.value().accepted_stopped_faces.size() != 1 ||
-        hexa_isotropic_step.value().accepted_stopped_faces[0].reason !=
-            FaceStopReason::IsotropicHeightReached)
+        !hexa_isotropic_step.value().accepted_stopped_faces.empty())
     {
         return 43;
+    }
+
+    RegularLayerGrowthOptions hexa_stop_options;
+    hexa_stop_options.isotropic_height = Scalar{0.4};
+    const auto hexa_stop_step = RegularLayerStepper{}.step(
+        hexa_front.value(),
+        hexa_profiles.value(),
+        buildFaceLayerConstraints(
+            hexa_patch.value(),
+            hexa_front.value(),
+            hexa_profiles.value()).value(),
+        hexa_stop_options);
+    if (!hexa_stop_step.hasValue() ||
+        hexa_stop_step.value().next_front.faces.size() != 1 ||
+        hexa_stop_step.value().accepted_stopped_faces.size() != 1 ||
+        hexa_stop_step.value().accepted_stopped_faces[0].reason !=
+            FaceStopReason::IsotropicHeightReached)
+    {
+        return 45;
     }
 
     const SurfaceMesh mixed_mesh = makeDisconnectedMixedWallMesh();
@@ -540,6 +571,7 @@ int main()
     if (!skewed_profiles.hasValue()) return 24;
     RegularLayerGrowthOptions strict_options;
     strict_options.cell_quality.maximum_skewness = 0.05;
+    strict_options.field_smoothing.skewness.activation_skewness = Scalar{0};
     const auto stopped = RegularLayerStepper{}.step(
         hexa_front.value(),
         skewed_profiles.value(),
@@ -552,6 +584,7 @@ int main()
         stopped.value().stopped_faces.size() != 1 ||
         stopped.value().stopped_faces[0].reason !=
             FaceStopReason::SkewnessExceeded ||
+        stopped.value().smoothing_diagnostics.activated_vertices == 0 ||
         !stopped.value().next_front.vertices.empty() ||
         !stopped.value().next_front.faces.empty() ||
         !stopped.value().previous_front_vertex_indices.empty() ||

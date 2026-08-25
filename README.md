@@ -206,6 +206,19 @@ PowerShell 中行尾的反引号 `` ` `` 表示命令在下一行继续。也可
 
 第 `k` 层未经平滑前的基准步长来自上一层实际步长乘以 `growth_ratio`。实际生长过程中还会对活动前沿的方向和步长进行平滑，因此最终局部步长可能和简单的等比数列略有差异。
 
+法向平滑包含一个 skewness 预优化阶段。顶点关联候选单元的最大等角
+skewness 超过 `0.8` 时，算法会在已有平滑法向附近搜索质量更好的方向；
+第一、第二级搜索角度分别为 `5°` 和 `2°`，每级使用 6 个均匀方位，
+最多执行两级。该过程只调整方向，不重新计算层高，也不会替代最终的
+`--maximum-skewness` 接受规则。C++ 接口可通过
+`options.field_smoothing.skewness.enabled = false` 关闭，以进行基线性能对比。
+
+CGNS pipeline benchmark 会额外输出
+`smoothing_activated_vertices`、`smoothing_updated_vertices`、
+`smoothing_maximum_skewness_before` 和
+`smoothing_maximum_skewness_after`，并同时报告关闭优化后的基线运行时间和
+`baseline_stop_skewness_exceeded`。
+
 ### 6.4 `layer-count` 的含义
 
 `--layer-count 1` 表示生成一层体单元。一个体单元层必须由底面和顶面两层表面顶点构成，因此在 ParaView 中会看到两张表面，但它仍然只是一层 Prism/Hexa 体单元。
@@ -297,6 +310,7 @@ max_neighbor_layer_difference=1
 | `stop_skewness_exceeded` | 候选体单元 skewness 超过上限 |
 | `stop_collision` | 候选单元发生非法几何接触或碰撞 |
 | `stop_neighbor_layer_constraint` | 为限制相邻区域层数差而提前停止 |
+| `stop_isotropic_height` | 当前单元已接受；BLMesh 风格局部/全局尺度及邻域共识达到停止条件 |
 
 `stop_vertex_layer_limit` 通常表示正常完成请求层数，不是错误。
 
@@ -363,8 +377,11 @@ ctest --test-dir build -C Debug `
 - skewness 超过阈值；
 - 撞到原始表面、已提交边界层或同层其他候选；
 - 相邻区域层数差超过允许值。
+- 当前实际层高相对前沿的平均、几何平均和最短周边尺度达到各向同性停止条件。
 
 不要仅通过放宽 skewness 判断碰撞问题；应先根据对应停止原因定位。
+
+`stop_isotropic_height` 不表示当前单元被丢弃。当前 Prism/Hexa 已经通过质量检查并写入网格，只是不再生成下一层。判据对 Triangle 使用 3 条周边边、对 Quad 使用 4 条周边边，并要求直接相邻活动顶点形成停止共识；它不使用 `sqrt(face_area)`。
 
 ### 12.4 为什么没有生成命令行程序
 

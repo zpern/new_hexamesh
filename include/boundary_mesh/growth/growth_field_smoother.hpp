@@ -9,6 +9,7 @@
 #include <boundary_mesh/growth/front_evaluation.hpp>
 #include <boundary_mesh/growth/growth_direction.hpp>
 #include <boundary_mesh/growth/growth_field_smoothing_error.hpp>
+#include <boundary_mesh/growth/growth_field_smoothing_options.hpp>
 #include <boundary_mesh/growth/growth_front.hpp>
 
 namespace boundary_mesh
@@ -18,6 +19,7 @@ namespace boundary_mesh
         std::uint32_t layer{}; // 平滑结果所属的当前活动层
         std::vector<Vector3> directions; // 每个活动点的平滑单位方向
         std::vector<Scalar> actual_heights; // 每个活动点的本层实际步长
+        GrowthFieldSmoothingDiagnostics diagnostics; // skewness 法向优化统计
     };
 
     class GrowthFieldSmoother
@@ -31,6 +33,7 @@ namespace boundary_mesh
             const FrontAdjacency &adjacency,
             const GrowthDirections &raw_directions,
             const std::vector<Scalar> &reference_heights,
-            const std::vector<Scalar> &provisional_heights) const;
+            const std::vector<Scalar> &provisional_heights,
+            const GrowthFieldSmoothingOptions &options = {}) const;
     };
 }
