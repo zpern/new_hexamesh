@@ -263,12 +263,14 @@ namespace boundary_mesh
                     current_front.vertices[bottom_index].position);
                 bottom.vertex_keys.push_back(
                     {current_front.vertices[bottom_index].source_vertex_id,
-                     current_front.layer});
+                     current_front.layer,
+                     current_front.vertices[bottom_index].branch_id});
                 top.points.push_back(
                     step.next_front.vertices[top_index].position);
                 top.vertex_keys.push_back(
                     {step.next_front.vertices[top_index].source_vertex_id,
-                     step.next_front.layer});
+                     step.next_front.layer,
+                     step.next_front.vertices[top_index].branch_id});
             }
             candidates.push_back({std::move(bottom), std::move(top)});
         }

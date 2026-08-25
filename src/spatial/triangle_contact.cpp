@@ -49,7 +49,8 @@ namespace boundary_mesh
             const CollisionVertexKey &right)
         {
             return left.source_vertex_id == right.source_vertex_id &&
-                   left.layer == right.layer;
+                   left.layer == right.layer &&
+                   left.branch_id == right.branch_id;
         }
 
         bool validTriangle(const TrianglePoints &triangle)

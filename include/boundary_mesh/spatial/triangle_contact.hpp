@@ -17,6 +17,7 @@ namespace boundary_mesh
     {
         VertexId source_vertex_id{}; // 对应的输入表面顶点编号
         std::uint32_t layer{};        // 该顶点所属的边界层层号
+        std::uint32_t branch_id{};    // 同一源点的多法向分支编号
     };
 
     enum class TriangleContactKind

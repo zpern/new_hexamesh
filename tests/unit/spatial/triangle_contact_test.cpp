@@ -95,6 +95,15 @@ int main()
                 first_keys)
                 .value());
 
+    const std::array<CollisionVertexKey, 3> split_branch_keys{{
+        {0, 0, 1}, {1, 0, 1}, {2, 0, 1}}};
+    assert(hasIllegalTriangleContact(
+               first,
+               first_keys,
+               first,
+               split_branch_keys)
+               .value());
+
     TrianglePoints reversed_first{{first[0], first[2], first[1]}};
     std::array<CollisionVertexKey, 3> reversed_keys{{
         first_keys[0], first_keys[2], first_keys[1]}};
