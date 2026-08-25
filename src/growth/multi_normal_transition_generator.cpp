@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <utility>
@@ -112,8 +113,46 @@ namespace boundary_mesh
             return writeDebugOutput(
                 std::move(unchanged), options.debug_output);
         }
+        MultiNormalTopology marked;
+        marked.front = front;
+        for (const VertexSplitPlan &plan : plans.value())
+            marked.front.vertices[plan.front_vertex_index]
+                .multi_normal_branch = true;
+        const auto local_triangles = triangulateMultiNormalQuads(marked);
+        if (!local_triangles.hasValue())
+            return GeneratorResult::failure(local_triangles.error());
+
+        GrowthFront prepared_front = local_triangles.value().front;
+        for (GrowthFrontVertex &vertex : prepared_front.vertices)
+            vertex.multi_normal_branch = false;
+        const auto prepared_evaluation = FrontEvaluator{}.evaluate(
+            prepared_front);
+        if (!prepared_evaluation.hasValue())
+            return GeneratorResult::failure(MultiNormalInputMismatch{
+                prepared_front.vertices.size(), prepared_front.faces.size()});
+        const auto prepared_fans = buildIncidentFaceFans(
+            prepared_front, prepared_evaluation.value());
+        if (!prepared_fans.hasValue())
+            return GeneratorResult::failure(prepared_fans.error());
+        const auto prepared_plans = planMultiNormalSplits(
+            prepared_front, prepared_fans.value(), options);
+        if (!prepared_plans.hasValue())
+            return GeneratorResult::failure(prepared_plans.error());
+
+        std::vector<VertexSplitPlan> selected_plans;
+        for (const VertexSplitPlan &prepared : prepared_plans.value())
+            if (std::any_of(plans.value().begin(), plans.value().end(),
+                    [&](const VertexSplitPlan &original) {
+                        return original.front_vertex_index ==
+                            prepared.front_vertex_index;
+                    }))
+                selected_plans.push_back(prepared);
+        if (selected_plans.empty())
+            return writeDebugOutput(
+                std::move(unchanged), options.debug_output);
+
         const auto topology = buildMultiNormalTopology(
-            front, plans.value());
+            prepared_front, selected_plans);
         if (!topology.hasValue())
         {
             return GeneratorResult::failure(topology.error());
