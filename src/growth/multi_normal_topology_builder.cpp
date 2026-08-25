@@ -202,6 +202,8 @@ namespace boundary_mesh
         }
 
         std::set<std::array<VertexId, 2>> stitched_edges;
+        std::vector<std::set<std::size_t>> consumed_virtual_triangles(
+            front.vertices.size());
         for (const VertexSplitPlan &plan : plans)
         {
             const std::size_t vertex = plan.front_vertex_index;
@@ -240,17 +242,9 @@ namespace boundary_mesh
                     plan_by_vertex[neighbor];
                 if (neighbor_plan == nullptr)
                 {
-                    output.front.faces.push_back(Triangle{{
-                        first_previous,
-                        first_current,
-                        copies[neighbor][0]}});
-                    output.front.source_face_ids.push_back(origins.front());
-                    output.transition_face_origins.push_back(
-                        TransitionFaceOrigin{
-                            output.front.faces.size() - 1,
-                            origins,
-                            {plan.source_vertex_id,
-                             front.vertices[neighbor].source_vertex_id}});
+                    // BLMesh does not add a direct strip triangle for a
+                    // complex-to-ordinary edge.  The corresponding virtual
+                    // triangle remains unconsumed and is emitted in Step 7.
                     continue;
                 }
 
@@ -389,6 +383,8 @@ namespace boundary_mesh
                                 static_cast<std::size_t>(choice - 1)];
                             owner = vertex;
                             api = right_api.back();
+                            consumed_virtual_triangles[vertex].insert(
+                                triangle->virtual_triangle_index);
                         }
                         else
                         {
@@ -402,6 +398,8 @@ namespace boundary_mesh
                                 static_cast<std::size_t>(-choice - 1)];
                             owner = neighbor;
                             api = left_api[left_front];
+                            consumed_virtual_triangles[neighbor].insert(
+                                triangle->virtual_triangle_index);
                         }
                         ids[triangle->far_corner] = api;
                         const auto start = resolve(owner, triangle->directed_edge[0]);
@@ -450,6 +448,67 @@ namespace boundary_mesh
                             {plan.source_vertex_id,
                              neighbor_plan->source_vertex_id}});
                 }
+            }
+        }
+
+        // BLMesh BuildTopo Step 7: append every virtual-sphere triangle that
+        // was not consumed while stitching a complex-complex edge.
+        for (const VertexSplitPlan &plan : plans)
+        {
+            const std::size_t owner = plan.front_vertex_index;
+            const auto resolve = [&](const SplitVirtualPoint &point)
+                -> std::optional<VertexId>
+            {
+                if (point.kind == SplitVirtualPoint::Kind::LocalBranch)
+                {
+                    if (point.branch_index >= copies[owner].size())
+                        return std::nullopt;
+                    return copies[owner][point.branch_index];
+                }
+                const std::size_t far =
+                    static_cast<std::size_t>(point.far_vertex_id);
+                if (far >= copies.size()) return std::nullopt;
+                return copies[far][0];
+            };
+            std::vector<SurfaceFaceId> origins;
+            for (const SplitBranch &branch : plan.branches)
+                for (const std::size_t face_index : branch.face_indices)
+                    if (face_index < front.source_face_ids.size())
+                        origins.push_back(front.source_face_ids[face_index]);
+            std::sort(origins.begin(), origins.end());
+            origins.erase(std::unique(origins.begin(), origins.end()),
+                          origins.end());
+            if (origins.empty())
+                return TopologyResult::failure(
+                    InvalidMultiNormalTopology{plan.source_vertex_id});
+
+            for (std::size_t triangle_index = 0;
+                 triangle_index < plan.virtual_triangles.size();
+                 ++triangle_index)
+            {
+                if (consumed_virtual_triangles[owner].count(triangle_index))
+                    continue;
+                std::array<VertexId, 3> ids{};
+                bool valid_triangle = true;
+                for (std::size_t corner = 0; corner < 3; ++corner)
+                {
+                    const auto id = resolve(
+                        plan.virtual_triangles[triangle_index].points[corner]);
+                    if (!id)
+                    {
+                        valid_triangle = false;
+                        break;
+                    }
+                    ids[corner] = *id;
+                }
+                if (!valid_triangle)
+                    return TopologyResult::failure(
+                        InvalidMultiNormalTopology{plan.source_vertex_id});
+                output.front.faces.push_back(Triangle{ids});
+                output.front.source_face_ids.push_back(origins.front());
+                output.transition_face_origins.push_back(
+                    TransitionFaceOrigin{output.front.faces.size() - 1,
+                        origins, {plan.source_vertex_id}});
             }
         }
 

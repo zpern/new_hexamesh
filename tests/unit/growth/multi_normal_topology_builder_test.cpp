@@ -6,6 +6,18 @@
 int main()
 {
     using namespace boundary_mesh;
+    const auto local = [](std::size_t branch) {
+        SplitVirtualPoint point;
+        point.kind = SplitVirtualPoint::Kind::LocalBranch;
+        point.branch_index = branch;
+        return point;
+    };
+    const auto far = [](VertexId vertex) {
+        SplitVirtualPoint point;
+        point.kind = SplitVirtualPoint::Kind::FarVertex;
+        point.far_vertex_id = vertex;
+        return point;
+    };
 
     GrowthFront front;
     front.vertices = {
@@ -26,6 +38,8 @@ int main()
     split.branches = {
         SplitBranch{{0}, Vector3::UnitZ(), Scalar{1}},
         SplitBranch{{1}, Vector3::UnitY(), Scalar{1}}};
+    split.virtual_triangles = {
+        {{{local(0), local(1), far(1)}}}};
 
     const auto result = buildMultiNormalTopology(front, {split});
     if (!result.hasValue()) return 1;
@@ -85,12 +99,6 @@ int main()
         Triangle{{VertexId{1}, VertexId{0}, VertexId{3}}}};
     paired.source_face_ids = {20, 21};
 
-    auto local = [](std::size_t branch) {
-        SplitVirtualPoint point;
-        point.kind = SplitVirtualPoint::Kind::LocalBranch;
-        point.branch_index = branch;
-        return point;
-    };
     VertexSplitPlan left;
     left.front_vertex_index = 0;
     left.source_vertex_id = 200;
@@ -99,9 +107,11 @@ int main()
         SplitBranch{{0}, Vector3::UnitZ(), Scalar{1}},
         SplitBranch{{1}, Vector3::UnitY(), Scalar{1}},
         SplitBranch{{}, Vector3::UnitX(), Scalar{1}}};
+    left.virtual_triangles = {
+        {{{local(0), local(1), local(2)}}}};
     left.neighbor_triangle_chains = {{1, {
-        {0, {{local(0), local(1)}}, Vector3::UnitZ()},
-        {0, {{local(1), local(2)}}, Vector3::UnitY()}}}};
+        {1, 0, {{local(0), local(1)}}, Vector3::UnitZ()},
+        {2, 0, {{local(1), local(2)}}, Vector3::UnitY()}}}};
 
     VertexSplitPlan right;
     right.front_vertex_index = 1;
@@ -111,12 +121,12 @@ int main()
         SplitBranch{{1}, Vector3::UnitZ(), Scalar{1}},
         SplitBranch{{0}, Vector3::UnitY(), Scalar{1}}};
     right.neighbor_triangle_chains = {{0, {
-        {0, {{local(0), local(1)}}, Vector3::UnitX()}}}};
+        {0, 0, {{local(0), local(1)}}, Vector3::UnitX()}}}};
 
     const auto paired_result = buildMultiNormalTopology(paired, {left, right});
     if (!paired_result.hasValue()) return 7;
-    if (paired_result.value().front.faces.size() != 5 ||
-        paired_result.value().transition_face_origins.size() != 3)
+    if (paired_result.value().front.faces.size() != 6 ||
+        paired_result.value().transition_face_origins.size() != 4)
         return 8;
 
     return 0;

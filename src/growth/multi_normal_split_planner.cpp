@@ -296,13 +296,43 @@ namespace boundary_mesh
                 reference.branch_index = *branch;
                 return reference;
             };
+            std::vector<std::optional<std::size_t>> stored_triangle_index(
+                mesh.triangle_lists_.size());
+            for (std::size_t triangle_index = 0;
+                 triangle_index < mesh.triangle_lists_.size();
+                 ++triangle_index)
+            {
+                const VTriangle &triangle = mesh.triangle_lists_[triangle_index];
+                SplitVirtualTriangle stored;
+                bool valid_triangle = true;
+                for (std::size_t corner = 0; corner < 3; ++corner)
+                {
+                    const auto point = point_reference(
+                        triangle.point_index_[corner]);
+                    if (!point.has_value())
+                    {
+                        valid_triangle = false;
+                        break;
+                    }
+                    stored.points[corner] = *point;
+                }
+                if (valid_triangle)
+                {
+                    stored_triangle_index[triangle_index] =
+                        plan.virtual_triangles.size();
+                    plan.virtual_triangles.push_back(std::move(stored));
+                }
+            }
             for (const VertexId neighbor : plan.splitter_neighbors)
             {
                 SplitNeighborTriangleChain chain;
                 chain.neighbor_vertex_id = neighbor;
                 bool invalid_chain = false;
-                for (const VTriangle &triangle : mesh.triangle_lists_)
+                for (std::size_t triangle_index = 0;
+                     triangle_index < mesh.triangle_lists_.size();
+                     ++triangle_index)
                 {
+                    const VTriangle &triangle = mesh.triangle_lists_[triangle_index];
                     for (std::size_t corner = 0; corner < 3; ++corner)
                     {
                         const int virtual_index = triangle.point_index_[corner];
@@ -319,6 +349,12 @@ namespace boundary_mesh
                             invalid_chain = true;
                             break;
                         }
+                        if (!stored_triangle_index[triangle_index].has_value())
+                        {
+                            chain.triangles.clear();
+                            invalid_chain = true;
+                            break;
+                        }
                         const BLVector first =
                             mesh.virtual_point_lists_[triangle.point_index_[(corner + 1) % 3]].getCoord() -
                             point.getCoord();
@@ -327,7 +363,8 @@ namespace boundary_mesh
                             mesh.virtual_point_lists_[triangle.point_index_[(corner + 1) % 3]].getCoord();
                         const BLVector normal = (first ^ second).normalized();
                         chain.triangles.push_back(SplitActiveTriangle{
-                            corner, {*start, *end}, fromBl(normal)});
+                            *stored_triangle_index[triangle_index], corner,
+                            {*start, *end}, fromBl(normal)});
                     }
                     if (invalid_chain) break;
                 }

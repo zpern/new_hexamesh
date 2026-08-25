@@ -166,13 +166,13 @@ int main()
     corner_options.split_skewness_threshold = Scalar{0.5};
     const auto corner_result = generateMultiNormalTransition(
         cube_corner, corner_options);
-    // The generated branch points through another original cube face for every
-    // positive height. BLMesh exhausts its shrink loop and falls back instead
-    // of publishing coincident split branches.
-    if (!corner_result.hasValue() || corner_result.value().applied ||
-        corner_result.value().transformed_front.vertices.size() != 7 ||
-        corner_result.value().transformed_front.faces.size() != 3 ||
-        !corner_result.value().transition_cells.cells.empty())
+    // A complex-to-ordinary edge is closed by the remaining virtual-sphere
+    // triangle, not by an additional fixed strip face.  The latter used to
+    // create a false self-intersection and force a single-normal fallback.
+    if (!corner_result.hasValue() || !corner_result.value().applied ||
+        corner_result.value().transformed_front.vertices.size() <= 7 ||
+        corner_result.value().transformed_front.faces.size() <= 3 ||
+        corner_result.value().transition_cells.cells.empty())
     {
         return 8;
     }

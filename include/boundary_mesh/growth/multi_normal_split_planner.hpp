@@ -28,9 +28,15 @@ namespace boundary_mesh
 
     struct SplitActiveTriangle
     {
+        std::size_t virtual_triangle_index{};
         std::size_t far_corner{};
         std::array<SplitVirtualPoint, 2> directed_edge;
         Vector3 unit_normal{Vector3::Zero()};
+    };
+
+    struct SplitVirtualTriangle
+    {
+        std::array<SplitVirtualPoint, 3> points;
     };
 
     struct SplitNeighborTriangleChain
@@ -48,6 +54,7 @@ namespace boundary_mesh
         Scalar selected_skewness{};
         std::vector<VertexId> splitter_neighbors;
         std::vector<SplitBranch> branches;
+        std::vector<SplitVirtualTriangle> virtual_triangles;
         std::vector<SplitNeighborTriangleChain> neighbor_triangle_chains;
     };
 
