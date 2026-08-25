@@ -28,7 +28,7 @@ int main()
     assert(result.hasValue());
     assert(result.value().side_cells.size() == 2);
     assert((std::get<Pyramid>(result.value().side_cells[0]).vertex_ids ==
-            std::array<VertexId,5>{8,9,4,5,6}));
+            std::array<VertexId,5>{8,9,5,4,6}));
     assert((std::get<Tetra>(result.value().side_cells[1]).vertex_ids ==
             std::array<VertexId,4>{4,7,6,8}));
     assert(result.value().top_faces.size() == 4);
@@ -41,6 +41,14 @@ int main()
     assert((result.value().top_faces[3].vertex_ids ==
             std::array<VertexId,3>{9,5,6}));
     assert(result.value().volume_cells.size() == 9);
+
+    auto alternate = input;
+    alternate.high_edge_local_index = 1;
+    const auto alternate_result = buildQuadTransition(alternate);
+    assert(alternate_result.hasValue());
+    assert((std::get<Pyramid>(
+                alternate_result.value().side_cells[0]).vertex_ids ==
+            std::array<VertexId,5>{10,9,5,6,4}));
 
     for (std::size_t edge = 0; edge < 4; ++edge)
     {

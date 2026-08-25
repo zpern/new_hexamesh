@@ -58,7 +58,7 @@ namespace boundary_mesh
             Tetra tetra;
             if (diagonal_ad)
             {
-                pyramid = Pyramid{{e, f, a, b, d}};
+                pyramid = Pyramid{{e, f, b, a, d}};
                 tetra = Tetra{{a, c, d, e}};
                 result.top_faces = {
                     Triangle{{a, e, c}},
@@ -68,7 +68,7 @@ namespace boundary_mesh
             }
             else
             {
-                pyramid = Pyramid{{f, e, b, a, c}};
+                pyramid = Pyramid{{f, e, a, b, c}};
                 tetra = Tetra{{b, d, c, f}};
                 result.top_faces = {
                     Triangle{{b, f, d}},
