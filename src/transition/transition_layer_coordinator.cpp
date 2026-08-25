@@ -19,6 +19,7 @@ namespace boundary_mesh
         struct WorkingFace
         {
             FaceLayerState layers;
+            std::size_t local_edge_count{};
             std::vector<Neighbor> neighbors;
         };
 
@@ -126,6 +127,7 @@ namespace boundary_mesh
             }
             const auto ids = neighborIds(
                 topology.faceNeighbors()[face_index]);
+            face.local_edge_count = ids.size();
             for (std::size_t local = 0; local < ids.size(); ++local)
             {
                 if (findFace(faces, ids[local]) != nullptr)
@@ -139,54 +141,49 @@ namespace boundary_mesh
                 { return left.source_face_id < right.source_face_id; });
         }
 
-        bool changed = true;
-        while (changed)
+        for (const WorkingFace &face : faces)
         {
-            changed = false;
-            for (WorkingFace &face : faces)
+            std::size_t high_count = 0;
+            std::vector<std::size_t> high_edges;
+            for (const Neighbor &neighbor_entry : face.neighbors)
             {
-                for (const Neighbor &neighbor_entry : face.neighbors)
+                const WorkingFace *neighbor = findFace(
+                    faces, neighbor_entry.source_face_id);
+                if (neighbor == nullptr) continue;
+                const std::uint32_t low = std::min(
+                    face.layers.occupied_layers,
+                    neighbor->layers.occupied_layers);
+                const std::uint32_t high = std::max(
+                    face.layers.occupied_layers,
+                    neighbor->layers.occupied_layers);
+                if (high > low + 1)
+                    return CoordinationResult::failure(
+                        UncoordinatedTransitionLayerDifference{
+                            face.layers.source_face_id,
+                            neighbor->layers.source_face_id});
+                if (neighbor->layers.occupied_layers ==
+                    face.layers.occupied_layers + 1)
                 {
-                    WorkingFace *neighbor = findFace(
-                        faces, neighbor_entry.source_face_id);
-                    if (neighbor == nullptr ||
-                        face.layers.occupied_layers >=
-                            neighbor->layers.occupied_layers)
-                    {
-                        continue;
-                    }
-                    if (neighbor->layers.occupied_layers >
-                        face.layers.occupied_layers + 1)
-                    {
-                        neighbor->layers.trial_layers =
-                            face.layers.occupied_layers + 2;
-                        updateCounts(*neighbor);
-                        changed = true;
-                    }
+                    ++high_count;
+                    high_edges.push_back(neighbor_entry.local_edge);
                 }
             }
-
-            for (WorkingFace &face : faces)
+            const bool is_quad = face.local_edge_count == 4;
+            if (high_count > (is_quad ? 2u : 1u))
+                return CoordinationResult::failure(
+                    MultipleTransitionHighEdges{
+                        face.layers.source_face_id,
+                        high_edges});
+            if (high_count == 2)
             {
-                std::vector<WorkingFace *> high;
-                for (const Neighbor &neighbor_entry : face.neighbors)
-                {
-                    WorkingFace *neighbor = findFace(
-                        faces, neighbor_entry.source_face_id);
-                    if (neighbor != nullptr &&
-                        neighbor->layers.occupied_layers ==
-                            face.layers.occupied_layers + 1)
-                    {
-                        high.push_back(neighbor);
-                    }
-                }
-                for (std::size_t index = 1; index < high.size(); ++index)
-                {
-                    high[index]->layers.trial_layers =
-                        face.layers.occupied_layers + 1;
-                    updateCounts(*high[index]);
-                    changed = true;
-                }
+                const std::size_t first = high_edges[0];
+                const std::size_t second = high_edges[1];
+                if ((first + 1) % 4 != second &&
+                    (second + 1) % 4 != first)
+                    return CoordinationResult::failure(
+                        MultipleTransitionHighEdges{
+                            face.layers.source_face_id,
+                            high_edges});
             }
         }
 
@@ -196,6 +193,7 @@ namespace boundary_mesh
         {
             CoordinatedTransitionFace output;
             output.layers = face.layers;
+            std::vector<std::size_t> high_edges;
             for (const Neighbor &neighbor_entry : face.neighbors)
             {
                 const WorkingFace *neighbor = findFace(
@@ -204,11 +202,13 @@ namespace boundary_mesh
                     neighbor->layers.occupied_layers ==
                         face.layers.occupied_layers + 1)
                 {
-                    output.high_edge_local_index =
-                        neighbor_entry.local_edge;
-                    break;
+                    high_edges.push_back(neighbor_entry.local_edge);
                 }
             }
+            if (!high_edges.empty())
+                output.high_edge_local_index = high_edges[0];
+            if (high_edges.size() == 2)
+                output.second_high_edge_local_index = high_edges[1];
             result.push_back(output);
         }
         return CoordinationResult::success(std::move(result));

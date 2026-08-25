@@ -29,6 +29,14 @@ namespace
         return mesh;
     }
 
+    SurfaceMesh makeAdjacentMesh()
+    {
+        SurfaceMesh mesh = makeMesh();
+        mesh.face_tags[4] = {SurfaceBoundaryKind::Farfield, 0};
+        mesh.face_tags[3] = {SurfaceBoundaryKind::Wall, 1};
+        return mesh;
+    }
+
     const CoordinatedTransitionFace &findFace(
         const std::vector<CoordinatedTransitionFace> &faces,
         SurfaceFaceId id)
@@ -65,25 +73,38 @@ int main()
     assert(findFace(one_two.value(), 1).layers.occupied_layers == 0);
     assert(findFace(one_two.value(), 1).high_edge_local_index.has_value());
 
-    const auto two_high = coordinator.coordinate(
+    const auto opposite_two_high = coordinator.coordinate(
         patch.value(), topology.value(), {{1, 2}, {2, 3}, {4, 3}});
-    assert(two_high.hasValue());
-    const auto &low = findFace(two_high.value(), 1);
-    assert(low.high_edge_local_index.has_value());
-    assert(findFace(two_high.value(), 2).layers.trial_layers == 3);
-    assert(findFace(two_high.value(), 4).layers.trial_layers == 2);
+    assert(!opposite_two_high.hasValue());
+    assert(std::holds_alternative<MultipleTransitionHighEdges>(
+        opposite_two_high.error()));
+    assert(std::get<MultipleTransitionHighEdges>(
+               opposite_two_high.error()).high_edge_local_indices.size() == 2);
 
     const auto reversed = coordinator.coordinate(
         patch.value(), topology.value(), {{4, 3}, {2, 3}, {1, 2}});
-    assert(reversed.hasValue());
-    assert(findFace(reversed.value(), 2).layers.trial_layers == 3);
-    assert(findFace(reversed.value(), 4).layers.trial_layers == 2);
+    assert(!reversed.hasValue());
+
+    const SurfaceMesh adjacent_mesh = makeAdjacentMesh();
+    const auto adjacent_topology =
+        SurfaceTopologyBuilder{}.build(adjacent_mesh);
+    assert(adjacent_topology.hasValue());
+    const auto adjacent_patch = GrowthPatchBuilder{}.build(
+        adjacent_mesh, adjacent_topology.value());
+    assert(adjacent_patch.hasValue());
+    const auto adjacent_two_high = coordinator.coordinate(
+        adjacent_patch.value(), adjacent_topology.value(),
+        {{1, 2}, {2, 3}, {3, 3}});
+    assert(adjacent_two_high.hasValue());
+    const auto &adjacent_low = findFace(adjacent_two_high.value(), 1);
+    assert(adjacent_low.high_edge_local_index.has_value());
+    assert(adjacent_low.second_high_edge_local_index.has_value());
 
     const auto large_difference = coordinator.coordinate(
         patch.value(), topology.value(), {{1, 1}, {2, 5}, {4, 1}});
-    assert(large_difference.hasValue());
-    assert(findFace(large_difference.value(), 2).layers.occupied_layers <=
-           findFace(large_difference.value(), 1).layers.occupied_layers + 1);
+    assert(!large_difference.hasValue());
+    assert(std::holds_alternative<UncoordinatedTransitionLayerDifference>(
+        large_difference.error()));
 
     const auto missing = coordinator.coordinate(
         patch.value(), topology.value(), {{1, 1}, {2, 2}});

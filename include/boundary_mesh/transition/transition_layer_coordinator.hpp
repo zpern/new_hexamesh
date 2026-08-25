@@ -18,6 +18,7 @@ namespace boundary_mesh
     {
         FaceLayerState layers;
         std::optional<std::size_t> high_edge_local_index;
+        std::optional<std::size_t> second_high_edge_local_index;
     };
 
     struct MissingTransitionFaceState
@@ -30,9 +31,23 @@ namespace boundary_mesh
         SurfaceFaceId source_face_id{};
     };
 
+    struct UncoordinatedTransitionLayerDifference
+    {
+        SurfaceFaceId first{};
+        SurfaceFaceId second{};
+    };
+
+    struct MultipleTransitionHighEdges
+    {
+        SurfaceFaceId source_face_id{};
+        std::vector<std::size_t> high_edge_local_indices;
+    };
+
     using TransitionCoordinationError = std::variant<
         MissingTransitionFaceState,
-        DuplicateTransitionFaceState>;
+        DuplicateTransitionFaceState,
+        UncoordinatedTransitionLayerDifference,
+        MultipleTransitionHighEdges>;
 
     class TransitionLayerCoordinator
     {

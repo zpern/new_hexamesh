@@ -284,7 +284,50 @@ namespace boundary_mesh
             growth_options);
         if (!transition.hasValue())
         {
-            error << "failed to generate boundary layers\n";
+            error << "failed to generate boundary layers"
+                  << " error_index=" << transition.error().index();
+            if (std::holds_alternative<TransitionCoordinationError>(
+                    transition.error()))
+            {
+                const auto &coordination =
+                    std::get<TransitionCoordinationError>(
+                        transition.error());
+                error << " coordination_error_index="
+                      << coordination.index();
+                std::visit(
+                    [&](const auto &value)
+                    {
+                        using Error = std::decay_t<decltype(value)>;
+                        if constexpr (std::is_same_v<
+                                          Error,
+                                          MultipleTransitionHighEdges>)
+                            error << " source_face_id="
+                                  << value.source_face_id
+                                  << " high_edges=";
+                        if constexpr (std::is_same_v<
+                                          Error,
+                                          MultipleTransitionHighEdges>)
+                            for (const std::size_t edge :
+                                 value.high_edge_local_indices)
+                                error << edge << ',';
+                    },
+                    coordination);
+            }
+            if (std::holds_alternative<TransitionTemplateError>(
+                    transition.error()))
+            {
+                const auto &template_error =
+                    std::get<TransitionTemplateError>(
+                        transition.error());
+                error << " template_error_index="
+                      << template_error.index();
+                if (std::holds_alternative<
+                        InvalidTransitionTemplateInput>(template_error))
+                    error << " source_face_id="
+                          << std::get<InvalidTransitionTemplateInput>(
+                                 template_error).source_face_id;
+            }
+            error << '\n';
             return 6;
         }
 

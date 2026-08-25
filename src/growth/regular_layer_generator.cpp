@@ -417,6 +417,7 @@ namespace boundary_mesh
         }
 
         GrowthFront current_front = initial_front;
+        std::vector<SurfaceFaceId> pending_stop_cells;
         ExposedBoundaryTracker exposed_boundary;
         while (!current_front.faces.empty())
         {
@@ -527,10 +528,17 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(self_propagation.error());
             }
-            const auto final_step = propagator.filterCandidates(
-                current_front,
-                collision_step.value(),
-                constraints);
+            const auto final_step = options.enforce_single_high_edge
+                ? propagator.filterSingleHighEdgeCandidates(
+                      current_front,
+                      collision_step.value(),
+                      constraints,
+                      options.max_neighbor_layer_difference,
+                      pending_stop_cells)
+                : propagator.filterCandidates(
+                      current_front,
+                      collision_step.value(),
+                      constraints);
             if (!final_step.hasValue())
             {
                 return GrowthResult::failure(final_step.error());

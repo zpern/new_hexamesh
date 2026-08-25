@@ -51,4 +51,49 @@ int main()
         assert(value.value().side_cells.size() == 2);
         assert(value.value().top_faces.size() == 4);
     }
+
+    auto double_high = input;
+    double_high.second_high_edge_local_index = 3;
+    const auto double_result = buildQuadTransition(double_high);
+    assert(double_result.hasValue());
+    assert(double_result.value().side_cells.size() == 4);
+    assert((std::get<Pyramid>(double_result.value().side_cells[0]).vertex_ids ==
+            std::array<VertexId,5>{4,5,9,8,6}));
+    assert((std::get<Pyramid>(double_result.value().side_cells[1]).vertex_ids ==
+            std::array<VertexId,5>{4,8,11,7,6}));
+    assert((std::get<Tetra>(double_result.value().side_cells[2]).vertex_ids ==
+            std::array<VertexId,4>{8,11,10,6}));
+    assert((std::get<Tetra>(double_result.value().side_cells[3]).vertex_ids ==
+            std::array<VertexId,4>{8,9,10,6}));
+    assert(double_result.value().top_faces.size() == 6);
+    assert(double_result.value().volume_cells.size() == 11);
+
+    auto opposite_high = input;
+    opposite_high.second_high_edge_local_index = 2;
+    assert(!buildQuadTransition(opposite_high).hasValue());
+
+    auto one_trial_double = input;
+    one_trial_double.trial_layers = 1;
+    one_trial_double.layer_vertex_ids.resize(2);
+    one_trial_double.high_edge_local_index = 0;
+    one_trial_double.second_high_edge_local_index = 3;
+    const auto one_trial_result = buildQuadTransition(one_trial_double);
+    assert(one_trial_result.hasValue());
+    assert(one_trial_result.value().created_vertices.empty());
+    assert(one_trial_result.value().volume_cells.size() == 4);
+    assert(one_trial_result.value().side_cells.size() == 4);
+    assert((std::get<Pyramid>(one_trial_result.value().volume_cells[0]).vertex_ids ==
+            std::array<VertexId,5>{0,1,5,4,2}));
+    assert((std::get<Pyramid>(one_trial_result.value().volume_cells[1]).vertex_ids ==
+            std::array<VertexId,5>{0,4,7,3,2}));
+    assert((std::get<Tetra>(one_trial_result.value().volume_cells[2]).vertex_ids ==
+            std::array<VertexId,4>{4,7,6,2}));
+    assert((std::get<Tetra>(one_trial_result.value().volume_cells[3]).vertex_ids ==
+            std::array<VertexId,4>{4,5,6,2}));
+    assert(one_trial_result.value().top_faces.size() == 6);
+
+    auto zero_trial_high = input;
+    zero_trial_high.trial_layers = 0;
+    zero_trial_high.layer_vertex_ids.resize(1);
+    assert(!buildQuadTransition(zero_trial_high).hasValue());
 }

@@ -34,6 +34,7 @@ int main()
     assert(zero.value().volume_cells.empty());
     assert((zero.value().top_faces[0].vertex_ids ==
             std::array<VertexId, 3>{0, 1, 2}));
+    assert(!buildTriangleTransition(input(0, 0)).hasValue());
 
     const auto one = buildTriangleTransition(input(1, std::nullopt));
     assert(one.hasValue());

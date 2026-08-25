@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <array>
 #include <cassert>
 
 #include <boundary_mesh/growth/face_layer_constraint.hpp>
@@ -77,6 +79,131 @@ int main()
     assert(runtime.find(2)->direct_reason == FaceStopReason::Collision);
     assert(runtime.find(1)->allowed_layer_count == 5);
     assert(runtime.find(4)->allowed_layer_count == 6);
+
+    LayerStepResult actual_candidates;
+    actual_candidates.layer = 5;
+    actual_candidates.next_front = front.value();
+    actual_candidates.next_front.layer = 5;
+    actual_candidates.next_front.faces.erase(
+        actual_candidates.next_front.faces.begin());
+    actual_candidates.next_front.source_face_ids.erase(
+        actual_candidates.next_front.source_face_ids.begin());
+    actual_candidates.previous_front_face_indices = {1, 2};
+    actual_candidates.previous_front_vertex_indices.resize(
+        actual_candidates.next_front.vertices.size());
+    for (std::size_t index = 0;
+         index < actual_candidates.previous_front_vertex_indices.size();
+         ++index)
+        actual_candidates.previous_front_vertex_indices[index] = index;
+    actual_candidates.stopped_faces = {{
+        0, 1, 5, FaceStopReason::Collision}};
+    auto actual_constraints = initial.value();
+    actual_constraints.find(1)->allowed_layer_count = 4;
+    std::vector<SurfaceFaceId> actual_pending;
+    const auto actual_filtered =
+        propagator.value().filterSingleHighEdgeCandidates(
+            front.value(),
+            actual_candidates,
+            actual_constraints,
+            1,
+            actual_pending);
+    assert(actual_filtered.hasValue());
+    assert(actual_filtered.value().next_front.source_face_ids ==
+           std::vector<SurfaceFaceId>{2});
+    assert(actual_constraints.find(4)->allowed_layer_count == 4);
+    assert((actual_pending == std::vector<SurfaceFaceId>{2}));
+
+    LayerStepResult capped_candidates;
+    capped_candidates.layer = 5;
+    capped_candidates.next_front = front.value();
+    capped_candidates.next_front.layer = 5;
+    capped_candidates.previous_front_face_indices = {0, 1, 2};
+    capped_candidates.previous_front_vertex_indices.resize(
+        capped_candidates.next_front.vertices.size());
+    for (std::size_t index = 0;
+         index < capped_candidates.previous_front_vertex_indices.size();
+         ++index)
+        capped_candidates.previous_front_vertex_indices[index] = index;
+    auto capped_constraints = initial.value();
+    capped_constraints.find(1)->allowed_layer_count = 5;
+    capped_constraints.find(1)->limit_kind =
+        FaceLayerLimitKind::NeighborConstraint;
+    std::vector<SurfaceFaceId> capped_pending;
+    const auto capped_filtered =
+        propagator.value().filterSingleHighEdgeCandidates(
+            front.value(), capped_candidates, capped_constraints, 1,
+            capped_pending);
+    assert(capped_filtered.hasValue());
+    std::array<std::uint32_t, 2> capped_neighbor_limits{
+        capped_constraints.find(2)->allowed_layer_count,
+        capped_constraints.find(4)->allowed_layer_count};
+    std::sort(capped_neighbor_limits.begin(), capped_neighbor_limits.end());
+    assert((capped_neighbor_limits ==
+            std::array<std::uint32_t, 2>{5, 6}));
+
+    SurfaceMesh triangle_mesh;
+    triangle_mesh.vertices = {
+        {0,0,0}, {1,0,0}, {0,1,0}, {0,0,1}};
+    triangle_mesh.faces = {
+        Triangle{{0,2,1}}, Triangle{{0,1,3}},
+        Triangle{{1,2,3}}, Triangle{{2,0,3}}};
+    triangle_mesh.face_tags.resize(
+        4, {SurfaceBoundaryKind::Wall, 1});
+    const auto triangle_topology =
+        SurfaceTopologyBuilder{}.build(triangle_mesh);
+    assert(triangle_topology.hasValue());
+    const auto triangle_patch = GrowthPatchBuilder{}.build(
+        triangle_mesh, triangle_topology.value());
+    assert(triangle_patch.hasValue());
+    const auto triangle_front = GrowthFrontBuilder{}.buildInitial(
+        triangle_mesh, triangle_patch.value());
+    assert(triangle_front.hasValue());
+    std::vector<SourceVertexGrowthProfile> triangle_source_profiles;
+    for (const PatchVertex &vertex : triangle_patch.value().vertices())
+        triangle_source_profiles.push_back(
+            {vertex.source_vertex_id, {0.1, 1.0, 10}});
+    const auto triangle_profiles = GrowthProfileBuilder{}.build(
+        triangle_patch.value(), triangle_source_profiles);
+    assert(triangle_profiles.hasValue());
+    auto triangle_constraints = buildFaceLayerConstraints(
+        triangle_patch.value(), triangle_front.value(),
+        triangle_profiles.value());
+    assert(triangle_constraints.hasValue());
+    triangle_constraints.value().find(0)->allowed_layer_count = 5;
+    triangle_constraints.value().find(0)->limit_kind =
+        FaceLayerLimitKind::NeighborConstraint;
+    const auto triangle_propagator = TerminationPropagator::build(
+        triangle_patch.value(), triangle_topology.value());
+    assert(triangle_propagator.hasValue());
+    LayerStepResult triangle_candidates;
+    triangle_candidates.layer = 5;
+    triangle_candidates.next_front = triangle_front.value();
+    triangle_candidates.next_front.layer = 5;
+    triangle_candidates.previous_front_face_indices = {0,1,2,3};
+    triangle_candidates.previous_front_vertex_indices.resize(
+        triangle_candidates.next_front.vertices.size());
+    for (std::size_t index = 0;
+         index < triangle_candidates.previous_front_vertex_indices.size();
+         ++index)
+        triangle_candidates.previous_front_vertex_indices[index] = index;
+    const auto triangle_filtered =
+        [&]
+        {
+            std::vector<SurfaceFaceId> pending;
+            return
+        triangle_propagator.value().filterSingleHighEdgeCandidates(
+            triangle_front.value(), triangle_candidates,
+            triangle_constraints.value(), 1, pending);
+        }();
+    assert(triangle_filtered.hasValue());
+    std::array<std::uint32_t, 3> triangle_neighbor_limits{
+        triangle_constraints.value().find(1)->allowed_layer_count,
+        triangle_constraints.value().find(2)->allowed_layer_count,
+        triangle_constraints.value().find(3)->allowed_layer_count};
+    std::sort(
+        triangle_neighbor_limits.begin(), triangle_neighbor_limits.end());
+    assert((triangle_neighbor_limits ==
+            std::array<std::uint32_t, 3>{5, 5, 6}));
 
     auto isotropic_runtime = initial.value();
     const std::vector<FaceStopEvent> isotropic_stop{{

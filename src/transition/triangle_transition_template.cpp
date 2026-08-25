@@ -13,7 +13,8 @@ namespace boundary_mesh
         if (input.layer_vertex_ids.size() !=
                 static_cast<std::size_t>(input.trial_layers) + 1 ||
             (input.high_edge_local_index.has_value() &&
-             *input.high_edge_local_index >= 3))
+             (*input.high_edge_local_index >= 3 ||
+              input.trial_layers == 0)))
         {
             return TransitionTemplateResult::failure(
                 InvalidTransitionTemplateInput{input.source_face_id});

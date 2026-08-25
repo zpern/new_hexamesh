@@ -2,7 +2,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <algorithm>
 #include <limits>
+#include <map>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -14,6 +16,38 @@ namespace boundary_mesh
 {
     namespace
     {
+        std::array<VertexId, 3> triangleKey(
+            std::array<VertexId, 3> ids)
+        {
+            std::sort(ids.begin(), ids.end());
+            return ids;
+        }
+
+        std::vector<std::array<VertexId, 3>> triangularCellFaces(
+            const VolumeCell &cell)
+        {
+            return std::visit(
+                [](const auto &value)
+                {
+                    using Cell = std::decay_t<decltype(value)>;
+                    const auto &v = value.vertex_ids;
+                    if constexpr (std::is_same_v<Cell, Tetra>)
+                        return std::vector<std::array<VertexId, 3>>{
+                            {v[0],v[1],v[2]}, {v[0],v[3],v[1]},
+                            {v[1],v[3],v[2]}, {v[2],v[3],v[0]}};
+                    else if constexpr (std::is_same_v<Cell, Pyramid>)
+                        return std::vector<std::array<VertexId, 3>>{
+                            {v[0],v[1],v[4]}, {v[1],v[2],v[4]},
+                            {v[2],v[3],v[4]}, {v[3],v[0],v[4]}};
+                    else if constexpr (std::is_same_v<Cell, Prism>)
+                        return std::vector<std::array<VertexId, 3>>{
+                            {v[0],v[1],v[2]}, {v[3],v[4],v[5]}};
+                    else
+                        return std::vector<std::array<VertexId, 3>>{};
+                },
+                cell);
+        }
+
         const LayerVertexRecord *findLayerVertices(
             const LayerVertexTable &table,
             VertexId source_id)
@@ -65,6 +99,29 @@ namespace boundary_mesh
         }
     }
 
+    std::vector<bool> externallyExposedTopTriangles(
+        const std::vector<Triangle> &candidates,
+        const std::vector<VolumeCell> &cells)
+    {
+        std::map<std::array<VertexId, 3>, std::size_t> incidence;
+        for (const VolumeCell &cell : cells)
+            for (const auto &face : triangularCellFaces(cell))
+                ++incidence[triangleKey(face)];
+
+        std::vector<bool> exposed(candidates.size(), false);
+        for (std::size_t candidate_index = 0;
+             candidate_index < candidates.size();
+             ++candidate_index)
+        {
+            const auto key = triangleKey(
+                candidates[candidate_index].vertex_ids);
+            const auto found = incidence.find(key);
+            exposed[candidate_index] =
+                found != incidence.end() && found->second == 1;
+        }
+        return exposed;
+    }
+
     Result<ReservedLayerTransitionResult, ReservedLayerTransitionError>
     generateReservedLayerTransition(
         const SurfaceMesh &surface_mesh,
@@ -83,9 +140,11 @@ namespace boundary_mesh
             return PipelineResult::failure(
                 ReservedLayerTransitionError{trial_profiles.error()});
 
+        RegularLayerGrowthOptions trial_options = options;
+        trial_options.enforce_single_high_edge = true;
         auto trial = generateRegularLayers(
             surface_mesh, topology, patch, initial_front,
-            trial_profiles.value(), options);
+            trial_profiles.value(), trial_options);
         if (!trial.hasValue())
             return PipelineResult::failure(
                 ReservedLayerTransitionError{trial.error()});
@@ -153,6 +212,8 @@ namespace boundary_mesh
                         input.trial_layers = state->layers.trial_layers;
                         input.high_edge_local_index =
                             state->high_edge_local_index;
+                        input.second_high_edge_local_index =
+                            state->second_high_edge_local_index;
                         input.mesh_vertices = &output.mesh.vertices;
                         input.center_vertex_id = static_cast<VertexId>(
                             output.mesh.vertices.size());
@@ -194,7 +255,22 @@ namespace boundary_mesh
                         surface_mesh.face_tags[source_id].region_id});
             }
         }
-        output.boundary_layer_top.vertices = output.mesh.vertices;
+        std::vector<Triangle> candidates;
+        candidates.reserve(output.boundary_layer_top.faces.size());
+        for (const SurfaceFace &face : output.boundary_layer_top.faces)
+            candidates.push_back(std::get<Triangle>(face));
+        const auto exposed = externallyExposedTopTriangles(
+            candidates, output.mesh.cells);
+        SurfaceMesh filtered_top;
+        filtered_top.vertices = output.mesh.vertices;
+        for (std::size_t index = 0; index < candidates.size(); ++index)
+        {
+            if (!exposed[index]) continue;
+            filtered_top.faces.push_back(candidates[index]);
+            filtered_top.face_tags.push_back(
+                output.boundary_layer_top.face_tags[index]);
+        }
+        output.boundary_layer_top = std::move(filtered_top);
         return PipelineResult::success(std::move(output));
     }
 }
