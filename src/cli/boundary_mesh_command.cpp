@@ -11,9 +11,9 @@
 #include <utility>
 #include <vector>
 
+#include <boundary_mesh/growth/boundary_layer_generator.hpp>
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
-#include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/io/cgns_surface_reader.hpp>
 #include <boundary_mesh/io/legacy_vtk_writer.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
@@ -52,6 +52,21 @@ namespace boundary_mesh
             stream.imbue(std::locale::classic());
             stream >> std::noskipws >> value;
             return stream && stream.eof() && std::isfinite(value);
+        }
+
+        bool parseBoolean(const std::string &text, bool &value)
+        {
+            if (text == "true" || text == "1")
+            {
+                value = true;
+                return true;
+            }
+            if (text == "false" || text == "0")
+            {
+                value = false;
+                return true;
+            }
+            return false;
         }
 
         ParseStatus parseArguments(
@@ -135,6 +150,16 @@ namespace boundary_mesh
                         return ParseStatus::Failure;
                     }
                 }
+                else if (name == "--multi-normal")
+                {
+                    if (!parseBoolean(
+                            value,
+                            options.multi_normal_enabled))
+                    {
+                        message = "invalid multi-normal flag";
+                        return ParseStatus::Failure;
+                    }
+                }
                 else if (name == "--output-prefix")
                 {
                     options.output_prefix = value;
@@ -174,6 +199,7 @@ namespace boundary_mesh
                 << "--layer-count COUNT [--maximum-skewness VALUE] "
                 << "[--max-neighbor-layer-difference COUNT] "
                 << "[--isotropic-height VALUE] "
+                << "[--multi-normal true|false] "
                 << "[--output-prefix PATH]\n";
         }
 
@@ -274,12 +300,18 @@ namespace boundary_mesh
             command_options.max_neighbor_layer_difference;
         growth_options.isotropic_height =
             command_options.isotropic_height;
-        const auto growth = generateRegularLayers(
+        MultiNormalOptions multi_normal_options;
+        multi_normal_options.enabled =
+            command_options.multi_normal_enabled;
+        multi_normal_options.transition_height =
+            command_options.first_height;
+        const auto growth = generateBoundaryLayers(
             surface.value(),
             topology.value(),
             patch.value(),
             front.value(),
             profiles,
+            multi_normal_options,
             growth_options);
         if (!growth.hasValue())
         {
@@ -307,13 +339,21 @@ namespace boundary_mesh
         const auto farfield_path = std::filesystem::path(
             command_options.output_prefix.string() +
             "_farfield_boundary.vtk");
+        const auto top_path = std::filesystem::path(
+            command_options.output_prefix.string() +
+            "_boundary_layer_top.vtk");
         const auto volume_status = writeLegacyVtk(
             volume_path,
             growth.value().mesh);
         const auto farfield_status = writeLegacyVtk(
             farfield_path,
             growth.value().farfield_boundary);
-        if (!volume_status.hasValue() || !farfield_status.hasValue())
+        const auto top_status = writeLegacyVtk(
+            top_path,
+            growth.value().top_surface);
+        if (!volume_status.hasValue() ||
+            !farfield_status.hasValue() ||
+            !top_status.hasValue())
         {
             error << "failed to write VTK output\n";
             return 7;
@@ -324,6 +364,12 @@ namespace boundary_mesh
                << "input_faces=" << surface.value().faces.size()
                << '\n'
                << "volume_cells=" << growth.value().mesh.cells.size()
+               << '\n'
+               << "transition_cells="
+               << growth.value().transition.transition_cells.cells.size()
+               << '\n'
+               << "regular_cells="
+               << growth.value().regular.mesh.cells.size()
                << '\n'
                << "farfield_faces="
                << growth.value().farfield_boundary.faces.size()
@@ -337,7 +383,7 @@ namespace boundary_mesh
                << "isotropic_height="
                << command_options.isotropic_height
                << '\n';
-        printStopReasonCounts(output, growth.value());
+        printStopReasonCounts(output, growth.value().regular);
         return 0;
     }
 }

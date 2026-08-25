@@ -80,6 +80,7 @@ int main()
         "--first-height", "0.1",
         "--growth-ratio", "1.0",
         "--layer-count", "1",
+        "--multi-normal", "true",
         "--output-prefix", prefix.string()};
     std::ostringstream output;
     std::ostringstream error;
@@ -100,6 +101,8 @@ int main()
         return 20;
     }
     assert(output.str().find("stop_none=") != std::string::npos);
+    assert(output.str().find("transition_cells=") != std::string::npos);
+    assert(output.str().find("regular_cells=") != std::string::npos);
     assert(output.str().find("stop_vertex_layer_limit=") !=
            std::string::npos);
     assert(output.str().find("stop_degenerate_candidate=") !=
@@ -144,8 +147,11 @@ int main()
         std::filesystem::path(prefix.string() + "_boundary_layer.vtk");
     const auto surface_path =
         std::filesystem::path(prefix.string() + "_farfield_boundary.vtk");
+    const auto top_path =
+        std::filesystem::path(prefix.string() + "_boundary_layer_top.vtk");
     assert(std::filesystem::file_size(volume_path) > 0);
     assert(std::filesystem::file_size(surface_path) > 0);
+    assert(std::filesystem::file_size(top_path) > 0);
 
     const auto reversed_input = directory / "cube-reversed.cgns";
     boundary_mesh::test::writeClosedCubeSurface(
