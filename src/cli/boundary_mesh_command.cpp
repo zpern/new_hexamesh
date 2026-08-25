@@ -17,6 +17,7 @@
 #include <boundary_mesh/io/cgns_surface_reader.hpp>
 #include <boundary_mesh/io/legacy_vtk_writer.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
+#include <boundary_mesh/transition/reserved_layer_transition.hpp>
 
 namespace boundary_mesh
 {
@@ -274,16 +275,59 @@ namespace boundary_mesh
             command_options.max_neighbor_layer_difference;
         growth_options.isotropic_height =
             command_options.isotropic_height;
-        const auto growth = generateRegularLayers(
+        const auto transition = generateReservedLayerTransition(
             surface.value(),
             topology.value(),
             patch.value(),
             front.value(),
             profiles,
             growth_options);
-        if (!growth.hasValue())
+        if (!transition.hasValue())
         {
-            error << "failed to generate boundary layers\n";
+            error << "failed to generate boundary layers"
+                  << " error_index=" << transition.error().index();
+            if (std::holds_alternative<TransitionCoordinationError>(
+                    transition.error()))
+            {
+                const auto &coordination =
+                    std::get<TransitionCoordinationError>(
+                        transition.error());
+                error << " coordination_error_index="
+                      << coordination.index();
+                std::visit(
+                    [&](const auto &value)
+                    {
+                        using Error = std::decay_t<decltype(value)>;
+                        if constexpr (std::is_same_v<
+                                          Error,
+                                          MultipleTransitionHighEdges>)
+                            error << " source_face_id="
+                                  << value.source_face_id
+                                  << " high_edges=";
+                        if constexpr (std::is_same_v<
+                                          Error,
+                                          MultipleTransitionHighEdges>)
+                            for (const std::size_t edge :
+                                 value.high_edge_local_indices)
+                                error << edge << ',';
+                    },
+                    coordination);
+            }
+            if (std::holds_alternative<TransitionTemplateError>(
+                    transition.error()))
+            {
+                const auto &template_error =
+                    std::get<TransitionTemplateError>(
+                        transition.error());
+                error << " template_error_index="
+                      << template_error.index();
+                if (std::holds_alternative<
+                        InvalidTransitionTemplateInput>(template_error))
+                    error << " source_face_id="
+                          << std::get<InvalidTransitionTemplateInput>(
+                                 template_error).source_face_id;
+            }
+            error << '\n';
             return 6;
         }
 
@@ -307,13 +351,21 @@ namespace boundary_mesh
         const auto farfield_path = std::filesystem::path(
             command_options.output_prefix.string() +
             "_farfield_boundary.vtk");
+        const auto top_path = std::filesystem::path(
+            command_options.output_prefix.string() +
+            "_boundary_layer_top.vtk");
         const auto volume_status = writeLegacyVtk(
             volume_path,
-            growth.value().mesh);
+            transition.value().mesh);
         const auto farfield_status = writeLegacyVtk(
             farfield_path,
-            growth.value().farfield_boundary);
-        if (!volume_status.hasValue() || !farfield_status.hasValue())
+            transition.value().trial_growth.farfield_boundary);
+        const auto top_status = writeLegacyVtk(
+            top_path,
+            transition.value().boundary_layer_top);
+        if (!volume_status.hasValue() ||
+            !farfield_status.hasValue() ||
+            !top_status.hasValue())
         {
             error << "failed to write VTK output\n";
             return 7;
@@ -323,10 +375,13 @@ namespace boundary_mesh
                << '\n'
                << "input_faces=" << surface.value().faces.size()
                << '\n'
-               << "volume_cells=" << growth.value().mesh.cells.size()
+               << "volume_cells=" << transition.value().mesh.cells.size()
                << '\n'
                << "farfield_faces="
-               << growth.value().farfield_boundary.faces.size()
+               << transition.value().trial_growth.farfield_boundary.faces.size()
+               << '\n'
+               << "boundary_layer_top_faces="
+               << transition.value().boundary_layer_top.faces.size()
                << '\n'
                << "maximum_skewness="
                << command_options.maximum_skewness
@@ -337,7 +392,7 @@ namespace boundary_mesh
                << "isotropic_height="
                << command_options.isotropic_height
                << '\n';
-        printStopReasonCounts(output, growth.value());
+        printStopReasonCounts(output, transition.value().trial_growth);
         return 0;
     }
 }

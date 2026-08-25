@@ -698,3 +698,94 @@ if(BOUNDARY_MESH_ENABLE_CGNS_IO)
             BoundaryMesh::CGNS
     )
 endif()
+
+add_executable(
+    boundary_mesh_reserved_layer_growth_test
+    unit/transition/reserved_layer_growth_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_reserved_layer_growth_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_reserved_layer_growth_test
+    COMMAND boundary_mesh_reserved_layer_growth_test
+)
+
+add_executable(
+    boundary_mesh_transition_layer_coordinator_test
+    unit/transition/transition_layer_coordinator_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_transition_layer_coordinator_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_transition_layer_coordinator_test
+    COMMAND boundary_mesh_transition_layer_coordinator_test
+)
+
+add_executable(
+    boundary_mesh_quad_diagonal_test
+    unit/transition/quad_diagonal_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_quad_diagonal_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_quad_diagonal_test
+    COMMAND boundary_mesh_quad_diagonal_test
+)
+
+add_executable(
+    boundary_mesh_triangle_transition_template_test
+    unit/transition/triangle_transition_template_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_triangle_transition_template_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_triangle_transition_template_test
+    COMMAND boundary_mesh_triangle_transition_template_test
+)
+
+add_executable(
+    boundary_mesh_quad_hexa_decomposition_test
+    unit/transition/quad_hexa_decomposition_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_quad_hexa_decomposition_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_quad_hexa_decomposition_test
+    COMMAND boundary_mesh_quad_hexa_decomposition_test
+)
+
+add_executable(
+    boundary_mesh_quad_side_transition_template_test
+    unit/transition/quad_side_transition_template_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_quad_side_transition_template_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_quad_side_transition_template_test
+    COMMAND boundary_mesh_quad_side_transition_template_test
+)
+
+add_executable(
+    boundary_mesh_reserved_layer_transition_pipeline_test
+    integration/reserved_layer_transition_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_reserved_layer_transition_pipeline_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_reserved_layer_transition_pipeline_test
+    COMMAND boundary_mesh_reserved_layer_transition_pipeline_test
+)

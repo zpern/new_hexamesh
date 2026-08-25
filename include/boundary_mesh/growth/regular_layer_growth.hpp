@@ -83,6 +83,7 @@ namespace boundary_mesh
         GrowthFieldSmoothingOptions field_smoothing; // 法向与步长字段平滑参数
         std::uint32_t max_neighbor_layer_difference{1}; // 共享边两侧最大允许层数差
         Scalar isotropic_height{1}; // BLMesh 风格实际层高与前沿多尺度的停止阈值
+        bool enforce_single_high_edge{false}; // 过渡试生长按 HexaMesh 规则限制唯一高邻边
     };
 
     struct RegularLayerGrowthResult
