@@ -70,32 +70,15 @@ int main()
         options);
     if (!planar.hasValue() || !planar.value().empty()) return 1;
 
+    // The old simplified planner accepted normals that were inconsistent
+    // with this planar synthetic fan. BLMesh rejects its virtual-sphere
+    // boundary, so the compatibility planner must not manufacture a split.
     const Vector3 far = rotated(160);
-    const auto sharp = planMultiNormalSplits(
+    const auto inconsistent = planMultiNormalSplits(
         front,
         fans(fan({Vector3::UnitZ(), Vector3::UnitZ(), far, far})),
         options);
-    if (!sharp.hasValue() || sharp.value().size() != 1) return 2;
-    const VertexSplitPlan &plan = sharp.value().front();
-    if (plan.source_vertex_id != VertexId{100} ||
-        plan.branches.size() != 2 || plan.splitter_neighbors.size() != 2)
-    {
-        return 3;
-    }
-    if (plan.branches[0].face_indices.empty() ||
-        plan.branches[1].face_indices.empty())
-    {
-        return 4;
-    }
-    for (const SplitBranch &branch : plan.branches)
-    {
-        if (!branch.direction.allFinite() ||
-            std::abs(branch.direction.norm() - Scalar{1}) > Scalar{1e-12})
-        {
-            return 5;
-        }
-    }
-    if (!(plan.selected_skewness < plan.original_skewness)) return 6;
+    if (!inconsistent.hasValue() || !inconsistent.value().empty()) return 2;
 
     return 0;
 }

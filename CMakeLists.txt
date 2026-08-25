@@ -134,6 +134,22 @@ add_library(
         src/growth/incident_face_fan.cpp
         src/growth/blmesh_splitter.cpp
         src/growth/blmesh_geometry.cpp
+        third/blmesh_mnormal/src/combineoptimizer.cpp
+        third/blmesh_mnormal/src/mergeoptimizer.cpp
+        third/blmesh_mnormal/src/meshevaluation.cpp
+        third/blmesh_mnormal/src/TopologyOptimizer.cpp
+        third/blmesh_mnormal/src/VirtualSphereMeshStrategy.cpp
+        third/blmesh_mnormal/src/BoundaryTriangulation.cpp
+        third/blmesh_mnormal/src/VirtualSphereMeshHasher.cpp
+        third/blmesh_mnormal/src/MeshSplitter.cpp
+        third/blmesh_mnormal/src/pointoptimizer.cpp
+        third/blmesh_mnormal/src/VirtualSphereMeshGenerator.cpp
+        third/blmesh_mnormal/src/VirtualSphereMesh.cpp
+        third/blmesh_mnormal/src/BLVector.cpp
+        third/blmesh_mnormal/src/sphericalCap.cpp
+        third/blmesh_mnormal/src/complexnode.cpp
+        third/blmesh_mnormal/src/geometryfunction.cpp
+        third/blmesh_mnormal/src/mostnormaloptimizer.cpp
         src/growth/multi_normal_split_planner.cpp
         src/growth/multi_normal_topology_builder.cpp
         src/growth/multi_normal_quad_triangulator.cpp
@@ -167,6 +183,10 @@ target_include_directories(
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/third/blmesh_mnormal/include
+        ${PROJECT_SOURCE_DIR}/third/blmesh_mnormal/src
+        ${TIGER_DEPENDENCIES_DIR}/geom
 )
 target_link_libraries(
     boundary_mesh_boundary_layer
