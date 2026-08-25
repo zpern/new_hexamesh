@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <boundary_mesh/growth/multi_normal_topology_builder.hpp>
+#include <boundary_mesh/growth/blmesh_topology_stitching.hpp>
 
 namespace boundary_mesh
 {
@@ -67,6 +68,19 @@ namespace boundary_mesh
             std::sort(result.begin(), result.end());
             result.erase(std::unique(result.begin(), result.end()), result.end());
             return result;
+        }
+
+        const SplitNeighborTriangleChain *chainForNeighbor(
+            const VertexSplitPlan &plan, VertexId neighbor)
+        {
+            const auto found = std::find_if(
+                plan.neighbor_triangle_chains.begin(),
+                plan.neighbor_triangle_chains.end(),
+                [&](const SplitNeighborTriangleChain &chain) {
+                    return chain.neighbor_vertex_id == neighbor;
+                });
+            return found == plan.neighbor_triangle_chains.end()
+                ? nullptr : &*found;
         }
     }
 
@@ -260,6 +274,152 @@ namespace boundary_mesh
                 const VertexId second_previous =
                     copies[neighbor][other_previous];
                 const VertexId second_current = copies[neighbor][other];
+
+                const SplitNeighborTriangleChain *left_chain =
+                    chainForNeighbor(plan, neighbor_id);
+                const SplitNeighborTriangleChain *right_chain =
+                    chainForNeighbor(*neighbor_plan,
+                        static_cast<VertexId>(vertex));
+                if (left_chain != nullptr && right_chain != nullptr &&
+                    !left_chain->triangles.empty() &&
+                    !right_chain->triangles.empty())
+                {
+                    const auto point_key = [](const SplitVirtualPoint &point) {
+                        return point.kind == SplitVirtualPoint::Kind::LocalBranch
+                            ? static_cast<int>(point.branch_index)
+                            : -1 - static_cast<int>(point.far_vertex_id);
+                    };
+                    const auto order_chain = [&](
+                        const SplitNeighborTriangleChain &chain)
+                        -> Result<std::vector<SplitActiveTriangle>, MultiNormalError>
+                    {
+                        std::vector<BlmeshDirectedTriangle> directed;
+                        for (std::size_t i = 0; i < chain.triangles.size(); ++i)
+                            directed.push_back({static_cast<int>(i),
+                                point_key(chain.triangles[i].directed_edge[0]),
+                                point_key(chain.triangles[i].directed_edge[1])});
+                        const auto ordered = orderBlmeshDirectedTriangleChain(directed);
+                        if (!ordered.hasValue())
+                            return Result<std::vector<SplitActiveTriangle>, MultiNormalError>::failure(
+                                ordered.error());
+                        std::vector<SplitActiveTriangle> result;
+                        for (const auto &item : ordered.value())
+                            result.push_back(chain.triangles[
+                                static_cast<std::size_t>(item.triangle_index)]);
+                        return Result<std::vector<SplitActiveTriangle>, MultiNormalError>::success(
+                            std::move(result));
+                    };
+                    const auto ordered_left = order_chain(*left_chain);
+                    const auto ordered_right = order_chain(*right_chain);
+                    if (!ordered_left.hasValue() || !ordered_right.hasValue())
+                        return TopologyResult::failure(
+                            InvalidMultiNormalTopology{plan.source_vertex_id});
+                    std::vector<Vector3> left_normals, right_normals;
+                    for (const auto &triangle : ordered_left.value())
+                        left_normals.push_back(triangle.unit_normal);
+                    for (const auto &triangle : ordered_right.value())
+                        right_normals.push_back(triangle.unit_normal);
+                    const auto combination = findBlmeshSmoothestInterleaving(
+                        left_normals, right_normals);
+                    if (!combination.hasValue())
+                        return TopologyResult::failure(combination.error());
+
+                    const auto resolve = [&](std::size_t owner,
+                                             const SplitVirtualPoint &point)
+                        -> std::optional<VertexId>
+                    {
+                        if (point.kind == SplitVirtualPoint::Kind::LocalBranch)
+                        {
+                            if (point.branch_index >= copies[owner].size())
+                                return std::nullopt;
+                            return copies[owner][point.branch_index];
+                        }
+                        const std::size_t far =
+                            static_cast<std::size_t>(point.far_vertex_id);
+                        if (far >= copies.size()) return std::nullopt;
+                        return copies[far][0];
+                    };
+                    std::vector<VertexId> left_api, right_api;
+                    for (const auto &triangle : ordered_left.value())
+                    {
+                        const auto point = resolve(vertex, triangle.directed_edge[0]);
+                        if (!point) return TopologyResult::failure(
+                            InvalidMultiNormalTopology{plan.source_vertex_id});
+                        left_api.push_back(*point);
+                    }
+                    {
+                        const auto point = resolve(vertex,
+                            ordered_left.value().back().directed_edge[1]);
+                        if (!point) return TopologyResult::failure(
+                            InvalidMultiNormalTopology{plan.source_vertex_id});
+                        left_api.push_back(*point);
+                    }
+                    for (const auto &triangle : ordered_right.value())
+                    {
+                        const auto point = resolve(neighbor, triangle.directed_edge[0]);
+                        if (!point) return TopologyResult::failure(
+                            InvalidMultiNormalTopology{neighbor_plan->source_vertex_id});
+                        right_api.push_back(*point);
+                    }
+                    {
+                        const auto point = resolve(neighbor,
+                            ordered_right.value().back().directed_edge[1]);
+                        if (!point) return TopologyResult::failure(
+                            InvalidMultiNormalTopology{neighbor_plan->source_vertex_id});
+                        right_api.push_back(*point);
+                    }
+
+                    std::size_t left_front = 0;
+                    int last_left = 0, last_right = 0;
+                    for (const int choice : combination.value())
+                    {
+                        std::array<VertexId, 3> ids{};
+                        const SplitActiveTriangle *triangle = nullptr;
+                        std::size_t owner = 0;
+                        VertexId api{};
+                        if (choice > 0)
+                        {
+                            while (last_right > 0)
+                            {
+                                --last_right;
+                                right_api.pop_back();
+                            }
+                            ++last_left;
+                            triangle = &ordered_left.value()[
+                                static_cast<std::size_t>(choice - 1)];
+                            owner = vertex;
+                            api = right_api.back();
+                        }
+                        else
+                        {
+                            while (last_left > 0)
+                            {
+                                --last_left;
+                                ++left_front;
+                            }
+                            ++last_right;
+                            triangle = &ordered_right.value()[
+                                static_cast<std::size_t>(-choice - 1)];
+                            owner = neighbor;
+                            api = left_api[left_front];
+                        }
+                        ids[triangle->far_corner] = api;
+                        const auto start = resolve(owner, triangle->directed_edge[0]);
+                        const auto end = resolve(owner, triangle->directed_edge[1]);
+                        if (!start || !end)
+                            return TopologyResult::failure(
+                                InvalidMultiNormalTopology{plan.source_vertex_id});
+                        ids[(triangle->far_corner + 1) % 3] = *start;
+                        ids[(triangle->far_corner + 2) % 3] = *end;
+                        output.front.faces.push_back(Triangle{ids});
+                        output.front.source_face_ids.push_back(origins.front());
+                        output.transition_face_origins.push_back(
+                            TransitionFaceOrigin{output.front.faces.size() - 1,
+                                origins, {plan.source_vertex_id,
+                                    neighbor_plan->source_vertex_id}});
+                    }
+                    continue;
+                }
 
                 const std::array<VertexId, 4> strip{
                     first_previous, first_current,

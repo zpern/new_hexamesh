@@ -5,6 +5,7 @@
 #include <vector>
 #include <array>
 #include <map>
+#include <optional>
 #include <type_traits>
 
 #include <boundary_mesh/growth/multi_normal_split_planner.hpp>
@@ -206,6 +207,9 @@ namespace boundary_mesh
             plan.original_skewness = node.original_skewness_;
             plan.selected_skewness = mesh.caculateMaxSkewness();
 
+            std::vector<std::optional<std::size_t>> branch_by_virtual_point(
+                mesh.virtual_point_lists_.size());
+
             for (std::size_t index = 0;
                  index < mesh.virtual_point_lists_.size(); ++index)
             {
@@ -222,7 +226,10 @@ namespace boundary_mesh
                 }
                 const std::vector<int> face_ids =
                     point.getGlobalNeighbourTriIndex();
-                if (face_ids.empty()) continue;
+                const bool inserted_branch =
+                    mesh.valid.find(ONE_INSERT) != mesh.valid.end() &&
+                    index + 1 == mesh.virtual_point_lists_.size();
+                if (face_ids.empty() && !inserted_branch) continue;
                 SplitBranch branch;
                 branch.direction = fromBl(point.getCoord());
                 const Scalar length = branch.direction.norm();
@@ -255,6 +262,7 @@ namespace boundary_mesh
                         branch.direction.dot(blmesh_fan.normals[
                             static_cast<std::size_t>(sector - blmesh_fan.face_indices.begin())]));
                 }
+                branch_by_virtual_point[index] = plan.branches.size();
                 plan.branches.push_back(std::move(branch));
             }
 
@@ -264,6 +272,67 @@ namespace boundary_mesh
                 std::unique(plan.splitter_neighbors.begin(),
                             plan.splitter_neighbors.end()),
                 plan.splitter_neighbors.end());
+            const auto point_reference = [&](int virtual_index)
+                -> std::optional<SplitVirtualPoint>
+            {
+                if (virtual_index < 0 ||
+                    static_cast<std::size_t>(virtual_index) >=
+                        mesh.virtual_point_lists_.size())
+                    return std::nullopt;
+                VPoint &point = mesh.virtual_point_lists_[virtual_index];
+                SplitVirtualPoint reference;
+                if (point.isFarNode())
+                {
+                    const int global = point.getGlobalIndex();
+                    if (global < 0) return std::nullopt;
+                    reference.kind = SplitVirtualPoint::Kind::FarVertex;
+                    reference.far_vertex_id = static_cast<VertexId>(global);
+                    return reference;
+                }
+                const auto branch = branch_by_virtual_point[
+                    static_cast<std::size_t>(virtual_index)];
+                if (!branch.has_value()) return std::nullopt;
+                reference.kind = SplitVirtualPoint::Kind::LocalBranch;
+                reference.branch_index = *branch;
+                return reference;
+            };
+            for (const VertexId neighbor : plan.splitter_neighbors)
+            {
+                SplitNeighborTriangleChain chain;
+                chain.neighbor_vertex_id = neighbor;
+                bool invalid_chain = false;
+                for (const VTriangle &triangle : mesh.triangle_lists_)
+                {
+                    for (std::size_t corner = 0; corner < 3; ++corner)
+                    {
+                        const int virtual_index = triangle.point_index_[corner];
+                        VPoint &point = mesh.virtual_point_lists_[virtual_index];
+                        if (!point.isFarNode() || point.getGlobalIndex() != neighbor)
+                            continue;
+                        const auto start = point_reference(
+                            triangle.point_index_[(corner + 1) % 3]);
+                        const auto end = point_reference(
+                            triangle.point_index_[(corner + 2) % 3]);
+                        if (!start.has_value() || !end.has_value())
+                        {
+                            chain.triangles.clear();
+                            invalid_chain = true;
+                            break;
+                        }
+                        const BLVector first =
+                            mesh.virtual_point_lists_[triangle.point_index_[(corner + 1) % 3]].getCoord() -
+                            point.getCoord();
+                        const BLVector second =
+                            mesh.virtual_point_lists_[triangle.point_index_[(corner + 2) % 3]].getCoord() -
+                            mesh.virtual_point_lists_[triangle.point_index_[(corner + 1) % 3]].getCoord();
+                        const BLVector normal = (first ^ second).normalized();
+                        chain.triangles.push_back(SplitActiveTriangle{
+                            corner, {*start, *end}, fromBl(normal)});
+                    }
+                    if (invalid_chain) break;
+                }
+                plan.neighbor_triangle_chains.push_back(std::move(chain));
+            }
             if (plan.branches.size() >= 2 &&
                 plan.splitter_neighbors.size() <= plan.branches.size())
                 plans.push_back(std::move(plan));

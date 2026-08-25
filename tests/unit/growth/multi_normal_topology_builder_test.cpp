@@ -71,5 +71,53 @@ int main()
         return 6;
     }
 
+    // BLMesh does not triangulate the four-copy strip with a fixed diagonal.
+    // It interleaves both virtual-sphere triangle chains.  A 2+1 chain must
+    // therefore create three stitching triangles.
+    GrowthFront paired;
+    paired.vertices = {
+        {Point3{0, 0, 0}, VertexId{200}},
+        {Point3{1, 0, 0}, VertexId{201}},
+        {Point3{0, 1, 0}, VertexId{202}},
+        {Point3{1, 1, 0}, VertexId{203}}};
+    paired.faces = {
+        Triangle{{VertexId{0}, VertexId{1}, VertexId{2}}},
+        Triangle{{VertexId{1}, VertexId{0}, VertexId{3}}}};
+    paired.source_face_ids = {20, 21};
+
+    auto local = [](std::size_t branch) {
+        SplitVirtualPoint point;
+        point.kind = SplitVirtualPoint::Kind::LocalBranch;
+        point.branch_index = branch;
+        return point;
+    };
+    VertexSplitPlan left;
+    left.front_vertex_index = 0;
+    left.source_vertex_id = 200;
+    left.splitter_neighbors = {1};
+    left.branches = {
+        SplitBranch{{0}, Vector3::UnitZ(), Scalar{1}},
+        SplitBranch{{1}, Vector3::UnitY(), Scalar{1}},
+        SplitBranch{{}, Vector3::UnitX(), Scalar{1}}};
+    left.neighbor_triangle_chains = {{1, {
+        {0, {{local(0), local(1)}}, Vector3::UnitZ()},
+        {0, {{local(1), local(2)}}, Vector3::UnitY()}}}};
+
+    VertexSplitPlan right;
+    right.front_vertex_index = 1;
+    right.source_vertex_id = 201;
+    right.splitter_neighbors = {0};
+    right.branches = {
+        SplitBranch{{1}, Vector3::UnitZ(), Scalar{1}},
+        SplitBranch{{0}, Vector3::UnitY(), Scalar{1}}};
+    right.neighbor_triangle_chains = {{0, {
+        {0, {{local(0), local(1)}}, Vector3::UnitX()}}}};
+
+    const auto paired_result = buildMultiNormalTopology(paired, {left, right});
+    if (!paired_result.hasValue()) return 7;
+    if (paired_result.value().front.faces.size() != 5 ||
+        paired_result.value().transition_face_origins.size() != 3)
+        return 8;
+
     return 0;
 }
