@@ -240,6 +240,19 @@ add_test(
 )
 
 add_executable(
+    boundary_mesh_blmesh_intersection_checker_test
+    unit/growth/blmesh_intersection_checker_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_blmesh_intersection_checker_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_blmesh_intersection_checker_test
+    COMMAND boundary_mesh_blmesh_intersection_checker_test
+)
+
+add_executable(
     boundary_mesh_multi_normal_transition_generator_test
     integration/multi_normal_transition_generator_test.cpp
 )

@@ -134,6 +134,7 @@ add_library(
         src/growth/incident_face_fan.cpp
         src/growth/blmesh_splitter.cpp
         src/growth/blmesh_geometry.cpp
+        src/growth/blmesh_intersection_checker.cpp
         third/blmesh_mnormal/src/combineoptimizer.cpp
         third/blmesh_mnormal/src/mergeoptimizer.cpp
         third/blmesh_mnormal/src/meshevaluation.cpp
