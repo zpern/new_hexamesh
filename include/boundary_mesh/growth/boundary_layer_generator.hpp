@@ -39,6 +39,8 @@ namespace boundary_mesh
         VolumeMesh mesh;
         MultiNormalTransitionResult transition;
         RegularLayerGrowthResult regular;
+        SurfaceMesh top_surface;
+        SurfaceMesh farfield_boundary;
     };
 
     Result<BoundaryLayerGenerationResult, BoundaryLayerGenerationError>

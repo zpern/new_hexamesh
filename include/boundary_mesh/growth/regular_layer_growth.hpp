@@ -89,5 +89,6 @@ namespace boundary_mesh
         std::vector<VertexGrowthRecord> vertices; // 逐源顶点请求值和实际接受层数
         std::vector<FaceGrowthRecord> faces; // 逐源面状态、层数和停止原因
         SurfaceMesh farfield_boundary; // 原始 Farfield 与边界层最终外露接口组成的远场边界
+        SurfaceMesh top_surface; // 边界层最终真实外露顶面
     };
 }

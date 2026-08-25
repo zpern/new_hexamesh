@@ -49,10 +49,15 @@ namespace boundary_mesh
                 BoundaryLayerMergeFailure{merged.error()});
         }
 
+        SurfaceMesh top_surface = regular.value().top_surface;
+        SurfaceMesh farfield_boundary =
+            regular.value().farfield_boundary;
         return GenerationResult::success(
             BoundaryLayerGenerationResult{
                 std::move(merged.value()),
                 std::move(transition.value()),
-                std::move(regular.value())});
+                std::move(regular.value()),
+                std::move(top_surface),
+                std::move(farfield_boundary)});
     }
 }

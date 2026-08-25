@@ -86,5 +86,26 @@ int main()
     {
         return 10;
     }
+    if (result.top_surface.faces.size() !=
+        result.transition.transformed_front.faces.size())
+    {
+        return 11;
+    }
+    if (result.farfield_boundary.faces.size() !=
+        std::size_t{3} + result.top_surface.faces.size())
+    {
+        return 12;
+    }
+    if (std::any_of(
+            result.top_surface.face_tags.begin(),
+            result.top_surface.face_tags.end(),
+            [](const SurfaceBoundaryTag &tag)
+            {
+                return tag.kind !=
+                    SurfaceBoundaryKind::BoundaryLayerInterface;
+            }))
+    {
+        return 13;
+    }
     return 0;
 }

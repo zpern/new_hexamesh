@@ -793,6 +793,7 @@ namespace boundary_mesh
         }
         const auto farfield_boundary = buildFarfieldBoundary(
             surface_mesh,
+            initial_front,
             exposed_boundary,
             zero_layer_source_face_ids);
         if (!farfield_boundary.hasValue())
@@ -803,6 +804,16 @@ namespace boundary_mesh
                     farfield_boundary.error()});
         }
         result.farfield_boundary = farfield_boundary.value();
+        const auto top_surface = extractBoundaryLayerTop(
+            result.farfield_boundary);
+        if (!top_surface.hasValue())
+        {
+            return GrowthResult::failure(
+                CollisionStateFailure{
+                    current_front.layer,
+                    top_surface.error()});
+        }
+        result.top_surface = top_surface.value();
 
         return GrowthResult::success(std::move(result));
     }

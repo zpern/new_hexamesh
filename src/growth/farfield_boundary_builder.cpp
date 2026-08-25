@@ -53,6 +53,7 @@ namespace boundary_mesh
 
     Result<SurfaceMesh, SpatialError> buildFarfieldBoundary(
         const SurfaceMesh &original_surface,
+        const GrowthFront &zero_layer_front,
         const ExposedBoundaryTracker &exposed_boundary,
         const std::vector<SurfaceFaceId> &zero_layer_source_face_ids)
     {
@@ -134,7 +135,18 @@ namespace boundary_mesh
             }
             selected[face_index] = true;
 
-            const auto face_result = std::visit(
+            for (std::size_t front_face_index = 0;
+                 front_face_index < zero_layer_front.faces.size();
+                 ++front_face_index)
+            {
+                if (front_face_index >=
+                        zero_layer_front.source_face_ids.size() ||
+                    zero_layer_front.source_face_ids[front_face_index] !=
+                        face_id)
+                {
+                    continue;
+                }
+                const auto face_result = std::visit(
                 [&](const auto &face)
                     -> Result<SurfaceFace, SpatialError>
                 {
@@ -144,20 +156,24 @@ namespace boundary_mesh
                          corner < face.vertex_ids.size();
                          ++corner)
                     {
-                        const VertexId source_id = face.vertex_ids[
+                        const VertexId front_id = face.vertex_ids[
                             face.vertex_ids.size() - 1 - corner];
-                        const std::size_t source_index =
-                            static_cast<std::size_t>(source_id);
-                        if (source_index >= original_surface.vertices.size())
+                        const std::size_t front_index =
+                            static_cast<std::size_t>(front_id);
+                        if (front_index >= zero_layer_front.vertices.size())
                         {
                             return Result<SurfaceFace, SpatialError>::failure(
                                 SpatialError::InvalidTopologyReference);
                         }
+                        const GrowthFrontVertex &vertex =
+                            zero_layer_front.vertices[front_index];
                         const auto id = appendVertex(
                             output,
                             output_keys,
-                            {source_id, 0},
-                            original_surface.vertices[source_index]);
+                            {vertex.source_vertex_id,
+                             zero_layer_front.layer,
+                             vertex.branch_id},
+                            vertex.position);
                         if (!id.hasValue())
                         {
                             return Result<SurfaceFace, SpatialError>::failure(
@@ -168,16 +184,17 @@ namespace boundary_mesh
                     return Result<SurfaceFace, SpatialError>::success(
                         remapped);
                 },
-                original_surface.faces[face_index]);
-            if (!face_result.hasValue())
-            {
-                return Result<SurfaceMesh, SpatialError>::failure(
-                    face_result.error());
+                zero_layer_front.faces[front_face_index]);
+                if (!face_result.hasValue())
+                {
+                    return Result<SurfaceMesh, SpatialError>::failure(
+                        face_result.error());
+                }
+                output.faces.push_back(face_result.value());
+                output.face_tags.push_back(
+                    {SurfaceBoundaryKind::BoundaryLayerInterface,
+                     original_surface.face_tags[face_index].region_id});
             }
-            output.faces.push_back(face_result.value());
-            output.face_tags.push_back(
-                {SurfaceBoundaryKind::BoundaryLayerInterface,
-                 original_surface.face_tags[face_index].region_id});
         }
 
         for (const BoundaryFace &face : exposed_boundary.faces())
@@ -216,5 +233,77 @@ namespace boundary_mesh
 
         return Result<SurfaceMesh, SpatialError>::success(
             std::move(output));
+    }
+
+    Result<SurfaceMesh, SpatialError> extractBoundaryLayerTop(
+        const SurfaceMesh &farfield_boundary)
+    {
+        if (farfield_boundary.faces.size() !=
+            farfield_boundary.face_tags.size())
+        {
+            return Result<SurfaceMesh, SpatialError>::failure(
+                SpatialError::InvalidTopologyReference);
+        }
+
+        SurfaceMesh output;
+        std::vector<VertexId> mapping(
+            farfield_boundary.vertices.size(),
+            std::numeric_limits<VertexId>::max());
+        for (std::size_t face_index = 0;
+             face_index < farfield_boundary.faces.size();
+             ++face_index)
+        {
+            if (farfield_boundary.face_tags[face_index].kind !=
+                SurfaceBoundaryKind::BoundaryLayerInterface)
+            {
+                continue;
+            }
+            const auto remapped = std::visit(
+                [&](const auto &face)
+                    -> Result<SurfaceFace, SpatialError>
+                {
+                    using Face = std::decay_t<decltype(face)>;
+                    Face result;
+                    for (std::size_t corner = 0;
+                         corner < face.vertex_ids.size();
+                         ++corner)
+                    {
+                        const std::size_t input_index =
+                            static_cast<std::size_t>(face.vertex_ids[corner]);
+                        if (input_index >= farfield_boundary.vertices.size())
+                        {
+                            return Result<SurfaceFace, SpatialError>::failure(
+                                SpatialError::InvalidTopologyReference);
+                        }
+                        if (mapping[input_index] ==
+                            std::numeric_limits<VertexId>::max())
+                        {
+                            if (output.vertices.size() >
+                                static_cast<std::size_t>(
+                                    std::numeric_limits<VertexId>::max()))
+                            {
+                                return Result<SurfaceFace, SpatialError>::failure(
+                                    SpatialError::PrimitiveIdOverflow);
+                            }
+                            mapping[input_index] =
+                                static_cast<VertexId>(output.vertices.size());
+                            output.vertices.push_back(
+                                farfield_boundary.vertices[input_index]);
+                        }
+                        result.vertex_ids[corner] = mapping[input_index];
+                    }
+                    return Result<SurfaceFace, SpatialError>::success(result);
+                },
+                farfield_boundary.faces[face_index]);
+            if (!remapped.hasValue())
+            {
+                return Result<SurfaceMesh, SpatialError>::failure(
+                    remapped.error());
+            }
+            output.faces.push_back(remapped.value());
+            output.face_tags.push_back(
+                farfield_boundary.face_tags[face_index]);
+        }
+        return Result<SurfaceMesh, SpatialError>::success(std::move(output));
     }
 }
