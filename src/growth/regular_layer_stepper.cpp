@@ -333,7 +333,8 @@ namespace boundary_mesh
             adjacency_result.value(),
             direction_result.value(),
             reference_heights,
-            provisional_heights);
+            provisional_heights,
+            options.field_smoothing);
         if (!field_result.hasValue())
         {
             return StepResult::failure(
@@ -341,6 +342,7 @@ namespace boundary_mesh
                     target_layer,
                     field_result.error()});
         }
+        output.smoothing_diagnostics = field_result.value().diagnostics;
 
         GrowthFront candidate_front = eligible.front;
         candidate_front.layer = target_layer;

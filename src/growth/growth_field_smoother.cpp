@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <boundary_mesh/growth/growth_field_smoother.hpp>
+#include <boundary_mesh/growth/skewness_direction_refiner.hpp>
 
 namespace boundary_mesh
 {
@@ -436,10 +437,37 @@ namespace boundary_mesh
         const FrontAdjacency &adjacency,
         const GrowthDirections &raw_directions,
         const std::vector<Scalar> &reference_heights,
-        const std::vector<Scalar> &provisional_heights) const
+        const std::vector<Scalar> &provisional_heights,
+        const GrowthFieldSmoothingOptions &options) const
     {
         using SmoothingResult =
             Result<SmoothedGrowthFields, GrowthFieldSmoothingError>;
+        const auto &skewness_options = options.skewness;
+        if (skewness_options.enabled &&
+            (!std::isfinite(skewness_options.activation_skewness) ||
+             skewness_options.activation_skewness < Scalar{0} ||
+             skewness_options.activation_skewness > Scalar{1} ||
+             !std::isfinite(skewness_options.first_angle_degrees) ||
+             skewness_options.first_angle_degrees <= Scalar{0} ||
+             skewness_options.first_angle_degrees >= Scalar{90} ||
+             !std::isfinite(skewness_options.second_angle_degrees) ||
+             skewness_options.second_angle_degrees <= Scalar{0} ||
+             skewness_options.second_angle_degrees >= Scalar{90} ||
+             skewness_options.azimuth_samples == 0 ||
+             skewness_options.maximum_levels == 0 ||
+             skewness_options.maximum_levels > 2 ||
+             !std::isfinite(skewness_options.improvement_tolerance) ||
+             skewness_options.improvement_tolerance < Scalar{0}))
+        {
+            return SmoothingResult::failure(
+                InvalidSkewnessNormalOptimizationOptions{
+                    skewness_options.activation_skewness,
+                    skewness_options.first_angle_degrees,
+                    skewness_options.second_angle_degrees,
+                    skewness_options.azimuth_samples,
+                    skewness_options.maximum_levels,
+                    skewness_options.improvement_tolerance});
+        }
         if (!compatibleInputs(
                 front,
                 evaluation,
@@ -620,10 +648,19 @@ namespace boundary_mesh
             actual_heights[index] = actual;
         }
 
+        auto refinement = refineDirectionsForSkewness(
+            front,
+            evaluation,
+            adjacency,
+            current,
+            actual_heights,
+            options.skewness);
+
         return SmoothingResult::success(
             SmoothedGrowthFields{
                 front.layer,
-                std::move(current),
-                std::move(actual_heights)});
+                std::move(refinement.directions),
+                std::move(actual_heights),
+                refinement.diagnostics});
     }
 }

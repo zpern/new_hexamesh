@@ -134,7 +134,24 @@ int main(int argc, char **argv)
     options.cell_quality.maximum_skewness = 0.95;
     options.max_neighbor_layer_difference = 1;
 
-    const auto growth_start = topology_end;
+    RegularLayerGrowthOptions baseline_options = options;
+    baseline_options.field_smoothing.skewness.enabled = false;
+    const auto baseline_growth_start = topology_end;
+    const auto baseline_growth = generateRegularLayers(
+        surface.value(),
+        topology.value(),
+        patch.value(),
+        front.value(),
+        profiles,
+        baseline_options);
+    const auto baseline_growth_end = Clock::now();
+    if (!baseline_growth.hasValue())
+    {
+        std::cerr << "baseline growth failed\n";
+        return 1;
+    }
+
+    const auto growth_start = baseline_growth_end;
     const auto growth = generateRegularLayers(
         surface.value(),
         topology.value(),
@@ -166,12 +183,17 @@ int main(int argc, char **argv)
     }
 
     const auto peak = peakWorkingSet();
+    const auto baseline_stop_counts =
+        stopReasonCounts(baseline_growth.value());
     const auto stop_counts = stopReasonCounts(growth.value());
     std::cout << "read_seconds=" << seconds(read_start, read_end) << '\n'
               << "topology_seconds="
               << seconds(topology_start, topology_end) << '\n'
               << "growth_seconds="
               << seconds(growth_start, growth_end) << '\n'
+              << "baseline_growth_seconds="
+              << seconds(baseline_growth_start, baseline_growth_end)
+              << '\n'
               << "write_seconds="
               << seconds(write_start, write_end) << '\n'
               << "total_seconds="
@@ -190,6 +212,18 @@ int main(int argc, char **argv)
               << "stop_skewness_exceeded=" << stop_counts[5] << '\n'
               << "stop_collision=" << stop_counts[6] << '\n'
               << "stop_neighbor_layer_constraint=" << stop_counts[7] << '\n';
+
+    const auto &smoothing = growth.value().smoothing_diagnostics;
+    std::cout << "baseline_stop_skewness_exceeded="
+              << baseline_stop_counts[5] << '\n'
+              << "smoothing_activated_vertices="
+              << smoothing.activated_vertices << '\n'
+              << "smoothing_updated_vertices="
+              << smoothing.updated_vertices << '\n'
+              << "smoothing_maximum_skewness_before="
+              << smoothing.maximum_skewness_before << '\n'
+              << "smoothing_maximum_skewness_after="
+              << smoothing.maximum_skewness_after << '\n';
 
 #ifdef _WIN32
     constexpr std::uint64_t one_gibibyte = 1024ULL * 1024ULL * 1024ULL;

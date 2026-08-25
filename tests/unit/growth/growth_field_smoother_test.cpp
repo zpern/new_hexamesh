@@ -274,5 +274,59 @@ int main()
         return 12;
     }
 
+    GrowthFieldSmoothingOptions disabled;
+    disabled.skewness.enabled = false;
+    const auto baseline_result = GrowthFieldSmoother{}.smooth(
+        front,
+        evaluation,
+        adjacency.value(),
+        raw,
+        reference_heights,
+        provisional_heights,
+        disabled);
+
+    GrowthFieldSmoothingOptions enabled;
+    enabled.skewness.activation_skewness = Scalar{0};
+    const auto refined_result = GrowthFieldSmoother{}.smooth(
+        front,
+        evaluation,
+        adjacency.value(),
+        raw,
+        reference_heights,
+        provisional_heights,
+        enabled);
+    if (!baseline_result.hasValue() || !refined_result.hasValue())
+    {
+        return 13;
+    }
+    if (baseline_result.value().actual_heights !=
+        refined_result.value().actual_heights)
+    {
+        return 14;
+    }
+    if (baseline_result.value().diagnostics.activated_vertices != 0 ||
+        baseline_result.value().diagnostics.updated_vertices != 0 ||
+        refined_result.value().diagnostics.activated_vertices == 0)
+    {
+        return 15;
+    }
+
+    GrowthFieldSmoothingOptions invalid = enabled;
+    invalid.skewness.activation_skewness = Scalar{1.1};
+    const auto invalid_options_result = GrowthFieldSmoother{}.smooth(
+        front,
+        evaluation,
+        adjacency.value(),
+        raw,
+        reference_heights,
+        provisional_heights,
+        invalid);
+    if (invalid_options_result.hasValue() ||
+        std::get_if<InvalidSkewnessNormalOptimizationOptions>(
+            &invalid_options_result.error()) == nullptr)
+    {
+        return 16;
+    }
+
     return 0;
 }

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <boundary_mesh/growth/growth_front.hpp>
+#include <boundary_mesh/growth/growth_field_smoothing_options.hpp>
 #include <boundary_mesh/growth/growth_profile.hpp>
 #include <boundary_mesh/mesh/mesh_volume.hpp>
 #include <boundary_mesh/mesh/mesh_surface.hpp>
@@ -49,6 +50,7 @@ namespace boundary_mesh
         std::vector<FaceStopEvent> stopped_faces; // 质量不合格的源面
         std::vector<FaceStopEvent> accepted_stopped_faces; // 当前单元已接受、但不再进入后续层的源面
         std::vector<FaceStopEvent> completed_faces; // 达到层数上限的源面
+        GrowthFieldSmoothingDiagnostics smoothing_diagnostics; // 当前目标层的法向优化统计
     };
 
     struct LayerVertexRecord
@@ -78,6 +80,7 @@ namespace boundary_mesh
     struct RegularLayerGrowthOptions
     {
         VolumeCellQualityOptions cell_quality; // 阶段 04 的候选单元质量参数
+        GrowthFieldSmoothingOptions field_smoothing; // 法向与步长字段平滑参数
         std::uint32_t max_neighbor_layer_difference{1}; // 共享边两侧最大允许层数差
         Scalar isotropic_height{1}; // BLMesh 风格实际层高与前沿多尺度的停止阈值
         bool enforce_single_high_edge{false}; // 过渡试生长按 HexaMesh 规则限制唯一高邻边
@@ -90,5 +93,6 @@ namespace boundary_mesh
         std::vector<VertexGrowthRecord> vertices; // 逐源顶点请求值和实际接受层数
         std::vector<FaceGrowthRecord> faces; // 逐源面状态、层数和停止原因
         SurfaceMesh farfield_boundary; // 原始 Farfield 与边界层最终外露接口组成的远场边界
+        GrowthFieldSmoothingDiagnostics smoothing_diagnostics; // 全部规则层的法向优化统计
     };
 }

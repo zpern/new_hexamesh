@@ -571,6 +571,7 @@ int main()
     if (!skewed_profiles.hasValue()) return 24;
     RegularLayerGrowthOptions strict_options;
     strict_options.cell_quality.maximum_skewness = 0.05;
+    strict_options.field_smoothing.skewness.activation_skewness = Scalar{0};
     const auto stopped = RegularLayerStepper{}.step(
         hexa_front.value(),
         skewed_profiles.value(),
@@ -583,6 +584,7 @@ int main()
         stopped.value().stopped_faces.size() != 1 ||
         stopped.value().stopped_faces[0].reason !=
             FaceStopReason::SkewnessExceeded ||
+        stopped.value().smoothing_diagnostics.activated_vertices == 0 ||
         !stopped.value().next_front.vertices.empty() ||
         !stopped.value().next_front.faces.empty() ||
         !stopped.value().previous_front_vertex_indices.empty() ||

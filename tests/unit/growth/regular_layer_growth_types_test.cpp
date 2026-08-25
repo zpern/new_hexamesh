@@ -44,7 +44,9 @@ int main()
         !step.previous_front_face_indices.empty() ||
         !step.stopped_faces.empty() ||
         !step.accepted_stopped_faces.empty() ||
-        !step.completed_faces.empty())
+        !step.completed_faces.empty() ||
+        step.smoothing_diagnostics.activated_vertices != 0 ||
+        step.smoothing_diagnostics.updated_vertices != 0)
     {
         return 4;
     }
@@ -53,6 +55,26 @@ int main()
     if (options.isotropic_height != Scalar{1})
     {
         return 5;
+    }
+    if (!options.field_smoothing.skewness.enabled ||
+        options.field_smoothing.skewness.activation_skewness != Scalar{0.8} ||
+        options.field_smoothing.skewness.first_angle_degrees != Scalar{5} ||
+        options.field_smoothing.skewness.second_angle_degrees != Scalar{2} ||
+        options.field_smoothing.skewness.azimuth_samples != 6 ||
+        options.field_smoothing.skewness.maximum_levels != 2)
+    {
+        return 6;
+    }
+
+    const RegularLayerGrowthResult empty_result;
+    if (empty_result.smoothing_diagnostics.activated_vertices != 0 ||
+        empty_result.smoothing_diagnostics.updated_vertices != 0 ||
+        empty_result.smoothing_diagnostics.maximum_skewness_before !=
+            Scalar{0} ||
+        empty_result.smoothing_diagnostics.maximum_skewness_after !=
+            Scalar{0})
+    {
+        return 7;
     }
 
     static_assert(

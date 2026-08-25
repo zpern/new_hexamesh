@@ -440,6 +440,26 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(step_result.error());
             }
+            result.smoothing_diagnostics.activated_vertices +=
+                step_result.value()
+                    .smoothing_diagnostics.activated_vertices;
+            result.smoothing_diagnostics.updated_vertices +=
+                step_result.value()
+                    .smoothing_diagnostics.updated_vertices;
+            result.smoothing_diagnostics.maximum_skewness_before =
+                std::max(
+                    result.smoothing_diagnostics
+                        .maximum_skewness_before,
+                    step_result.value()
+                        .smoothing_diagnostics
+                        .maximum_skewness_before);
+            result.smoothing_diagnostics.maximum_skewness_after =
+                std::max(
+                    result.smoothing_diagnostics
+                        .maximum_skewness_after,
+                    step_result.value()
+                        .smoothing_diagnostics
+                        .maximum_skewness_after);
             const auto quality_propagation = propagator.applyDirectStops(
                 constraints,
                 directQualityStops(step_result.value().stopped_faces),
