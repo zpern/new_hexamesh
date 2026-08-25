@@ -55,11 +55,22 @@ namespace boundary_mesh
         std::uint32_t layer{}; // 发生错误的活动层号
     };
 
+    struct InvalidSkewnessNormalOptimizationOptions
+    {
+        Scalar activation_skewness{};
+        Scalar first_angle_degrees{};
+        Scalar second_angle_degrees{};
+        std::size_t azimuth_samples{};
+        std::size_t maximum_levels{};
+        Scalar improvement_tolerance{};
+    };
+
     using GrowthFieldSmoothingError = std::variant<
         GrowthFieldInputMismatch,
         NonFiniteGrowthFieldInput,
         DegenerateGrowthFieldNeighbor,
         InvalidGrowthFieldBaseHeight,
         UndefinedSmoothedDirection,
-        NonFiniteSmoothedHeight>; // 活动前沿字段平滑错误
+        NonFiniteSmoothedHeight,
+        InvalidSkewnessNormalOptimizationOptions>; // 活动前沿字段平滑错误
 }

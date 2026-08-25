@@ -191,6 +191,19 @@ add_test(
     COMMAND boundary_mesh_growth_field_smoother_test
 )
 
+add_executable(
+    boundary_mesh_skewness_direction_refiner_test
+    unit/growth/skewness_direction_refiner_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_skewness_direction_refiner_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_skewness_direction_refiner_test
+    COMMAND boundary_mesh_skewness_direction_refiner_test
+)
+
 # 14
 add_executable(
     boundary_mesh_symmetry_constraints_test

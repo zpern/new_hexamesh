@@ -47,5 +47,24 @@ int main()
         return 2;
     }
 
+    const PrismPoints reflex_prism{
+        Point3{0.0, 0.0, 0.0},
+        Point3{2.0, 0.0, 0.0},
+        Point3{0.0, 2.0, 0.0},
+        Point3{0.0, 0.0, 1.0},
+        Point3{-1.0, 0.0, 0.8},
+        Point3{0.0, 2.0, 1.0}};
+    VolumeCellQualityOptions maximum_threshold;
+    maximum_threshold.maximum_skewness = Scalar{1};
+    const auto reflex_result = evaluatePrism(
+        reflex_prism,
+        maximum_threshold);
+    if (!reflex_result.hasValue() ||
+        !(reflex_result.value().skewness > Scalar{1}) ||
+        reflex_result.value().acceptable)
+    {
+        return 3;
+    }
+
     return 0;
 }
