@@ -141,6 +141,9 @@ namespace boundary_mesh
         {
             return GeneratorResult::failure(resolved.error());
         }
+        if (resolved.value().fallback_to_single_normal)
+            return writeDebugOutput(
+                std::move(unchanged), options.debug_output);
         MultiNormalOptions resolved_options = options;
         resolved_options.resolved_transition_lengths =
             resolved.value().lengths;

@@ -39,5 +39,11 @@ int main()
     if (!candidate.hasValue()) return 2;
     if (!findMultiNormalIntersectionBadPoints(topology, candidate.value()).empty())
         return 3;
+
+    std::vector<Scalar> uneven{Scalar{1}, Scalar{2}, Scalar{0}, Scalar{0}};
+    smoothMultiNormalLengths(topology, uneven);
+    if (std::abs(uneven[1] - Scalar{1.1}) > Scalar{1e-12} ||
+        uneven[2] != Scalar{0} || uneven[3] != Scalar{0})
+        return 4;
     return 0;
 }

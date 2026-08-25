@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstddef>
 #include <set>
+#include <queue>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -89,10 +90,52 @@ namespace boundary_mesh
         {
             for (const std::size_t index : bad_points)
             {
-                if (index < lengths.size() &&
-                    topology.front.vertices[index].multi_normal_branch)
+                if (index < lengths.size())
                     lengths[index] *= factor;
             }
+        }
+    }
+
+    void smoothMultiNormalLengths(
+        const MultiNormalTopology &topology,
+        std::vector<Scalar> &lengths)
+    {
+        std::vector<std::set<std::size_t>> neighbors(lengths.size());
+        for (const SurfaceFace &surface_face : topology.front.faces)
+        {
+            std::visit([&](const auto &face) {
+                for (std::size_t i = 0; i < face.vertex_ids.size(); ++i)
+                    for (std::size_t j = 0; j < face.vertex_ids.size(); ++j)
+                        if (i != j)
+                            neighbors[static_cast<std::size_t>(face.vertex_ids[i])]
+                                .insert(static_cast<std::size_t>(face.vertex_ids[j]));
+            }, surface_face);
+        }
+
+        std::queue<std::size_t> queue;
+        std::vector<bool> in_queue(lengths.size(), false);
+        for (std::size_t point = 0; point < lengths.size(); ++point)
+            if (lengths[point] > Scalar{0})
+            {
+                queue.push(point);
+                in_queue[point] = true;
+            }
+        while (!queue.empty())
+        {
+            const std::size_t current = queue.front();
+            queue.pop();
+            in_queue[current] = false;
+            const Scalar upper = lengths[current] * Scalar{1.1};
+            for (const std::size_t neighbor : neighbors[current])
+                if (lengths[neighbor] > upper)
+                {
+                    lengths[neighbor] = upper;
+                    if (!in_queue[neighbor])
+                    {
+                        queue.push(neighbor);
+                        in_queue[neighbor] = true;
+                    }
+                }
         }
     }
 
@@ -143,6 +186,7 @@ namespace boundary_mesh
 
         bool zero_retry = false;
         std::size_t shrink_count = 0;
+        smoothMultiNormalLengths(topology, lengths);
         for (std::size_t iteration = 0;; ++iteration)
         {
             MultiNormalOptions candidate_options = options;
@@ -155,17 +199,21 @@ namespace boundary_mesh
                 findMultiNormalIntersectionBadPoints(topology, candidate.value());
             if (bad.empty())
                 return ResolveResult::success(ResolvedMultiNormalLengths{
-                    std::move(lengths), shrink_count, zero_retry});
+                    std::move(lengths), shrink_count, zero_retry, false});
 
             if (iteration < 20)
             {
                 changeBadLengths(topology, bad, Scalar{0.8}, lengths);
+                smoothMultiNormalLengths(topology, lengths);
                 ++shrink_count;
             }
             else if (!zero_retry)
             {
                 changeBadLengths(topology, bad, Scalar{0}, lengths);
+                smoothMultiNormalLengths(topology, lengths);
                 zero_retry = true;
+                return ResolveResult::success(ResolvedMultiNormalLengths{
+                    std::move(lengths), shrink_count, true, true});
             }
             else
             {
