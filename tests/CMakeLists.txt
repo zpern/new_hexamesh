@@ -226,6 +226,19 @@ add_test(
     COMMAND boundary_mesh_multi_normal_growth_pipeline_test
 )
 
+add_executable(
+    boundary_mesh_multi_normal_mesh_merge_test
+    unit/growth/multi_normal_mesh_merge_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_multi_normal_mesh_merge_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_multi_normal_mesh_merge_test
+    COMMAND boundary_mesh_multi_normal_mesh_merge_test
+)
+
 # 当前活动前沿的一环顶点和关联面邻接
 add_executable(
     boundary_mesh_front_adjacency_test

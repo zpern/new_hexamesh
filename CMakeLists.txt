@@ -137,6 +137,7 @@ add_library(
         src/growth/multi_normal_quad_triangulator.cpp
         src/growth/multi_normal_transition_builder.cpp
         src/growth/multi_normal_transition_generator.cpp
+        src/growth/multi_normal_mesh_merge.cpp
         src/growth/front_evaluator.cpp
         src/growth/growth_direction.cpp
         src/growth/growth_field_smoother.cpp

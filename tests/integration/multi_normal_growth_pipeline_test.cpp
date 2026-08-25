@@ -3,6 +3,7 @@
 
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
+#include <boundary_mesh/growth/multi_normal_mesh_merge.hpp>
 #include <boundary_mesh/growth/multi_normal_transition_generator.hpp>
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
@@ -79,6 +80,15 @@ int main()
             {
                 return metadata.role != CellRole::RegularLayer;
             })) return 9;
+
+    const auto merged = mergeMultiNormalAndRegularMeshes(
+        transition.value(), regular.value().mesh);
+    if (!merged.hasValue() ||
+        merged.value().vertices != regular.value().mesh.vertices ||
+        merged.value().cells.size() != regular.value().mesh.cells.size())
+    {
+        return 10;
+    }
 
     return 0;
 }
