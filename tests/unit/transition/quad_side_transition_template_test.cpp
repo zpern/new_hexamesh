@@ -99,6 +99,52 @@ int main()
     assert((std::get<Tetra>(one_trial_result.value().volume_cells[3]).vertex_ids ==
             std::array<VertexId,4>{4,5,6,2}));
     assert(one_trial_result.value().top_faces.size() == 6);
+    if (!one_trial_result.hasValue()) return 91;
+    if ((std::get<Tetra>(
+             one_trial_result.value().side_cells[2]).vertex_ids !=
+         std::array<VertexId,4>{4,7,6,2})) return 92;
+    if ((std::get<Tetra>(
+             one_trial_result.value().side_cells[3]).vertex_ids !=
+         std::array<VertexId,4>{4,5,6,2})) return 93;
+    if (one_trial_result.value().top_faces[2].vertex_ids !=
+        std::array<VertexId,3>{4,5,6}) return 94;
+    if (one_trial_result.value().top_faces[3].vertex_ids !=
+        std::array<VertexId,3>{4,7,6}) return 95;
+
+    const std::vector<Point3> method_one_points{
+        {-279.64478348526256, -272.9420187520721, 5.470843498903428},
+        {-281.82791018652745, -271.6794076379535, -1.2864021832957364},
+        {-278.67243494384246, -270.1705992816772, -13.349875285139477},
+        {-278.5964526640703, -273.5173263001512, -6.450193092521454},
+        {-281.73067648048544, -275.8063524607499, 6.218587915360811},
+        {-283.9412849828099, -274.58168289749466, -1.346893708782532},
+        {-280.45855813503584, -272.6279857499271, -15.407812200633824},
+        {-280.6254496190468, -276.3048686620009, -7.614122328053261}};
+    auto method_one = one_trial_double;
+    method_one.mesh_vertices = &method_one_points;
+    method_one.layer_vertex_ids = {
+        std::array<VertexId,4>{0,1,2,3},
+        std::array<VertexId,4>{4,5,6,7}};
+    const auto method_one_result = buildQuadTransition(method_one);
+    if (!method_one_result.hasValue()) return 101;
+    if (method_one_result.value().side_cells.size() != 4) return 102;
+    if ((std::get<Pyramid>(
+             method_one_result.value().side_cells[0]).vertex_ids !=
+         std::array<VertexId,5>{0,1,5,4,2})) return 103;
+    if ((std::get<Pyramid>(
+             method_one_result.value().side_cells[1]).vertex_ids !=
+         std::array<VertexId,5>{0,4,7,3,2})) return 104;
+    if ((std::get<Tetra>(
+             method_one_result.value().side_cells[2]).vertex_ids !=
+         std::array<VertexId,4>{4,7,5,2})) return 105;
+    if ((std::get<Tetra>(
+             method_one_result.value().side_cells[3]).vertex_ids !=
+         std::array<VertexId,4>{7,5,6,2})) return 106;
+    if (method_one_result.value().top_faces.size() != 6) return 107;
+    if (method_one_result.value().top_faces[2].vertex_ids !=
+        std::array<VertexId,3>{4,7,5}) return 108;
+    if (method_one_result.value().top_faces[3].vertex_ids !=
+        std::array<VertexId,3>{7,5,6}) return 109;
 
     auto zero_trial_high = input;
     zero_trial_high.trial_layers = 0;

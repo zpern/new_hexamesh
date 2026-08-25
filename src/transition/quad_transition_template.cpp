@@ -1,8 +1,10 @@
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
 
+#include <boundary_mesh/surface/face_skewness.hpp>
 #include <boundary_mesh/transition/reserved_layer_growth.hpp>
 #include <boundary_mesh/transition/transition_templates.hpp>
 
@@ -33,6 +35,55 @@ namespace boundary_mesh
             for (std::size_t index = 0; index < 4; ++index)
                 quad.points[index] = points[ids[index]];
             return chooseQuadDiagonal(quad, tolerance);
+        }
+
+        Result<Scalar, FaceEvaluationError> tetraSkewness(
+            const Tetra &tetra,
+            const std::vector<Point3> &points,
+            Scalar tolerance)
+        {
+            const auto &ids = tetra.vertex_ids;
+            const std::array<std::array<std::size_t, 3>, 4> faces{{
+                {{0, 1, 2}},
+                {{0, 3, 1}},
+                {{1, 3, 2}},
+                {{2, 3, 0}}}};
+            Scalar worst = Scalar{0};
+            for (const auto &face : faces)
+            {
+                const std::array<Point3, 3> face_points{{
+                    points[ids[face[0]]],
+                    points[ids[face[1]]],
+                    points[ids[face[2]]]}};
+                const auto skewness = triangleEquiangularSkewness(
+                    face_points, tolerance);
+                if (!skewness.hasValue())
+                {
+                    return Result<Scalar, FaceEvaluationError>::failure(
+                        skewness.error());
+                }
+                worst = std::max(worst, skewness.value());
+            }
+            return Result<Scalar, FaceEvaluationError>::success(worst);
+        }
+
+        Result<Scalar, FaceEvaluationError> tetraPairSkewness(
+            const std::array<Tetra, 2> &tetrahedra,
+            const std::vector<Point3> &points,
+            Scalar tolerance)
+        {
+            const auto first = tetraSkewness(
+                tetrahedra[0], points, tolerance);
+            if (!first.hasValue())
+                return Result<Scalar, FaceEvaluationError>::failure(
+                    first.error());
+            const auto second = tetraSkewness(
+                tetrahedra[1], points, tolerance);
+            if (!second.hasValue())
+                return Result<Scalar, FaceEvaluationError>::failure(
+                    second.error());
+            return Result<Scalar, FaceEvaluationError>::success(
+                std::max(first.value(), second.value()));
         }
 
         void appendSideTransition(
@@ -90,7 +141,7 @@ namespace boundary_mesh
                 occupied + 1});
         }
 
-        void appendDoubleSideTransition(
+        Result<bool, FaceEvaluationError> appendDoubleSideTransition(
             SourceTransitionResult &result,
             const QuadTransitionInput &input,
             std::size_t common,
@@ -107,12 +158,33 @@ namespace boundary_mesh
             const VertexId h = high[(common + 2) % 4];
             const VertexId g = high[(common + 3) % 4];
 
-            const std::array<VolumeCell, 4> cells{
-                Pyramid{{a, b, f, e, d}},
-                Pyramid{{a, e, g, c, d}},
+            const std::array<Tetra, 2> method_one{{
+                Tetra{{e, g, f, d}},
+                Tetra{{g, f, h, d}}}};
+            const std::array<Tetra, 2> method_two{{
                 Tetra{{e, g, h, d}},
-                Tetra{{e, f, h, d}}};
-            for (const VolumeCell &cell : cells)
+                Tetra{{e, f, h, d}}}};
+            const auto score_one = tetraPairSkewness(
+                method_one, *input.mesh_vertices,
+                input.length_tolerance);
+            const auto score_two = tetraPairSkewness(
+                method_two, *input.mesh_vertices,
+                input.length_tolerance);
+            if (!score_one.hasValue() && !score_two.hasValue())
+                return Result<bool, FaceEvaluationError>::failure(
+                    score_two.error());
+            const bool use_method_one =
+                score_one.hasValue() &&
+                (!score_two.hasValue() ||
+                 score_one.value() < score_two.value());
+            const auto &selected = use_method_one
+                ? method_one
+                : method_two;
+
+            const std::array<Pyramid, 2> pyramids{{
+                Pyramid{{a, b, f, e, d}},
+                Pyramid{{a, e, g, c, d}}}};
+            for (const Pyramid &cell : pyramids)
             {
                 result.side_cells.push_back(cell);
                 result.volume_cells.push_back(cell);
@@ -121,13 +193,36 @@ namespace boundary_mesh
                     input.source_face_id,
                     occupied + 1});
             }
-            result.top_faces = {
-                Triangle{{b, f, d}},
-                Triangle{{f, h, d}},
-                Triangle{{e, f, h}},
-                Triangle{{e, g, h}},
-                Triangle{{g, h, d}},
-                Triangle{{g, c, d}}};
+            for (const Tetra &cell : selected)
+            {
+                result.side_cells.push_back(cell);
+                result.volume_cells.push_back(cell);
+                result.metadata.push_back(CellMetadata{
+                    CellRole::Transition,
+                    input.source_face_id,
+                    occupied + 1});
+            }
+            if (use_method_one)
+            {
+                result.top_faces = {
+                    Triangle{{b, f, d}},
+                    Triangle{{f, h, d}},
+                    Triangle{{e, g, f}},
+                    Triangle{{g, f, h}},
+                    Triangle{{g, h, d}},
+                    Triangle{{g, c, d}}};
+            }
+            else
+            {
+                result.top_faces = {
+                    Triangle{{b, f, d}},
+                    Triangle{{f, h, d}},
+                    Triangle{{e, f, h}},
+                    Triangle{{e, g, h}},
+                    Triangle{{g, h, d}},
+                    Triangle{{g, c, d}}};
+            }
+            return Result<bool, FaceEvaluationError>::success(true);
         }
     }
 
@@ -188,8 +283,11 @@ namespace boundary_mesh
                             input.source_face_id}});
             if (double_high_common.has_value())
             {
-                appendDoubleSideTransition(
+                const auto appended = appendDoubleSideTransition(
                     result, input, *double_high_common, 0);
+                if (!appended.hasValue())
+                    return TransitionTemplateResult::failure(
+                        TransitionTemplateError{appended.error()});
                 return TransitionTemplateResult::success(
                     std::move(result));
             }
@@ -293,11 +391,14 @@ namespace boundary_mesh
             CellRole::Transition, input.source_face_id, regular + 1});
         if (double_high_common.has_value())
         {
-            appendDoubleSideTransition(
+            const auto appended = appendDoubleSideTransition(
                 result,
                 input,
                 *double_high_common,
                 regular + 1);
+            if (!appended.hasValue())
+                return TransitionTemplateResult::failure(
+                    TransitionTemplateError{appended.error()});
         }
         else if (input.high_edge_local_index.has_value())
         {
