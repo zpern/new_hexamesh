@@ -5,6 +5,7 @@
 
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
+#include <boundary_mesh/growth/multi_normal_types.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 #include <boundary_mesh/transition/reserved_layer_transition.hpp>
 
@@ -54,4 +55,68 @@ int main()
         assert(std::holds_alternative<Triangle>(face));
     for (const CellMetadata &metadata : result.value().mesh.metadata)
         assert(metadata.layer <= 2);
+
+    MultiNormalOptions flat_multi_normal;
+    flat_multi_normal.enabled = true;
+    flat_multi_normal.transition_height = 0.1;
+    const auto flat_combined = generateReservedLayerTransition(
+        mesh,
+        topology.value(),
+        patch.value(),
+        front.value(),
+        profiles,
+        flat_multi_normal,
+        options);
+    if (!flat_combined.hasValue())
+        return 30;
+    if (flat_combined.value().multi_normal_transition.applied)
+        return 31;
+    if (flat_combined.value().reserved_transition_cell_count == 0)
+        return 32;
+    if (flat_combined.value().regular_cell_count == 0)
+        return 33;
+
+    SurfaceMesh corner = mesh;
+    corner.face_tags.assign(
+        corner.faces.size(),
+        {SurfaceBoundaryKind::Farfield, 0});
+    corner.face_tags[0] = {SurfaceBoundaryKind::Wall, 1};
+    corner.face_tags[2] = {SurfaceBoundaryKind::Wall, 1};
+    corner.face_tags[5] = {SurfaceBoundaryKind::Wall, 1};
+    const auto corner_topology =
+        SurfaceTopologyBuilder{}.build(corner);
+    assert(corner_topology.hasValue());
+    const auto corner_patch = GrowthPatchBuilder{}.build(
+        corner, corner_topology.value());
+    assert(corner_patch.hasValue());
+    const auto corner_front = GrowthFrontBuilder{}.buildInitial(
+        corner, corner_patch.value());
+    assert(corner_front.hasValue());
+    std::vector<SourceVertexGrowthProfile> corner_profiles;
+    for (const PatchVertex &vertex : corner_patch.value().vertices())
+        corner_profiles.push_back(
+            {vertex.source_vertex_id, {0.05, 1.0, 1}});
+
+    MultiNormalOptions multi_normal;
+    multi_normal.enabled = true;
+    multi_normal.transition_height = 0.05;
+    multi_normal.split_skewness_threshold = 0.5;
+    const auto combined = generateReservedLayerTransition(
+        corner,
+        corner_topology.value(),
+        corner_patch.value(),
+        corner_front.value(),
+        corner_profiles,
+        multi_normal,
+        options);
+    assert(combined.hasValue());
+    assert(combined.value().multi_normal_transition.applied);
+    assert(!combined.value().multi_normal_transition
+                .transition_cells.cells.empty());
+    assert(combined.value().reserved_transition_cell_count > 0);
+    assert(combined.value().mesh.cells.size() ==
+           combined.value().multi_normal_transition
+                   .transition_cells.cells.size() +
+               combined.value().reserved_transition_cell_count +
+               combined.value().regular_cell_count);
 }

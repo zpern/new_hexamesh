@@ -57,6 +57,7 @@ namespace boundary_mesh
     {
         VertexId source_vertex_id{}; // 输入 Wall 顶点编号
         std::vector<VertexId> layer_vertex_ids; // 从第 0 层开始的实际体网格顶点编号
+        std::uint32_t branch_id{}; // 同一源点的多法向分支编号
     };
 
     using LayerVertexTable = std::vector<LayerVertexRecord>; // 全部源顶点的显式层编号映射

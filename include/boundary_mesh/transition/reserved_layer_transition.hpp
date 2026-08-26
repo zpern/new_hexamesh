@@ -5,6 +5,8 @@
 
 #include <boundary_mesh/core/result.hpp>
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
+#include <boundary_mesh/growth/multi_normal_mesh_merge.hpp>
+#include <boundary_mesh/growth/multi_normal_transition_generator.hpp>
 #include <boundary_mesh/transition/reserved_layer_growth.hpp>
 #include <boundary_mesh/transition/transition_layer_coordinator.hpp>
 #include <boundary_mesh/transition/transition_templates.hpp>
@@ -18,8 +20,12 @@ namespace boundary_mesh
     {
         VolumeMesh mesh;
         SurfaceMesh boundary_layer_top;
+        SurfaceMesh farfield_boundary;
         std::vector<CoordinatedTransitionFace> coordinated_faces;
         RegularLayerGrowthResult trial_growth;
+        MultiNormalTransitionResult multi_normal_transition;
+        std::size_t reserved_transition_cell_count{};
+        std::size_t regular_cell_count{};
     };
 
     using ReservedLayerTransitionError = std::variant<
@@ -29,6 +35,18 @@ namespace boundary_mesh
         TransitionTemplateError,
         VolumeVertexIdOverflow>;
 
+    struct ReservedMultiNormalFailure { MultiNormalError cause; };
+    struct ReservedMultiNormalMergeFailure { MultiNormalMergeError cause; };
+
+    using CombinedReservedLayerTransitionError = std::variant<
+        ReservedLayerCountOverflow,
+        RegularLayerGrowthError,
+        TransitionCoordinationError,
+        TransitionTemplateError,
+        VolumeVertexIdOverflow,
+        ReservedMultiNormalFailure,
+        ReservedMultiNormalMergeFailure>;
+
     Result<ReservedLayerTransitionResult, ReservedLayerTransitionError>
     generateReservedLayerTransition(
         const SurfaceMesh &surface_mesh,
@@ -36,5 +54,16 @@ namespace boundary_mesh
         const GrowthPatch &patch,
         const GrowthFront &initial_front,
         const std::vector<SourceVertexGrowthProfile> &profiles,
+        const RegularLayerGrowthOptions &options = {});
+
+    Result<ReservedLayerTransitionResult,
+           CombinedReservedLayerTransitionError>
+    generateReservedLayerTransition(
+        const SurfaceMesh &surface_mesh,
+        const SurfaceTopology &topology,
+        const GrowthPatch &patch,
+        const GrowthFront &initial_front,
+        const std::vector<SourceVertexGrowthProfile> &profiles,
+        const MultiNormalOptions &multi_normal_options,
         const RegularLayerGrowthOptions &options = {});
 }

@@ -11,12 +11,12 @@
 #include <utility>
 #include <vector>
 
-#include <boundary_mesh/growth/boundary_layer_generator.hpp>
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
 #include <boundary_mesh/io/cgns_surface_reader.hpp>
 #include <boundary_mesh/io/legacy_vtk_writer.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
+#include <boundary_mesh/transition/reserved_layer_transition.hpp>
 
 namespace boundary_mesh
 {
@@ -305,7 +305,7 @@ namespace boundary_mesh
             command_options.multi_normal_enabled;
         multi_normal_options.transition_height =
             command_options.first_height;
-        const auto growth = generateBoundaryLayers(
+        const auto growth = generateReservedLayerTransition(
             surface.value(),
             topology.value(),
             patch.value(),
@@ -350,7 +350,7 @@ namespace boundary_mesh
             growth.value().farfield_boundary);
         const auto top_status = writeLegacyVtk(
             top_path,
-            growth.value().top_surface);
+            growth.value().boundary_layer_top);
         if (!volume_status.hasValue() ||
             !farfield_status.hasValue() ||
             !top_status.hasValue())
@@ -366,10 +366,14 @@ namespace boundary_mesh
                << "volume_cells=" << growth.value().mesh.cells.size()
                << '\n'
                << "transition_cells="
-               << growth.value().transition.transition_cells.cells.size()
+               << growth.value().multi_normal_transition
+                      .transition_cells.cells.size()
+               << '\n'
+               << "reserved_transition_cells="
+               << growth.value().reserved_transition_cell_count
                << '\n'
                << "regular_cells="
-               << growth.value().regular.mesh.cells.size()
+               << growth.value().regular_cell_count
                << '\n'
                << "farfield_faces="
                << growth.value().farfield_boundary.faces.size()
@@ -383,7 +387,7 @@ namespace boundary_mesh
                << "isotropic_height="
                << command_options.isotropic_height
                << '\n';
-        printStopReasonCounts(output, growth.value().regular);
+        printStopReasonCounts(output, growth.value().trial_growth);
         return 0;
     }
 }

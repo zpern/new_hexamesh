@@ -77,13 +77,15 @@ namespace boundary_mesh
 
         LayerVertexRecord *findLayerRecord(
             LayerVertexTable &records,
-            VertexId source_vertex_id)
+            VertexId source_vertex_id,
+            std::uint32_t branch_id)
         {
             const auto found = std::find_if(
                 records.begin(), records.end(),
                 [&](const LayerVertexRecord &record)
                 {
-                    return record.source_vertex_id == source_vertex_id;
+                    return record.source_vertex_id == source_vertex_id &&
+                           record.branch_id == branch_id;
                 });
             return found == records.end() ? nullptr : &*found;
         }
@@ -403,8 +405,6 @@ namespace boundary_mesh
                 return GrowthResult::failure(
                     InvalidLayerFrontMapping{0});
             }
-            result.layer_vertices.push_back(
-                LayerVertexRecord{patch_vertex.source_vertex_id, {}});
             result.vertices.push_back(
                 VertexGrowthRecord{
                     patch_vertex.source_vertex_id,
@@ -415,6 +415,19 @@ namespace boundary_mesh
              index < initial_front.vertices.size();
              ++index)
         {
+            const GrowthFrontVertex &front_vertex =
+                initial_front.vertices[index];
+            if (findLayerRecord(
+                    result.layer_vertices,
+                    front_vertex.source_vertex_id,
+                    front_vertex.branch_id) == nullptr)
+            {
+                result.layer_vertices.push_back(
+                    LayerVertexRecord{
+                        front_vertex.source_vertex_id,
+                        {},
+                        front_vertex.branch_id});
+            }
             if (index > static_cast<std::size_t>(
                             std::numeric_limits<VertexId>::max()))
             {
@@ -425,7 +438,8 @@ namespace boundary_mesh
             current_global_ids.push_back(global_id);
             LayerVertexRecord *record = findLayerRecord(
                 result.layer_vertices,
-                initial_front.vertices[index].source_vertex_id);
+                front_vertex.source_vertex_id,
+                front_vertex.branch_id);
             if (record == nullptr)
             {
                 return GrowthResult::failure(
@@ -707,7 +721,9 @@ namespace boundary_mesh
                 const VertexId source_id =
                     step.next_front.vertices[index].source_vertex_id;
                 LayerVertexRecord *layer_record = findLayerRecord(
-                    result.layer_vertices, source_id);
+                    result.layer_vertices,
+                    source_id,
+                    step.next_front.vertices[index].branch_id);
                 VertexGrowthRecord *vertex_record = findVertexRecord(
                     result.vertices, source_id);
                 if (layer_record == nullptr || vertex_record == nullptr)
