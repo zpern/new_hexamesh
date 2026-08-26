@@ -124,11 +124,11 @@ add_test(
 
 add_executable(
     boundary_mesh_multi_normal_types_test
-    unit/growth/multi_normal_types_test.cpp
+    unit/multi_normal/multi_normal_types_test.cpp
 )
 target_link_libraries(
     boundary_mesh_multi_normal_types_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_multi_normal_types_test
@@ -137,11 +137,11 @@ add_test(
 
 add_executable(
     boundary_mesh_incident_face_fan_test
-    unit/growth/incident_face_fan_test.cpp
+    unit/multi_normal/incident_face_fan_test.cpp
 )
 target_link_libraries(
     boundary_mesh_incident_face_fan_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_incident_face_fan_test
@@ -150,11 +150,11 @@ add_test(
 
 add_executable(
     boundary_mesh_multi_normal_split_planner_test
-    unit/growth/multi_normal_split_planner_test.cpp
+    unit/multi_normal/multi_normal_split_planner_test.cpp
 )
 target_link_libraries(
     boundary_mesh_multi_normal_split_planner_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_multi_normal_split_planner_test
@@ -163,11 +163,11 @@ add_test(
 
 add_executable(
     boundary_mesh_blmesh_splitter_parity_test
-    unit/growth/blmesh_splitter_parity_test.cpp
+    unit/multi_normal/blmesh_splitter_parity_test.cpp
 )
 target_link_libraries(
     boundary_mesh_blmesh_splitter_parity_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_blmesh_splitter_parity_test
@@ -176,11 +176,11 @@ add_test(
 
 add_executable(
     boundary_mesh_blmesh_geometry_parity_test
-    unit/growth/blmesh_geometry_parity_test.cpp
+    unit/multi_normal/blmesh_geometry_parity_test.cpp
 )
 target_link_libraries(
     boundary_mesh_blmesh_geometry_parity_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_blmesh_geometry_parity_test
@@ -189,11 +189,11 @@ add_test(
 
 add_executable(
     boundary_mesh_multi_normal_topology_builder_test
-    unit/growth/multi_normal_topology_builder_test.cpp
+    unit/multi_normal/multi_normal_topology_builder_test.cpp
 )
 target_link_libraries(
     boundary_mesh_multi_normal_topology_builder_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_multi_normal_topology_builder_test
@@ -202,11 +202,11 @@ add_test(
 
 add_executable(
     boundary_mesh_multi_normal_quad_triangulator_test
-    unit/growth/multi_normal_quad_triangulator_test.cpp
+    unit/multi_normal/multi_normal_quad_triangulator_test.cpp
 )
 target_link_libraries(
     boundary_mesh_multi_normal_quad_triangulator_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_multi_normal_quad_triangulator_test
@@ -215,11 +215,11 @@ add_test(
 
 add_executable(
     boundary_mesh_multi_normal_transition_builder_test
-    unit/growth/multi_normal_transition_builder_test.cpp
+    unit/multi_normal/multi_normal_transition_builder_test.cpp
 )
 target_link_libraries(
     boundary_mesh_multi_normal_transition_builder_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_multi_normal_transition_builder_test
@@ -228,11 +228,11 @@ add_test(
 
 add_executable(
     boundary_mesh_multi_normal_intersection_resolver_test
-    unit/growth/multi_normal_intersection_resolver_test.cpp
+    unit/multi_normal/multi_normal_intersection_resolver_test.cpp
 )
 target_link_libraries(
     boundary_mesh_multi_normal_intersection_resolver_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_multi_normal_intersection_resolver_test
@@ -241,11 +241,11 @@ add_test(
 
 add_executable(
     boundary_mesh_blmesh_intersection_checker_test
-    unit/growth/blmesh_intersection_checker_test.cpp
+    unit/multi_normal/blmesh_intersection_checker_test.cpp
 )
 target_link_libraries(
     boundary_mesh_blmesh_intersection_checker_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_blmesh_intersection_checker_test
@@ -254,11 +254,11 @@ add_test(
 
 add_executable(
     boundary_mesh_multi_normal_transition_generator_test
-    integration/multi_normal_transition_generator_test.cpp
+    integration/multi_normal/multi_normal_transition_generator_test.cpp
 )
 target_link_libraries(
     boundary_mesh_multi_normal_transition_generator_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_multi_normal_transition_generator_test
@@ -267,11 +267,11 @@ add_test(
 
 add_executable(
     boundary_mesh_multi_normal_growth_pipeline_test
-    integration/multi_normal_growth_pipeline_test.cpp
+    integration/multi_normal/multi_normal_growth_pipeline_test.cpp
 )
 target_link_libraries(
     boundary_mesh_multi_normal_growth_pipeline_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_multi_normal_growth_pipeline_test
@@ -280,11 +280,11 @@ add_test(
 
 add_executable(
     boundary_mesh_boundary_layer_generation_pipeline_test
-    integration/boundary_layer_generation_pipeline_test.cpp
+    integration/transition/boundary_layer_generation_pipeline_test.cpp
 )
 target_link_libraries(
     boundary_mesh_boundary_layer_generation_pipeline_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::Transition
 )
 add_test(
     NAME boundary_mesh_boundary_layer_generation_pipeline_test
@@ -293,11 +293,11 @@ add_test(
 
 add_executable(
     boundary_mesh_multi_normal_mesh_merge_test
-    unit/growth/multi_normal_mesh_merge_test.cpp
+    unit/multi_normal/multi_normal_mesh_merge_test.cpp
 )
 target_link_libraries(
     boundary_mesh_multi_normal_mesh_merge_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_multi_normal_mesh_merge_test
@@ -306,11 +306,11 @@ add_test(
 
 add_executable(
     boundary_mesh_blmesh_topology_stitching_test
-    unit/growth/blmesh_topology_stitching_test.cpp
+    unit/multi_normal/blmesh_topology_stitching_test.cpp
 )
 target_link_libraries(
     boundary_mesh_blmesh_topology_stitching_test
-    PRIVATE BoundaryMesh::BoundaryLayer
+    PRIVATE BoundaryMesh::MultiNormal
 )
 add_test(
     NAME boundary_mesh_blmesh_topology_stitching_test
@@ -983,4 +983,12 @@ target_link_libraries(
 add_test(
     NAME boundary_mesh_reserved_layer_transition_pipeline_test
     COMMAND boundary_mesh_reserved_layer_transition_pipeline_test
+)
+
+add_test(
+    NAME boundary_mesh_multi_normal_module_boundary_test
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DPROJECT_ROOT=${PROJECT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/multi_normal_module_boundary_test.cmake
 )
