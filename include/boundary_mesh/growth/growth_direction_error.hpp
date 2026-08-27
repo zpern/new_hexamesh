@@ -29,11 +29,11 @@ namespace boundary_mesh
         VertexId source_vertex_id{};      // 对应的输入表面顶点编号
         std::uint32_t layer{};            // 发生错误的前沿层号
     };
-    struct SymmetryInputMismatch
+    struct SlidingInputMismatch
     {
         std::uint32_t region_id{}; // 缺失的对称区域编号；普通结构错配时为零
     };
-    struct InvalidSymmetrySurface
+    struct InvalidSlidingSurface
     {
         std::uint32_t region_id{};          // 非平面或几何无效的对称区域编号
         SurfaceFaceId source_face_id{};     // 首个违反区域平面约束的输入面编号
@@ -55,8 +55,8 @@ namespace boundary_mesh
         DirectionInputMismatch,
         DirectionCornerFailure,
         UndefinedGrowthDirection,
-        SymmetryInputMismatch,
-        InvalidSymmetrySurface,
+        SlidingInputMismatch,
+        InvalidSlidingSurface,
         OverConstrainedGrowthVertex,
         UndefinedConstrainedDirection>;
 }

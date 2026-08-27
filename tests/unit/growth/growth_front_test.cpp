@@ -60,8 +60,8 @@ int main()
         if ((vertex.position - mesh.vertices[index]).norm() > 1e-12 ||
             (vertex.root_position - vertex.position).norm() > 1e-12 ||
             vertex.source_vertex_id != static_cast<VertexId>(index) ||
-            vertex.boundary.symmetry_region_ids !=
-                patch.value().vertices()[index].symmetry_region_ids)
+            vertex.boundary.sliding_region_ids !=
+                patch.value().vertices()[index].sliding_region_ids)
         {
             return 5;
         }

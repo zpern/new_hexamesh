@@ -12,7 +12,7 @@ namespace boundary_mesh
     struct PatchVertex
     {
         VertexId source_vertex_id{}; // 原始 SurfaceMesh 中的顶点编号
-        std::vector<std::uint32_t> symmetry_region_ids; // 排序去重后的对称区域编号
+        std::vector<std::uint32_t> sliding_region_ids; // 排序去重后的 Symmetry/Internal 滑移区域编号
     };
 
     class GrowthPatchBuilder;

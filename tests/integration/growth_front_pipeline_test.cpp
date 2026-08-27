@@ -8,7 +8,7 @@
 #include <boundary_mesh/growth/growth_direction.hpp>
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
-#include <boundary_mesh/growth/symmetry_constraint_builder.hpp>
+#include <boundary_mesh/growth/sliding_constraint_builder.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 
 namespace
@@ -48,8 +48,8 @@ namespace
         }
         for (std::size_t index = 0; index < first.size(); ++index)
         {
-            if (first[index].symmetry_region_ids !=
-                second[index].symmetry_region_ids)
+            if (first[index].sliding_region_ids !=
+                second[index].sliding_region_ids)
             {
                 return false;
             }
@@ -94,7 +94,7 @@ int main()
     {
         return 5;
     }
-    const auto constraints0 = SymmetryConstraintBuilder{}.build(
+    const auto constraints0 = SlidingConstraintBuilder{}.build(
         mesh, layer0.value(), evaluation0.value());
     if (!constraints0.hasValue())
     {
@@ -147,7 +147,7 @@ int main()
     {
         return 9;
     }
-    const auto constraints1 = SymmetryConstraintBuilder{}.build(
+    const auto constraints1 = SlidingConstraintBuilder{}.build(
         mesh, layer1, evaluation1.value());
     if (!constraints1.hasValue())
     {

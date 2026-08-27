@@ -49,8 +49,8 @@ namespace
             if ((left.position - right.position).norm() != 0.0 ||
                 (left.root_position - right.root_position).norm() != 0.0 ||
                 left.source_vertex_id != right.source_vertex_id ||
-                left.boundary.symmetry_region_ids !=
-                    right.boundary.symmetry_region_ids ||
+                left.boundary.sliding_region_ids !=
+                    right.boundary.sliding_region_ids ||
                 (left.direction - right.direction).norm() != 0.0 ||
                 left.actual_height != right.actual_height ||
                 left.visibility_cosine != right.visibility_cosine ||

@@ -67,7 +67,7 @@ int main()
     for (std::size_t index = 0; index < vertices.size(); ++index)
     {
         if (vertices[index].source_vertex_id != static_cast<VertexId>(index) ||
-            vertices[index].symmetry_region_ids != expected_regions[index])
+            vertices[index].sliding_region_ids != expected_regions[index])
         {
             return 5;
         }
@@ -88,7 +88,7 @@ int main()
     }
     for (const PatchVertex &vertex : all_wall_patch.value().vertices())
     {
-        if (!vertex.symmetry_region_ids.empty())
+        if (!vertex.sliding_region_ids.empty())
         {
             return 7;
         }
@@ -117,6 +117,41 @@ int main()
         mismatch_error->topology_vertex_count != 6)
     {
         return 9;
+    }
+
+    // Internal 面只提供滑移 region，不进入 Wall patch 的源面集合。
+    SurfaceMesh with_internal = mesh;
+    with_internal.vertices.push_back(Point3{-1.0, 0.0, 0.0});
+    with_internal.faces.push_back(
+        Triangle{{VertexId{0}, VertexId{2}, VertexId{6}}});
+    with_internal.face_tags.push_back(
+        {SurfaceBoundaryKind::Internal, 40});
+
+    const auto internal_topology =
+        SurfaceTopologyBuilder{}.build(with_internal);
+    if (!internal_topology.hasValue())
+    {
+        return 10;
+    }
+    const auto internal_patch = GrowthPatchBuilder{}.build(
+        with_internal, internal_topology.value());
+    if (!internal_patch.hasValue() ||
+        internal_patch.value().sourceFaceIds() !=
+            std::vector<SurfaceFaceId>{SurfaceFaceId{0}})
+    {
+        return 11;
+    }
+
+    const auto &internal_vertices = internal_patch.value().vertices();
+    if (internal_vertices.size() != 3 ||
+        internal_vertices[0].sliding_region_ids !=
+            std::vector<std::uint32_t>{30, 32, 40} ||
+        internal_vertices[1].sliding_region_ids !=
+            std::vector<std::uint32_t>{30, 31} ||
+        internal_vertices[2].sliding_region_ids !=
+            std::vector<std::uint32_t>{31, 32, 40})
+    {
+        return 12;
     }
     return 0;
 }

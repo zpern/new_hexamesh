@@ -37,7 +37,7 @@ namespace boundary_mesh
                     position,
                     patch_vertex.source_vertex_id,
                     FrontVertexBoundary{
-                        patch_vertex.symmetry_region_ids}});
+                        patch_vertex.sliding_region_ids}});
         }
 
         for (const SurfaceFaceId source_face_id : patch.sourceFaceIds())

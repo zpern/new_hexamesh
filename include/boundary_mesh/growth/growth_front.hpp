@@ -11,7 +11,7 @@ namespace boundary_mesh
 {
     struct FrontVertexBoundary
     {
-        std::vector<std::uint32_t> symmetry_region_ids; // 当前顶点继承的对称区域
+        std::vector<std::uint32_t> sliding_region_ids; // 当前顶点继承的滑移区域
     };
 
     /// 当前活动前沿上的一个点及其逐层生成状态。

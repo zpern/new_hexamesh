@@ -70,25 +70,26 @@ namespace boundary_mesh
                 continue;
             }
 
-            std::vector<std::uint32_t> symmetry_region_ids;
+            std::vector<std::uint32_t> sliding_region_ids;
             for (const SurfaceFaceId face_id : topology.vertexFaces()[vertex_index])
             {
                 const SurfaceBoundaryTag &tag =
                     mesh.face_tags[static_cast<std::size_t>(face_id)];
-                if (tag.kind == SurfaceBoundaryKind::Symmetry)
+                if (tag.kind == SurfaceBoundaryKind::Symmetry ||
+                    tag.kind == SurfaceBoundaryKind::Internal)
                 {
-                    symmetry_region_ids.push_back(tag.region_id);
+                    sliding_region_ids.push_back(tag.region_id);
                 }
             }
 
-            std::sort(symmetry_region_ids.begin(), symmetry_region_ids.end());
-            symmetry_region_ids.erase(
-                std::unique(symmetry_region_ids.begin(), symmetry_region_ids.end()),
-                symmetry_region_ids.end());
+            std::sort(sliding_region_ids.begin(), sliding_region_ids.end());
+            sliding_region_ids.erase(
+                std::unique(sliding_region_ids.begin(), sliding_region_ids.end()),
+                sliding_region_ids.end());
 
             vertices.push_back(PatchVertex{
                 static_cast<VertexId>(vertex_index),
-                std::move(symmetry_region_ids)});
+                std::move(sliding_region_ids)});
         }
 
         return BuildResult::success(GrowthPatch{
