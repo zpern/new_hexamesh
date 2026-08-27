@@ -294,7 +294,8 @@ namespace boundary_mesh
 
         RegularLayerGrowthOptions growth_options;
         growth_options.cell_quality.maximum_skewness = command_options.maximum_skewness;
-        growth_options.max_layer_diff = command_options.max_layer_diff;
+        growth_options.max_neighbor_layer_difference =
+            command_options.max_layer_diff;
         growth_options.isotropic_height = command_options.isotropic_height;
 
         MultiNormalOptions multi_normal_options;
