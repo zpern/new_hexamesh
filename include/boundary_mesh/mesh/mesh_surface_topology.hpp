@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -19,8 +20,33 @@ namespace boundary_mesh
         std::array<VertexId, 2> vertex_ids{}; // 按升序保存的两个端点编号
     };
 
-    using EdgeFaceIds =
-        std::array<SurfaceFaceId, 2>; // 一条封闭流形边两侧的面片编号
+    using OptionalSurfaceFaceId =
+        std::optional<SurfaceFaceId>; // 同层拓扑中可能不存在的相邻面编号
+
+    /// 一条全局几何边在两套独立表面拓扑层中的关联面。
+    struct EdgeFaceIds
+    {
+        std::array<OptionalSurfaceFaceId, 2>
+            non_internal_faces{}; // 非 Internal 层最多两个关联面
+
+        std::array<OptionalSurfaceFaceId, 2>
+            internal_faces{}; // Internal 层最多两个关联面
+
+        bool operator==(
+            const EdgeFaceIds &other) const noexcept
+        {
+            return non_internal_faces ==
+                       other.non_internal_faces &&
+                   internal_faces ==
+                       other.internal_faces;
+        }
+
+        bool operator!=(
+            const EdgeFaceIds &other) const noexcept
+        {
+            return !(*this == other);
+        }
+    };
 
     using TriangleEdgeIds =
         std::array<EdgeId, 3>; // 三角形按局部边顺序保存的三个边编号
@@ -34,10 +60,10 @@ namespace boundary_mesh
             QuadEdgeIds>; // 与源面类型一致的局部边编号集合
 
     using TriangleNeighborIds =
-        std::array<SurfaceFaceId, 3>; // 三角形逐条局部边对应的相邻面编号
+        std::array<OptionalSurfaceFaceId, 3>; // 三角形逐条局部边对应的同层相邻面
 
     using QuadNeighborIds =
-        std::array<SurfaceFaceId, 4>; // 四边形逐条局部边对应的相邻面编号
+        std::array<OptionalSurfaceFaceId, 4>; // 四边形逐条局部边对应的同层相邻面
 
     using FaceNeighborIds =
         std::variant<
@@ -56,7 +82,7 @@ namespace boundary_mesh
             return edges_;
         }
 
-        /// 返回每条边两侧的面；数组下标就是 EdgeId。
+        /// 返回每条边在 Internal 与非 Internal 层的关联面；数组下标就是 EdgeId。
         const std::vector<EdgeFaceIds> &
         edgeFaces() const noexcept
         {
@@ -70,7 +96,7 @@ namespace boundary_mesh
             return face_edges_;
         }
 
-        /// 返回每个面的逐边相邻面；局部顺序与 faceEdges() 相同。
+        /// 返回每个面的逐边同层相邻面；开放 Internal 边返回 nullopt。
         const std::vector<FaceNeighborIds> &
         faceNeighbors() const noexcept
         {

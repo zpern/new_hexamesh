@@ -47,21 +47,21 @@ namespace boundary_mesh
         SurfaceFaceId duplicate_face_id{}; // 重复使用相同顶点集合的面片编号
     };
 
-    /// 一条边只关联一个面片，说明完整输入表面没有封闭。
+    /// 一条边只关联一个非 Internal 面片，说明外部边界没有封闭。
     struct BoundaryEdge
     {
-        std::array<VertexId, 2> edge_vertices{}; // 只关联一个面片的规范边端点
-        SurfaceFaceId face_id{}; // 该边唯一关联的面片编号
+        std::array<VertexId, 2> edge_vertices{}; // 只关联一个非 Internal 面片的规范边端点
+        SurfaceFaceId face_id{}; // 该边唯一关联的非 Internal 面片编号
     };
 
-    /// 一条边关联三个或更多面片；记录最先遇到的三个面。
+    /// 一条边在同一拓扑层关联三个或更多面片；记录最先遇到的三个面。
     struct NonManifoldEdge
     {
         std::array<VertexId, 2> edge_vertices{}; // 关联三个以上面片的规范边端点
         std::array<SurfaceFaceId, 3> face_ids{}; // 按扫描顺序记录的前三个关联面
     };
 
-    /// 两个相邻面沿共享边使用了相同方向。
+    /// 同一拓扑层中的两个相邻面沿共享边使用了相同方向。
     struct InconsistentOrientation
     {
         std::array<VertexId, 2> edge_vertices{}; // 两侧局部方向相同的规范边端点

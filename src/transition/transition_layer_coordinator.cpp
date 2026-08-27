@@ -59,13 +59,13 @@ namespace boundary_mesh
                 occupiedLayerCount(face.layers.trial_layers);
         }
 
-        std::vector<SurfaceFaceId> neighborIds(
+        std::vector<OptionalSurfaceFaceId> neighborIds(
             const FaceNeighborIds &neighbors)
         {
             return std::visit(
                 [](const auto &ids)
                 {
-                    return std::vector<SurfaceFaceId>(
+                    return std::vector<OptionalSurfaceFaceId>(
                         ids.begin(), ids.end());
                 },
                 neighbors);
@@ -130,9 +130,11 @@ namespace boundary_mesh
             face.local_edge_count = ids.size();
             for (std::size_t local = 0; local < ids.size(); ++local)
             {
-                if (findFace(faces, ids[local]) != nullptr)
+                if (ids[local].has_value() &&
+                    findFace(faces, *ids[local]) != nullptr)
                 {
-                    face.neighbors.push_back(Neighbor{local, ids[local]});
+                    face.neighbors.push_back(
+                        Neighbor{local, *ids[local]});
                 }
             }
             std::sort(

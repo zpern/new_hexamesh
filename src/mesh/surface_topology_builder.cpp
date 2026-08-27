@@ -97,6 +97,25 @@ namespace boundary_mesh
             }
         };
 
+        struct IncidenceLayer
+        {
+            std::vector<SurfaceFaceId> faces;
+            std::vector<int> directions;
+        };
+
+        struct EdgeIncidence
+        {
+            IncidenceLayer non_internal;
+            IncidenceLayer internal;
+        };
+
+        bool isInternalFaceTag(
+            const SurfaceBoundaryTag &tag) noexcept
+        {
+            return tag.kind ==
+                   SurfaceBoundaryKind::Internal;
+        }
+
         /// 将局部有向边转换成规范无向边。
         EdgeKey makeEdgeKey(
             VertexId first,
@@ -171,17 +190,14 @@ namespace boundary_mesh
             VertexId first,
             VertexId second,
             SurfaceFaceId face_id,
+            bool is_internal,
             std::unordered_map<
                 EdgeKey,
                 EdgeId,
                 EdgeKeyHash> &edge_ids,
             std::vector<Edge> &edges,
-            std::vector<
-                std::vector<SurfaceFaceId>>
-                &incident_faces,
-            std::vector<
-                std::vector<int>>
-                &incident_directions,
+            std::vector<EdgeIncidence>
+                &edge_incidence,
             std::optional<
                 SurfaceTopologyError> &error)
         {
@@ -219,11 +235,15 @@ namespace boundary_mesh
                     Edge{{key.first,
                           key.second}});
 
-                incident_faces.push_back(
-                    {face_id});
+                edge_incidence.emplace_back();
 
-                incident_directions.push_back(
-                    {direction});
+                IncidenceLayer &layer =
+                    is_internal
+                        ? edge_incidence.back().internal
+                        : edge_incidence.back().non_internal;
+
+                layer.faces.push_back(face_id);
+                layer.directions.push_back(direction);
 
                 return edge_id;
             }
@@ -235,11 +255,20 @@ namespace boundary_mesh
                 static_cast<std::size_t>(
                     edge_id);
 
-            auto &faces =
-                incident_faces[edge_index];
+            IncidenceLayer &layer =
+                is_internal
+                    ? edge_incidence[edge_index].internal
+                    : edge_incidence[edge_index].non_internal;
 
-            auto &directions =
-                incident_directions[edge_index];
+            auto &faces = layer.faces;
+            auto &directions = layer.directions;
+
+            if (faces.empty())
+            {
+                faces.push_back(face_id);
+                directions.push_back(direction);
+                return edge_id;
+            }
 
             // 已经有两个关联面时，当前面就是第三个关联面。
             if (faces.size() >= 2)
@@ -276,6 +305,7 @@ namespace boundary_mesh
 
             return edge_id;
         }
+
         /// 登记一个面的所有顶点和局部边。
         template <std::size_t Count>
         std::array<EdgeId, Count> appendFace(
@@ -283,17 +313,14 @@ namespace boundary_mesh
                 VertexId,
                 Count> &vertex_ids,
             SurfaceFaceId face_id,
+            bool is_internal,
             std::unordered_map<
                 EdgeKey,
                 EdgeId,
                 EdgeKeyHash> &edge_ids,
             std::vector<Edge> &edges,
-            std::vector<
-                std::vector<SurfaceFaceId>>
-                &incident_faces,
-            std::vector<
-                std::vector<int>>
-                &incident_directions,
+            std::vector<EdgeIncidence>
+                &edge_incidence,
             std::vector<
                 std::vector<SurfaceFaceId>>
                 &vertex_faces,
@@ -320,10 +347,10 @@ namespace boundary_mesh
                         vertex_ids[(index + 1) %
                                    Count],
                         face_id,
+                        is_internal,
                         edge_ids,
                         edges,
-                        incident_faces,
-                        incident_directions,
+                        edge_incidence,
                         error);
             }
 
@@ -332,12 +359,13 @@ namespace boundary_mesh
 
         /// 根据逐边邻接关系生成一个面的相邻面数组。
         ///
-        /// 当前成功路径假设每条边至少关联两个面；
-        /// Task 6 将在调用本函数前正式验证封闭性。
+        /// Internal 与非 Internal 面只在各自拓扑层内寻找邻面。
+        /// Internal 开放边没有同层邻面，结果保持为 nullopt。
         template <std::size_t Count>
-        std::array<SurfaceFaceId, Count>
+        std::array<OptionalSurfaceFaceId, Count>
         makeNeighbors(
             SurfaceFaceId face_id,
+            bool is_internal,
             const std::array<
                 EdgeId,
                 Count> &face_edge_ids,
@@ -345,7 +373,7 @@ namespace boundary_mesh
                 EdgeFaceIds> &edge_faces)
         {
             std::array<
-                SurfaceFaceId,
+                OptionalSurfaceFaceId,
                 Count>
                 neighbors{};
 
@@ -353,14 +381,23 @@ namespace boundary_mesh
                  index < Count;
                  ++index)
             {
-                const auto &faces =
+                const EdgeFaceIds &incidence =
                     edge_faces[static_cast<std::size_t>(
                         face_edge_ids[index])];
 
-                neighbors[index] =
-                    faces[0] == face_id
-                        ? faces[1]
-                        : faces[0];
+                const auto &faces =
+                    is_internal
+                        ? incidence.internal_faces
+                        : incidence.non_internal_faces;
+
+                if (faces[0] == face_id)
+                {
+                    neighbors[index] = faces[1];
+                }
+                else if (faces[1] == face_id)
+                {
+                    neighbors[index] = faces[0];
+                }
             }
 
             return neighbors;
@@ -491,13 +528,8 @@ namespace boundary_mesh
 
         std::vector<Edge> edges;
 
-        std::vector<
-            std::vector<SurfaceFaceId>>
-            incident_faces;
-
-        std::vector<
-            std::vector<int>>
-            incident_directions;
+        std::vector<EdgeIncidence>
+            edge_incidence;
 
         std::vector<FaceEdgeIds>
             face_edges;
@@ -522,6 +554,10 @@ namespace boundary_mesh
                 static_cast<SurfaceFaceId>(
                     face_index);
 
+            const bool is_internal =
+                isInternalFaceTag(
+                    mesh.face_tags[face_index]);
+
             face_edges.push_back(
                 std::visit(
                     [&](const auto &face)
@@ -530,10 +566,10 @@ namespace boundary_mesh
                         return appendFace(
                             face.vertex_ids,
                             face_id,
+                            is_internal,
                             edge_ids,
                             edges,
-                            incident_faces,
-                            incident_directions,
+                            edge_incidence,
                             vertex_faces,
                             edge_error);
                     },
@@ -551,38 +587,47 @@ namespace boundary_mesh
              edge_index < edges.size();
              ++edge_index)
         {
-            if (incident_faces[edge_index]
-                    .size() == 1)
+            const auto &non_internal_faces =
+                edge_incidence[edge_index]
+                    .non_internal.faces;
+
+            if (non_internal_faces.size() == 1)
             {
                 return BuildResult::failure(
                     SurfaceTopologyError{
                         BoundaryEdge{
                             edges[edge_index]
                                 .vertex_ids,
-                            incident_faces[edge_index][0]}});
+                            non_internal_faces[0]}});
             }
         }
         // 将构建期动态邻接转换为稠密的边到面数组。
         std::vector<EdgeFaceIds>
             edge_faces(
                 edges.size());
-
         for (std::size_t edge_index = 0;
              edge_index < edges.size();
              ++edge_index)
         {
-            if (!incident_faces[edge_index]
-                     .empty())
+            const EdgeIncidence &incidence =
+                edge_incidence[edge_index];
+
+            for (std::size_t index = 0;
+                 index < incidence.non_internal.faces.size();
+                 ++index)
             {
-                edge_faces[edge_index][0] =
-                    incident_faces[edge_index][0];
+                edge_faces[edge_index]
+                    .non_internal_faces[index] =
+                    incidence.non_internal.faces[index];
             }
 
-            if (incident_faces[edge_index]
-                    .size() >= 2)
+            for (std::size_t index = 0;
+                 index < incidence.internal.faces.size();
+                 ++index)
             {
-                edge_faces[edge_index][1] =
-                    incident_faces[edge_index][1];
+                edge_faces[edge_index]
+                    .internal_faces[index] =
+                    incidence.internal.faces[index];
             }
         }
 
@@ -601,6 +646,10 @@ namespace boundary_mesh
                 static_cast<SurfaceFaceId>(
                     face_index);
 
+            const bool is_internal =
+                isInternalFaceTag(
+                    mesh.face_tags[face_index]);
+
             face_neighbors.push_back(
                 std::visit(
                     [&](const auto &ids)
@@ -608,6 +657,7 @@ namespace boundary_mesh
                     {
                         return makeNeighbors(
                             face_id,
+                            is_internal,
                             ids,
                             edge_faces);
                     },

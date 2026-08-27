@@ -1,4 +1,5 @@
 #include <array>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -36,6 +37,31 @@ int main()
                                .vertexFaces()),
                   const std::vector<
                       std::vector<SurfaceFaceId>> &>);
+
+    static_assert(std::is_same_v<
+                  OptionalSurfaceFaceId,
+                  std::optional<SurfaceFaceId>>);
+
+    static_assert(std::is_same_v<
+                  TriangleNeighborIds,
+                  std::array<OptionalSurfaceFaceId, 3>>);
+
+    static_assert(std::is_same_v<
+                  QuadNeighborIds,
+                  std::array<OptionalSurfaceFaceId, 4>>);
+
+    const EdgeFaceIds incidence{
+        {SurfaceFaceId{1}, SurfaceFaceId{2}},
+        {SurfaceFaceId{3}, std::nullopt}};
+
+    if (incidence.non_internal_faces[1] !=
+            SurfaceFaceId{2} ||
+        incidence.internal_faces[0] !=
+            SurfaceFaceId{3} ||
+        incidence.internal_faces[1].has_value())
+    {
+        return 4;
+    }
 
     const Edge edge{{VertexId{2},
                      VertexId{5}}};

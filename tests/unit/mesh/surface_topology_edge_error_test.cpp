@@ -14,6 +14,13 @@ namespace
             SurfaceBoundaryKind::Wall,
             1};
     }
+
+    SurfaceBoundaryTag internalTag()
+    {
+        return SurfaceBoundaryTag{
+            SurfaceBoundaryKind::Internal,
+            2};
+    }
 }
 
 int main()
@@ -163,6 +170,52 @@ int main()
                 SurfaceFaceId{0})
         {
             return 6;
+        }
+    }
+
+    // Internal 层独立限制为最多两个关联面。
+    {
+        SurfaceMesh mesh;
+        mesh.vertices.resize(5, Point3::Zero());
+        mesh.faces = {
+            Triangle{{VertexId{0}, VertexId{1}, VertexId{2}}},
+            Triangle{{VertexId{1}, VertexId{0}, VertexId{3}}},
+            Triangle{{VertexId{0}, VertexId{1}, VertexId{4}}}};
+        mesh.face_tags = {
+            internalTag(), internalTag(), internalTag()};
+
+        const auto result = builder.build(mesh);
+        const auto *error = result.hasValue()
+            ? nullptr
+            : std::get_if<NonManifoldEdge>(&result.error());
+        if (error == nullptr ||
+            error->face_ids !=
+                std::array<SurfaceFaceId, 3>{
+                    SurfaceFaceId{0}, SurfaceFaceId{1},
+                    SurfaceFaceId{2}})
+        {
+            return 7;
+        }
+    }
+
+    // Internal 层的两个同向面仍然必须报告方向冲突。
+    {
+        SurfaceMesh mesh;
+        mesh.vertices.resize(4, Point3::Zero());
+        mesh.faces = {
+            Triangle{{VertexId{0}, VertexId{1}, VertexId{2}}},
+            Triangle{{VertexId{0}, VertexId{1}, VertexId{3}}}};
+        mesh.face_tags = {internalTag(), internalTag()};
+
+        const auto result = builder.build(mesh);
+        const auto *error = result.hasValue()
+            ? nullptr
+            : std::get_if<InconsistentOrientation>(&result.error());
+        if (error == nullptr ||
+            error->first_face_id != SurfaceFaceId{0} ||
+            error->second_face_id != SurfaceFaceId{1})
+        {
+            return 8;
         }
     }
     return 0;

@@ -104,15 +104,15 @@ int main()
 
     const std::vector<EdgeFaceIds>
         expected_edge_faces = {
-            {SurfaceFaceId{0}, SurfaceFaceId{4}},
-            {SurfaceFaceId{0}, SurfaceFaceId{3}},
-            {SurfaceFaceId{0}, SurfaceFaceId{2}},
-            {SurfaceFaceId{1}, SurfaceFaceId{2}},
-            {SurfaceFaceId{1}, SurfaceFaceId{3}},
-            {SurfaceFaceId{1}, SurfaceFaceId{4}},
-            {SurfaceFaceId{2}, SurfaceFaceId{3}},
-            {SurfaceFaceId{2}, SurfaceFaceId{4}},
-            {SurfaceFaceId{3}, SurfaceFaceId{4}}};
+            {{{SurfaceFaceId{0}, SurfaceFaceId{4}}}, {}},
+            {{{SurfaceFaceId{0}, SurfaceFaceId{3}}}, {}},
+            {{{SurfaceFaceId{0}, SurfaceFaceId{2}}}, {}},
+            {{{SurfaceFaceId{1}, SurfaceFaceId{2}}}, {}},
+            {{{SurfaceFaceId{1}, SurfaceFaceId{3}}}, {}},
+            {{{SurfaceFaceId{1}, SurfaceFaceId{4}}}, {}},
+            {{{SurfaceFaceId{2}, SurfaceFaceId{3}}}, {}},
+            {{{SurfaceFaceId{2}, SurfaceFaceId{4}}}, {}},
+            {{{SurfaceFaceId{3}, SurfaceFaceId{4}}}, {}}};
 
     if (topology.edgeFaces() !=
         expected_edge_faces)
@@ -157,19 +157,19 @@ int main()
 
     if (face0_neighbors == nullptr ||
         *face0_neighbors != TriangleNeighborIds{
-                                SurfaceFaceId{4},
-                                SurfaceFaceId{3},
-                                SurfaceFaceId{2}})
+                                OptionalSurfaceFaceId{SurfaceFaceId{4}},
+                                OptionalSurfaceFaceId{SurfaceFaceId{3}},
+                                OptionalSurfaceFaceId{SurfaceFaceId{2}}})
     {
         return 7;
     }
 
     if (face2_neighbors == nullptr ||
         *face2_neighbors != QuadNeighborIds{
-                                SurfaceFaceId{0},
-                                SurfaceFaceId{3},
-                                SurfaceFaceId{1},
-                                SurfaceFaceId{4}})
+                                OptionalSurfaceFaceId{SurfaceFaceId{0}},
+                                OptionalSurfaceFaceId{SurfaceFaceId{3}},
+                                OptionalSurfaceFaceId{SurfaceFaceId{1}},
+                                OptionalSurfaceFaceId{SurfaceFaceId{4}}})
     {
         return 8;
     }
@@ -207,6 +207,139 @@ int main()
         mesh.face_tags.size() != 5)
     {
         return 10;
+    }
+
+    // 仅包含 Internal 面的网格允许开放边，且 point-to-face 仍保留该面。
+    {
+        SurfaceMesh internal_mesh;
+        internal_mesh.vertices = {
+            Point3{0.0, 0.0, 0.0},
+            Point3{1.0, 0.0, 0.0},
+            Point3{0.0, 1.0, 0.0}};
+        internal_mesh.faces = {
+            Triangle{{VertexId{0}, VertexId{1}, VertexId{2}}}};
+        internal_mesh.face_tags = {
+            {SurfaceBoundaryKind::Internal, 7}};
+
+        const auto internal_result =
+            SurfaceTopologyBuilder{}.build(internal_mesh);
+        if (!internal_result.hasValue())
+        {
+            return 11;
+        }
+
+        const auto &internal_topology = internal_result.value();
+        for (const EdgeFaceIds &edge_faces :
+             internal_topology.edgeFaces())
+        {
+            if (edge_faces.non_internal_faces[0].has_value() ||
+                edge_faces.non_internal_faces[1].has_value() ||
+                edge_faces.internal_faces[0] != SurfaceFaceId{0} ||
+                edge_faces.internal_faces[1].has_value())
+            {
+                return 12;
+            }
+        }
+
+        const auto *neighbors =
+            std::get_if<TriangleNeighborIds>(
+                &internal_topology.faceNeighbors()[0]);
+        if (neighbors == nullptr ||
+            (*neighbors)[0].has_value() ||
+            (*neighbors)[1].has_value() ||
+            (*neighbors)[2].has_value())
+        {
+            return 13;
+        }
+
+        if (internal_topology.vertexFaces()[0] !=
+            std::vector<SurfaceFaceId>{SurfaceFaceId{0}})
+        {
+            return 14;
+        }
+    }
+
+    // 同一几何边允许两个 Non-Internal 面和两个 Internal 面。
+    {
+        SurfaceMesh layered_mesh = makePrismSurface();
+        layered_mesh.vertices.push_back(Point3{-1.0, 0.0, 0.0});
+        layered_mesh.vertices.push_back(Point3{-1.0, 1.0, 0.0});
+        layered_mesh.faces.push_back(
+            Triangle{{VertexId{0}, VertexId{2}, VertexId{6}}});
+        layered_mesh.face_tags.push_back(
+            {SurfaceBoundaryKind::Internal, 8});
+
+        const auto attached_result =
+            SurfaceTopologyBuilder{}.build(layered_mesh);
+        if (!attached_result.hasValue())
+        {
+            return 15;
+        }
+
+        const auto &attached_topology = attached_result.value();
+        const EdgeFaceIds &attached_shared =
+            attached_topology.edgeFaces()[0];
+        const auto *attached_internal_neighbors =
+            std::get_if<TriangleNeighborIds>(
+                &attached_topology.faceNeighbors()[5]);
+        if (attached_shared.non_internal_faces !=
+                std::array<OptionalSurfaceFaceId, 2>{
+                    SurfaceFaceId{0}, SurfaceFaceId{4}} ||
+            attached_shared.internal_faces !=
+                std::array<OptionalSurfaceFaceId, 2>{
+                    SurfaceFaceId{5}, std::nullopt} ||
+            attached_internal_neighbors == nullptr ||
+            (*attached_internal_neighbors)[0].has_value())
+        {
+            return 16;
+        }
+
+        layered_mesh.faces.push_back(
+            Triangle{{VertexId{2}, VertexId{0}, VertexId{7}}});
+        layered_mesh.face_tags.push_back(
+            {SurfaceBoundaryKind::Internal, 8});
+
+        const auto layered_result =
+            SurfaceTopologyBuilder{}.build(layered_mesh);
+        if (!layered_result.hasValue())
+        {
+            return 17;
+        }
+
+        const auto &layered_topology = layered_result.value();
+        const EdgeFaceIds &shared = layered_topology.edgeFaces()[0];
+        if (shared.non_internal_faces !=
+                std::array<OptionalSurfaceFaceId, 2>{
+                    SurfaceFaceId{0}, SurfaceFaceId{4}} ||
+            shared.internal_faces !=
+                std::array<OptionalSurfaceFaceId, 2>{
+                    SurfaceFaceId{5}, SurfaceFaceId{6}})
+        {
+            return 18;
+        }
+
+        const auto *wall_neighbors =
+            std::get_if<TriangleNeighborIds>(
+                &layered_topology.faceNeighbors()[0]);
+        const auto *internal_neighbors =
+            std::get_if<TriangleNeighborIds>(
+                &layered_topology.faceNeighbors()[5]);
+        if (wall_neighbors == nullptr ||
+            internal_neighbors == nullptr ||
+            (*wall_neighbors)[0] != SurfaceFaceId{4} ||
+            (*internal_neighbors)[0] != SurfaceFaceId{6})
+        {
+            return 19;
+        }
+
+        if (layered_topology.vertexFaces()[0] !=
+            std::vector<SurfaceFaceId>{
+                SurfaceFaceId{0}, SurfaceFaceId{2},
+                SurfaceFaceId{4}, SurfaceFaceId{5},
+                SurfaceFaceId{6}})
+        {
+            return 20;
+        }
     }
 
     return 0;

@@ -21,13 +21,13 @@ namespace boundary_mesh
             return std::binary_search(faces.begin(), faces.end(), id);
         }
 
-        std::vector<SurfaceFaceId> faceNeighbors(
+        std::vector<OptionalSurfaceFaceId> faceNeighbors(
             const FaceNeighborIds &neighbors)
         {
             return std::visit(
                 [](const auto &value)
                 {
-                    return std::vector<SurfaceFaceId>{
+                    return std::vector<OptionalSurfaceFaceId>{
                         value.begin(), value.end()};
                 },
                 neighbors);
@@ -79,22 +79,26 @@ namespace boundary_mesh
             const auto local_edges = faceEdgeIds(
                 topology.faceEdges()[face_index]);
             entry.local_edge_count = local_edges.size();
-            for (const SurfaceFaceId neighbor : local_neighbors)
+            for (const OptionalSurfaceFaceId neighbor : local_neighbors)
             {
-                if (neighbor != face_id &&
-                    containsFace(patch_faces, neighbor))
+                if (neighbor.has_value() &&
+                    *neighbor != face_id &&
+                    containsFace(patch_faces, *neighbor))
                 {
-                    entry.neighbors.push_back(neighbor);
+                    entry.neighbors.push_back(*neighbor);
                 }
             }
             for (std::size_t local = 0;
                  local < local_neighbors.size();
                  ++local)
             {
-                const SurfaceFaceId neighbor = local_neighbors[local];
-                if (!containsFace(patch_faces, neighbor)) continue;
+                const OptionalSurfaceFaceId neighbor =
+                    local_neighbors[local];
+                if (!neighbor.has_value() ||
+                    !containsFace(patch_faces, *neighbor))
+                    continue;
                 NeighborEntry::EdgeRule rule;
-                rule.neighbor = neighbor;
+                rule.neighbor = *neighbor;
                 const Edge &selected = topology.edges()[
                     static_cast<std::size_t>(local_edges[local])];
                 for (const EdgeId edge_id : local_edges)
@@ -126,7 +130,7 @@ namespace boundary_mesh
                              topology.vertexFaces()[vertex])
                         {
                             if (incident != face_id &&
-                                incident != neighbor &&
+                                incident != *neighbor &&
                                 containsFace(patch_faces, incident))
                                 rule.non_contact_corner_faces.push_back(
                                     incident);
@@ -149,7 +153,7 @@ namespace boundary_mesh
                                  topology.vertexFaces()[vertex])
                             {
                                 if (incident != face_id &&
-                                    incident != neighbor &&
+                                    incident != *neighbor &&
                                     containsFace(patch_faces, incident))
                                     rule.non_contact_corner_faces.push_back(
                                         incident);
