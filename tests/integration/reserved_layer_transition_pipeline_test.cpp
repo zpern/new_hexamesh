@@ -5,7 +5,7 @@
 
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
-#include <boundary_mesh/growth/multi_normal_types.hpp>
+#include <boundary_mesh/multi_normal/multi_normal_types.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 #include <boundary_mesh/transition/reserved_layer_transition.hpp>
 
