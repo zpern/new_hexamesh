@@ -1,0 +1,751 @@
+﻿COMMITS
+4aef9fa fix: reject non-finite prism tolerance scale
+440c271 feat: evaluate prism candidate quality
+
+STAT
+ CMakeLists.txt                                 |  13 +-
+ src/quality/prism_evaluator.cpp                | 228 +++++++++++++++++++++++++
+ src/quality/volume_cell_evaluator_common.cpp   | 187 ++++++++++++++++++++
+ src/quality/volume_cell_evaluator_internal.hpp |  43 +++++
+ tests/CMakeLists.txt                           |  14 ++
+ tests/unit/quality/prism_evaluator_test.cpp    | 171 +++++++++++++++++++
+ 6 files changed, 652 insertions(+), 4 deletions(-)
+
+DIFF
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ca2a869..26a15b2 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -51,39 +51,44 @@ target_include_directories(
+     boundary_mesh_surface
+     PUBLIC
+         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+         $<INSTALL_INTERFACE:include>
+ )
+ 
+ target_link_libraries(
+     boundary_mesh_surface
+     PUBLIC
+         BoundaryMesh::Core
+ )
+ 
+-add_library(boundary_mesh_quality INTERFACE)
++add_library(
++    boundary_mesh_quality
++    STATIC
++        src/quality/volume_cell_evaluator_common.cpp
++        src/quality/prism_evaluator.cpp
++)
+ add_library(BoundaryMesh::Quality ALIAS boundary_mesh_quality)
+ 
+-target_compile_features(boundary_mesh_quality INTERFACE cxx_std_17)
++target_compile_features(boundary_mesh_quality PUBLIC cxx_std_17)
+ 
+ target_include_directories(
+     boundary_mesh_quality
+-    INTERFACE
++    PUBLIC
+         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+         $<INSTALL_INTERFACE:include>
+ )
+ 
+ target_link_libraries(
+     boundary_mesh_quality
+-    INTERFACE
++    PUBLIC
+         BoundaryMesh::Core
+         BoundaryMesh::Surface
+ )
+ 
+ add_library(
+     boundary_mesh_boundary_layer
+     STATIC
+         src/growth/growth_patch_builder.cpp
+         src/growth/growth_front_builder.cpp
+         src/growth/front_evaluator.cpp
+         src/growth/growth_direction.cpp
+         src/growth/symmetry_constraint_builder.cpp
+diff --git a/src/quality/prism_evaluator.cpp b/src/quality/prism_evaluator.cpp
+new file mode 100644
+index 0000000..e808135
+--- /dev/null
++++ b/src/quality/prism_evaluator.cpp
+@@ -0,0 +1,228 @@
++#include <algorithm>
++#include <array>
++#include <cmath>
++#include <optional>
++
++#include <Eigen/Core>
++#include <Eigen/LU>
++
++#include <boundary_mesh/quality/volume_cell_evaluator.hpp>
++#include <boundary_mesh/surface/face_skewness.hpp>
++
++#include "volume_cell_evaluator_internal.hpp"
++
++namespace boundary_mesh
++{
++    namespace
++    {
++        struct ReferenceSample
++        {
++            Scalar r;
++            Scalar s;
++            Scalar t;
++            JacobianSampleLocation location;
++            Scalar volume_weight;
++        };
++
++        constexpr Scalar inverse_root_three =
++            0.577350269189625764509148780501957456;
++
++        constexpr std::array<ReferenceSample, 13> samples{{
++            {0.0, 0.0, -1.0, {JacobianSampleKind::Vertex, 0}, 0.0},
++            {1.0, 0.0, -1.0, {JacobianSampleKind::Vertex, 1}, 0.0},
++            {0.0, 1.0, -1.0, {JacobianSampleKind::Vertex, 2}, 0.0},
++            {0.0, 0.0, 1.0, {JacobianSampleKind::Vertex, 3}, 0.0},
++            {1.0, 0.0, 1.0, {JacobianSampleKind::Vertex, 4}, 0.0},
++            {0.0, 1.0, 1.0, {JacobianSampleKind::Vertex, 5}, 0.0},
++            {1.0 / 3.0, 1.0 / 3.0, 0.0, {JacobianSampleKind::Center, 0}, 0.0},
++            {1.0 / 6.0, 1.0 / 6.0, -inverse_root_three, {JacobianSampleKind::IntegrationPoint, 0}, 1.0 / 6.0},
++            {1.0 / 6.0, 1.0 / 6.0, inverse_root_three, {JacobianSampleKind::IntegrationPoint, 1}, 1.0 / 6.0},
++            {2.0 / 3.0, 1.0 / 6.0, -inverse_root_three, {JacobianSampleKind::IntegrationPoint, 2}, 1.0 / 6.0},
++            {2.0 / 3.0, 1.0 / 6.0, inverse_root_three, {JacobianSampleKind::IntegrationPoint, 3}, 1.0 / 6.0},
++            {1.0 / 6.0, 2.0 / 3.0, -inverse_root_three, {JacobianSampleKind::IntegrationPoint, 4}, 1.0 / 6.0},
++            {1.0 / 6.0, 2.0 / 3.0, inverse_root_three, {JacobianSampleKind::IntegrationPoint, 5}, 1.0 / 6.0}}};
++
++        Eigen::Matrix<Scalar, 3, 3> prismJacobian(
++            const PrismPoints &points,
++            Scalar r,
++            Scalar s,
++            Scalar t)
++        {
++            const Scalar lower = (Scalar{1} - t) / Scalar{2};
++            const Scalar upper = (Scalar{1} + t) / Scalar{2};
++            const Scalar first_triangle_coordinate =
++                Scalar{1} - r - s;
++
++            Eigen::Matrix<Scalar, 3, 3> jacobian;
++            jacobian.col(0) =
++                lower * (points[1] - points[0]) +
++                upper * (points[4] - points[3]);
++            jacobian.col(1) =
++                lower * (points[2] - points[0]) +
++                upper * (points[5] - points[3]);
++            jacobian.col(2) = Scalar{0.5} * (
++                first_triangle_coordinate * (points[3] - points[0]) +
++                r * (points[4] - points[1]) +
++                s * (points[5] - points[2]));
++            return jacobian;
++        }
++
++        std::optional<Scalar> prismSkewness(
++            const PrismPoints &points,
++            Scalar length_tolerance,
++            bool &degenerate)
++        {
++            Scalar skewness = 0.0;
++
++            const std::array<std::array<Point3, 3>, 2> triangles{{
++                {points[0], points[1], points[2]},
++                {points[3], points[4], points[5]}}};
++            for (const auto &triangle : triangles)
++            {
++                const auto result = triangleEquiangularSkewness(
++                    triangle,
++                    length_tolerance);
++                if (!result.hasValue())
++                {
++                    degenerate = true;
++                    continue;
++                }
++                skewness = std::max(skewness, result.value());
++            }
++
++            const std::array<std::array<Point3, 4>, 3> quads{{
++                {points[0], points[1], points[4], points[3]},
++                {points[1], points[2], points[5], points[4]},
++                {points[2], points[0], points[3], points[5]}}};
++            for (const auto &quad : quads)
++            {
++                const auto result = quadEquiangularSkewness(
++                    quad,
++                    length_tolerance);
++                if (!result.hasValue())
++                {
++                    degenerate = true;
++                    continue;
++                }
++                skewness = std::max(skewness, result.value());
++            }
++
++            return degenerate ? std::optional<Scalar>{Scalar{1}}
++                              : std::optional<Scalar>{skewness};
++        }
++
++        VolumeCellEvaluationError intermediateError()
++        {
++            return VolumeCellEvaluationError{
++                VolumeCellEvaluationErrorCategory::NonFiniteIntermediateResult,
++                VolumeCellKind::Prism,
++                0.0,
++                std::nullopt,
++                std::nullopt};
++        }
++
++        VolumeCellEvaluationError intermediateErrorAt(
++            JacobianSampleLocation location)
++        {
++            return VolumeCellEvaluationError{
++                VolumeCellEvaluationErrorCategory::NonFiniteIntermediateResult,
++                VolumeCellKind::Prism,
++                0.0,
++                std::nullopt,
++                location};
++        }
++    }
++
++    Result<VolumeCellEvaluation, VolumeCellEvaluationError>
++    evaluatePrism(
++        const PrismPoints &points,
++        const VolumeCellQualityOptions &options)
++    {
++        using EvaluationResult =
++            Result<VolumeCellEvaluation, VolumeCellEvaluationError>;
++
++        if (const auto error = quality_internal::validateQualityInput(
++                points.data(),
++                points.size(),
++                VolumeCellKind::Prism,
++                options))
++        {
++            return EvaluationResult::failure(*error);
++        }
++
++        const auto characteristic_length =
++            quality_internal::characteristicLength(
++                points.data(), points.size());
++        if (!characteristic_length)
++        {
++            return EvaluationResult::failure(intermediateErrorAt(
++                {JacobianSampleKind::Center, 0}));
++        }
++
++        quality_internal::JacobianAccumulator accumulator{
++            options.relative_jacobian_tolerance};
++        Scalar signed_volume = 0.0;
++
++        for (const ReferenceSample &sample : samples)
++        {
++            const Eigen::Matrix<Scalar, 3, 3> jacobian =
++                prismJacobian(points, sample.r, sample.s, sample.t);
++            const Scalar determinant = jacobian.determinant();
++            const Scalar local_scale =
++                jacobian.col(0).norm() *
++                jacobian.col(1).norm() *
++                jacobian.col(2).norm();
++
++            if (!accumulator.add(
++                    determinant,
++                    local_scale,
++                    sample.location))
++            {
++                return EvaluationResult::failure(
++                    intermediateErrorAt(sample.location));
++            }
++
++            signed_volume += sample.volume_weight * determinant;
++            if (!std::isfinite(signed_volume))
++            {
++                return EvaluationResult::failure(
++                    intermediateErrorAt(sample.location));
++            }
++        }
++
++        bool face_degenerate = *characteristic_length == 0.0;
++        const Scalar length_tolerance =
++            *characteristic_length * options.relative_length_tolerance;
++        if (!std::isfinite(length_tolerance))
++        {
++            return EvaluationResult::failure(intermediateError());
++        }
++
++        const auto skewness = prismSkewness(
++            points,
++            length_tolerance,
++            face_degenerate);
++        if (!skewness || !std::isfinite(*skewness))
++        {
++            return EvaluationResult::failure(intermediateErrorAt(
++                {JacobianSampleKind::Center, 0}));
++        }
++
++        VolumeCellEvaluation evaluation;
++        evaluation.validity = accumulator.validity(face_degenerate);
++        evaluation.signed_volume = signed_volume;
++        evaluation.minimum_jacobian = accumulator.minimum_jacobian;
++        evaluation.maximum_jacobian = accumulator.maximum_jacobian;
++        evaluation.minimum_normalized_jacobian =
++            accumulator.minimum_normalized_jacobian;
++        evaluation.maximum_normalized_jacobian =
++            accumulator.maximum_normalized_jacobian;
++        evaluation.skewness = *skewness;
++        evaluation.worst_jacobian_location = accumulator.worst_location;
++        evaluation.acceptable =
++            evaluation.validity == VolumeCellValidity::Valid &&
++            evaluation.skewness <= options.maximum_skewness;
++
++        return EvaluationResult::success(evaluation);
++    }
++}
+diff --git a/src/quality/volume_cell_evaluator_common.cpp b/src/quality/volume_cell_evaluator_common.cpp
+new file mode 100644
+index 0000000..5915180
+--- /dev/null
++++ b/src/quality/volume_cell_evaluator_common.cpp
+@@ -0,0 +1,187 @@
++#include <algorithm>
++#include <cmath>
++
++#include "volume_cell_evaluator_internal.hpp"
++
++namespace boundary_mesh::quality_internal
++{
++    JacobianAccumulator::JacobianAccumulator(
++        Scalar sample_tolerance) noexcept
++        : tolerance(sample_tolerance)
++    {
++    }
++
++    bool JacobianAccumulator::add(
++        Scalar determinant,
++        Scalar local_scale,
++        JacobianSampleLocation location) noexcept
++    {
++        if (!std::isfinite(determinant) ||
++            !std::isfinite(local_scale))
++        {
++            return false;
++        }
++
++        Scalar normalized = 0.0;
++        if (local_scale > 0.0)
++        {
++            normalized = determinant / local_scale;
++            if (!std::isfinite(normalized))
++            {
++                return false;
++            }
++        }
++
++        if (!initialized)
++        {
++            minimum_jacobian = determinant;
++            maximum_jacobian = determinant;
++            minimum_normalized_jacobian = normalized;
++            maximum_normalized_jacobian = normalized;
++            worst_location = location;
++            initialized = true;
++        }
++        else
++        {
++            minimum_jacobian = std::min(minimum_jacobian, determinant);
++            maximum_jacobian = std::max(maximum_jacobian, determinant);
++            maximum_normalized_jacobian =
++                std::max(maximum_normalized_jacobian, normalized);
++
++            if (normalized < minimum_normalized_jacobian)
++            {
++                minimum_normalized_jacobian = normalized;
++                worst_location = location;
++            }
++        }
++
++        if (local_scale <= 0.0)
++        {
++            has_degenerate = true;
++        }
++        else if (normalized > tolerance)
++        {
++            has_positive = true;
++        }
++        else if (normalized < -tolerance)
++        {
++            has_negative = true;
++        }
++        else
++        {
++            has_degenerate = true;
++        }
++
++        return true;
++    }
++
++    VolumeCellValidity JacobianAccumulator::validity(
++        bool force_degenerate) const noexcept
++    {
++        if (has_positive && has_negative)
++        {
++            return VolumeCellValidity::LocallyInverted;
++        }
++
++        if (has_degenerate || force_degenerate)
++        {
++            return VolumeCellValidity::Degenerate;
++        }
++
++        if (has_negative)
++        {
++            return VolumeCellValidity::Reversed;
++        }
++
++        return VolumeCellValidity::Valid;
++    }
++
++    std::optional<VolumeCellEvaluationError> validateQualityInput(
++        const Point3 *points,
++        std::size_t point_count,
++        VolumeCellKind cell_kind,
++        const VolumeCellQualityOptions &options) noexcept
++    {
++        if (!std::isfinite(options.relative_jacobian_tolerance) ||
++            options.relative_jacobian_tolerance <= 0.0)
++        {
++            return VolumeCellEvaluationError{
++                VolumeCellEvaluationErrorCategory::InvalidRelativeJacobianTolerance,
++                cell_kind,
++                options.relative_jacobian_tolerance,
++                std::nullopt,
++                std::nullopt};
++        }
++
++        if (!std::isfinite(options.relative_length_tolerance) ||
++            options.relative_length_tolerance <= 0.0)
++        {
++            return VolumeCellEvaluationError{
++                VolumeCellEvaluationErrorCategory::InvalidRelativeLengthTolerance,
++                cell_kind,
++                options.relative_length_tolerance,
++                std::nullopt,
++                std::nullopt};
++        }
++
++        if (!std::isfinite(options.maximum_skewness) ||
++            options.maximum_skewness < 0.0 ||
++            options.maximum_skewness > 1.0)
++        {
++            return VolumeCellEvaluationError{
++                VolumeCellEvaluationErrorCategory::InvalidMaximumSkewness,
++                cell_kind,
++                options.maximum_skewness,
++                std::nullopt,
++                std::nullopt};
++        }
++
++        for (std::size_t index = 0; index < point_count; ++index)
++        {
++            if (!points[index].allFinite())
++            {
++                return VolumeCellEvaluationError{
++                    VolumeCellEvaluationErrorCategory::NonFiniteVertexCoordinate,
++                    cell_kind,
++                    0.0,
++                    index,
++                    std::nullopt};
++            }
++        }
++
++        return std::nullopt;
++    }
++
++    std::optional<Scalar> characteristicLength(
++        const Point3 *points,
++        std::size_t point_count) noexcept
++    {
++        Scalar maximum_squared_distance = 0.0;
++        for (std::size_t first = 0; first < point_count; ++first)
++        {
++            for (std::size_t second = first + 1;
++                 second < point_count;
++                 ++second)
++            {
++                const Scalar squared_distance =
++                    (points[second] - points[first]).squaredNorm();
++                if (!std::isfinite(squared_distance))
++                {
++                    return std::nullopt;
++                }
++
++                maximum_squared_distance = std::max(
++                    maximum_squared_distance,
++                    squared_distance);
++            }
++        }
++
++        const Scalar length = std::sqrt(maximum_squared_distance);
++        if (!std::isfinite(length))
++        {
++            return std::nullopt;
++        }
++
++        return length;
++    }
++}
+diff --git a/src/quality/volume_cell_evaluator_internal.hpp b/src/quality/volume_cell_evaluator_internal.hpp
+new file mode 100644
+index 0000000..55a1af3
+--- /dev/null
++++ b/src/quality/volume_cell_evaluator_internal.hpp
+@@ -0,0 +1,43 @@
++#pragma once
++
++#include <cstddef>
++#include <optional>
++
++#include <boundary_mesh/quality/volume_cell_evaluation.hpp>
++#include <boundary_mesh/quality/volume_cell_evaluation_error.hpp>
++
++namespace boundary_mesh::quality_internal
++{
++    struct JacobianAccumulator
++    {
++        explicit JacobianAccumulator(Scalar tolerance) noexcept;
++
++        bool add(
++            Scalar determinant,
++            Scalar local_scale,
++            JacobianSampleLocation location) noexcept;
++
++        VolumeCellValidity validity(bool force_degenerate) const noexcept;
++
++        Scalar tolerance{};
++        Scalar minimum_jacobian{};
++        Scalar maximum_jacobian{};
++        Scalar minimum_normalized_jacobian{};
++        Scalar maximum_normalized_jacobian{};
++        JacobianSampleLocation worst_location{};
++        bool initialized{};
++        bool has_positive{};
++        bool has_negative{};
++        bool has_degenerate{};
++    };
++
++    std::optional<VolumeCellEvaluationError> validateQualityInput(
++        const Point3 *points,
++        std::size_t point_count,
++        VolumeCellKind cell_kind,
++        const VolumeCellQualityOptions &options) noexcept;
++
++    std::optional<Scalar> characteristicLength(
++        const Point3 *points,
++        std::size_t point_count) noexcept;
++}
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index 7cf3c4c..0864fd0 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -183,12 +183,26 @@ add_test(
+ add_executable(
+     boundary_mesh_volume_cell_types_test
+     unit/quality/volume_cell_types_test.cpp
+ )
+ target_link_libraries(
+     boundary_mesh_volume_cell_types_test
+     PRIVATE BoundaryMesh::Quality
+ )
+ add_test(
+     NAME boundary_mesh_volume_cell_types_test
+     COMMAND boundary_mesh_volume_cell_types_test
+ )
++
++# 18: Prism 候选单元质量评价
++add_executable(
++    boundary_mesh_prism_evaluator_test
++    unit/quality/prism_evaluator_test.cpp
++)
++target_link_libraries(
++    boundary_mesh_prism_evaluator_test
++    PRIVATE BoundaryMesh::Quality
++)
++add_test(
++    NAME boundary_mesh_prism_evaluator_test
++    COMMAND boundary_mesh_prism_evaluator_test
++)
+diff --git a/tests/unit/quality/prism_evaluator_test.cpp b/tests/unit/quality/prism_evaluator_test.cpp
+new file mode 100644
+index 0000000..b1cc18b
+--- /dev/null
++++ b/tests/unit/quality/prism_evaluator_test.cpp
+@@ -0,0 +1,171 @@
++#include <cmath>
++#include <limits>
++
++#include <boundary_mesh/quality/volume_cell_evaluator.hpp>
++
++namespace
++{
++    using namespace boundary_mesh;
++
++    bool near(
++        Scalar first,
++        Scalar second,
++        Scalar tolerance = 1e-12)
++    {
++        return std::abs(first - second) <= tolerance;
++    }
++}
++
++int main()
++{
++    using namespace boundary_mesh;
++
++    const Scalar root_three = std::sqrt(Scalar{3});
++    const Scalar height = Scalar{2} / root_three;
++    const PrismPoints standard_prism{
++        Point3{0.0, 0.0, 0.0},
++        Point3{1.0, 0.0, 0.0},
++        Point3{0.5, root_three / 2.0, 0.0},
++        Point3{0.0, 0.0, height},
++        Point3{1.0, 0.0, height},
++        Point3{0.5, root_three / 2.0, height}};
++
++    const auto result = evaluatePrism(standard_prism);
++
++    if (!result.hasValue())
++    {
++        return 1;
++    }
++
++    const VolumeCellEvaluation &evaluation = result.value();
++    if (evaluation.validity != VolumeCellValidity::Valid ||
++        !evaluation.acceptable ||
++        !near(evaluation.signed_volume, 0.5) ||
++        evaluation.minimum_jacobian <= 0.0 ||
++        evaluation.maximum_jacobian <= 0.0 ||
++        evaluation.minimum_normalized_jacobian <= 0.0 ||
++        evaluation.maximum_normalized_jacobian <= 0.0 ||
++        !near(evaluation.skewness, 0.0))
++    {
++        return 2;
++    }
++
++    const Scalar thin_height = 1e-15;
++    const PrismPoints thin_prism{
++        Point3{0.0, 0.0, 0.0},
++        Point3{1.0, 0.0, 0.0},
++        Point3{0.5, root_three / 2.0, 0.0},
++        Point3{0.0, 0.0, thin_height},
++        Point3{1.0, 0.0, thin_height},
++        Point3{0.5, root_three / 2.0, thin_height}};
++    VolumeCellQualityOptions thin_options;
++    thin_options.relative_length_tolerance = 1e-18;
++
++    const auto thin_result = evaluatePrism(thin_prism, thin_options);
++
++    if (!thin_result.hasValue() ||
++        thin_result.value().validity != VolumeCellValidity::Valid ||
++        !thin_result.value().acceptable ||
++        thin_result.value().minimum_normalized_jacobian <= 0.8 ||
++        !near(
++            thin_result.value().signed_volume,
++            root_three * thin_height / 4.0,
++            1e-27))
++    {
++        return 3;
++    }
++
++    const PrismPoints reversed_prism{
++        standard_prism[0],
++        standard_prism[2],
++        standard_prism[1],
++        standard_prism[3],
++        standard_prism[5],
++        standard_prism[4]};
++    const auto reversed_result = evaluatePrism(reversed_prism);
++
++    if (!reversed_result.hasValue() ||
++        reversed_result.value().validity != VolumeCellValidity::Reversed ||
++        reversed_result.value().acceptable ||
++        !near(reversed_result.value().signed_volume, -0.5) ||
++        reversed_result.value().minimum_jacobian >= 0.0 ||
++        reversed_result.value().maximum_jacobian >= 0.0)
++    {
++        return 4;
++    }
++
++    PrismPoints folded_prism = standard_prism;
++    folded_prism[3].z() = -2.0 * height;
++    const auto folded_result = evaluatePrism(folded_prism);
++
++    if (!folded_result.hasValue() ||
++        folded_result.value().validity !=
++            VolumeCellValidity::LocallyInverted ||
++        folded_result.value().acceptable ||
++        !near(folded_result.value().signed_volume, 0.0) ||
++        folded_result.value().minimum_normalized_jacobian >= 0.0 ||
++        folded_result.value().maximum_normalized_jacobian <= 0.0)
++    {
++        return 5;
++    }
++
++    PrismPoints collapsed_prism = standard_prism;
++    collapsed_prism[3] = collapsed_prism[0];
++    collapsed_prism[4] = collapsed_prism[1];
++    collapsed_prism[5] = collapsed_prism[2];
++    const auto collapsed_result = evaluatePrism(collapsed_prism);
++
++    if (!collapsed_result.hasValue() ||
++        collapsed_result.value().validity != VolumeCellValidity::Degenerate ||
++        collapsed_result.value().acceptable ||
++        !near(collapsed_result.value().signed_volume, 0.0) ||
++        !near(collapsed_result.value().minimum_normalized_jacobian, 0.0) ||
++        !near(collapsed_result.value().maximum_normalized_jacobian, 0.0) ||
++        !near(collapsed_result.value().skewness, 1.0))
++    {
++        return 6;
++    }
++
++    const PrismPoints skewed_prism{
++        Point3{0.0, 0.0, 0.0},
++        Point3{1.0, 0.0, 0.0},
++        Point3{0.0, 1.0, 0.0},
++        Point3{0.0, 0.0, 1.0},
++        Point3{1.0, 0.0, 1.0},
++        Point3{0.0, 1.0, 1.0}};
++    VolumeCellQualityOptions skewness_options;
++    skewness_options.maximum_skewness = 0.2;
++    const auto skewed_result = evaluatePrism(
++        skewed_prism,
++        skewness_options);
++
++    if (!skewed_result.hasValue() ||
++        skewed_result.value().validity != VolumeCellValidity::Valid ||
++        skewed_result.value().acceptable ||
++        !near(skewed_result.value().signed_volume, 0.5) ||
++        !near(skewed_result.value().skewness, 0.25))
++    {
++        return 7;
++    }
++
++    VolumeCellQualityOptions overflowing_tolerance_options;
++    overflowing_tolerance_options.relative_length_tolerance =
++        std::numeric_limits<Scalar>::max();
++    const auto overflowing_tolerance_result = evaluatePrism(
++        standard_prism,
++        overflowing_tolerance_options);
++
++    if (overflowing_tolerance_result.hasValue() ||
++        overflowing_tolerance_result.error().category !=
++            VolumeCellEvaluationErrorCategory::NonFiniteIntermediateResult ||
++        overflowing_tolerance_result.error().cell_kind !=
++            VolumeCellKind::Prism ||
++        overflowing_tolerance_result.error().local_vertex_index.has_value() ||
++        overflowing_tolerance_result.error()
++            .jacobian_sample_location.has_value())
++    {
++        return 8;
++    }
++
++    return 0;
++}

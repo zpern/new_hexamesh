@@ -131,11 +131,11 @@ namespace boundary_mesh
                         return ParseStatus::Failure;
                     }
                 }
-                else if (name == "--max-neighbor-layer-difference")
+                else if (name == "--max-layer-diff")
                 {
                     if (!parseUnsigned(
                             value,
-                            options.max_neighbor_layer_difference))
+                            options.max_layer_diff))
                     {
                         message = "invalid maximum neighbor layer difference";
                         return ParseStatus::Failure;
@@ -255,8 +255,7 @@ namespace boundary_mesh
             return 3;
         }
 
-        const auto topology =
-            SurfaceTopologyBuilder{}.build(surface.value());
+        const auto topology = SurfaceTopologyBuilder{}.build(surface.value());
         if (!topology.hasValue())
         {
             error << "failed to build surface topology\n";
@@ -294,17 +293,14 @@ namespace boundary_mesh
         }
 
         RegularLayerGrowthOptions growth_options;
-        growth_options.cell_quality.maximum_skewness =
-            command_options.maximum_skewness;
-        growth_options.max_neighbor_layer_difference =
-            command_options.max_neighbor_layer_difference;
-        growth_options.isotropic_height =
-            command_options.isotropic_height;
+        growth_options.cell_quality.maximum_skewness = command_options.maximum_skewness;
+        growth_options.max_layer_diff = command_options.max_layer_diff;
+        growth_options.isotropic_height = command_options.isotropic_height;
+
         MultiNormalOptions multi_normal_options;
-        multi_normal_options.enabled =
-            command_options.multi_normal_enabled;
-        multi_normal_options.transition_height =
-            command_options.first_height;
+        multi_normal_options.enabled = command_options.multi_normal_enabled;
+        multi_normal_options.transition_height = command_options.first_height;
+
         const auto growth = generateReservedLayerTransition(
             surface.value(),
             topology.value(),
@@ -342,6 +338,7 @@ namespace boundary_mesh
         const auto top_path = std::filesystem::path(
             command_options.output_prefix.string() +
             "_boundary_layer_top.vtk");
+
         const auto volume_status = writeLegacyVtk(
             volume_path,
             growth.value().mesh);
@@ -366,8 +363,7 @@ namespace boundary_mesh
                << "volume_cells=" << growth.value().mesh.cells.size()
                << '\n'
                << "transition_cells="
-               << growth.value().multi_normal_transition
-                      .transition_cells.cells.size()
+               << growth.value().multi_normal_transition.transition_cells.cells.size()
                << '\n'
                << "reserved_transition_cells="
                << growth.value().reserved_transition_cell_count
@@ -382,7 +378,7 @@ namespace boundary_mesh
                << command_options.maximum_skewness
                << '\n'
                << "max_neighbor_layer_difference="
-               << command_options.max_neighbor_layer_difference
+               << command_options.max_layer_diff
                << '\n'
                << "isotropic_height="
                << command_options.isotropic_height

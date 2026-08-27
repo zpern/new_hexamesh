@@ -1,418 +1,462 @@
-# BoundaryMesh 使用说明
+# BoundaryMesh 程序维护文档
 
-## 1. 项目用途
+本文面向第一次接手本项目的 C++ 开发者，以当前源码和 CMake 为准；无法确认的信息明确标为“待确认”。
 
-`BoundaryMesh` 是一个 C++17 边界层体网格生成库。程序从带边界分区的 CGNS 表面网格出发，在 `Wall` 表面沿前沿方向逐层生长：
+# 1. 项目简介
 
-- 三角形 Wall 面生成三棱柱（Prism）；
-- 四边形 Wall 面生成六面体（Hexa）；
-- 每一层生成前检查候选单元的有效性、skewness 和碰撞；
-- 局部候选单元不合格时，对相应源面提前停止生长；
-- 输出边界层体网格，以及供后续远场网格生成使用的外边界表面。
+`BoundaryMesh` 是 C++17 边界层体网格生成程序及静态库集合。它读取带边界分区的二维 CGNS 非结构表面网格，从 `Wall` 三角形/四边形表面向外生长体单元，并生成供后续远场体网格流程使用的边界表面。
 
-当前命令行程序支持 `Wall` 和 `Farfield` 两类边界。金字塔、四面体过渡单元以及复杂局部过渡尚未接入当前规则层生成流程。
+程序按首层高度、增长率和请求层数生长，同时拒绝退化、反转、局部翻转、偏斜过大或碰撞的候选单元，传播相邻面层差限制，并可在复杂角点执行多法向拆分。规则层试生长后，程序协调相邻面层数，用三角形/四边形模板生成保留层过渡单元。
 
-## 2. 主程序在哪里
+输入：
 
-命令行主函数位于：
+- 一个 CGNS 文件：单个 Base，`CellDimension=2`、`PhysicalDimension=3`，非结构 Zone，面仅支持 `TRI_3`/`QUAD_4`；
+- 同目录同主名的 `<主名>.bc.txt`，将每个 Zone 标为 `Wall` 或 `Farfield`；
+- 首层高度、增长率、层数及可选质量/协调/多法向参数。
 
-```text
-apps/boundary_mesh_cli.cpp
-```
+输出：
 
-`main()` 只负责把命令行参数转换为字符串数组，然后调用：
-
-```cpp
-boundary_mesh::runBoundaryMeshCommand(arguments, std::cout, std::cerr);
-```
-
-命令实现位于：
+- `<prefix>_boundary_layer.vtk`：混合体边界层网格（可含 Tetra/Pyramid/Prism/Hexa）；
+- `<prefix>_farfield_boundary.vtk`：原 Farfield 与最终边界层顶面组成的表面；
+- `<prefix>_boundary_layer_top.vtk`：最终边界层外露顶面；
+- 标准输出中的输入规模、单元计数和停止原因统计。
 
 ```text
-src/cli/boundary_mesh_command.cpp
+CGNS + .bc.txt + CLI 参数
+ -> 读取、跨 Zone 合并显式连接顶点
+ -> 验证闭合流形表面并构建拓扑
+ -> 提取 Wall GrowthPatch -> 建立第 0 层 GrowthFront
+ -> 可选多法向拆点/过渡
+ -> 规则层试生长 -> 相邻层数协调
+ -> Triangle/Quad 保留层过渡模板
+ -> 合并网格 -> 输出 3 个 legacy VTK
 ```
 
-真正执行规则边界层生长的核心函数是：
+# 2. 开发环境与依赖
 
-```cpp
-boundary_mesh::generateRegularLayers(...);
-```
+| 项目 | 代码可确认的要求 |
+| --- | --- |
+| CMake | 3.20 或更高 |
+| C/C++ | 工程启用 C 和 C++；项目代码为 C++17，关闭编译器扩展 |
+| 编译器 | 支持 C++17；未限定厂商或最低版本 |
+| Eigen | `third/eigen`，头文件依赖 |
+| tiger_geom | `third/geom`，空间相交私有依赖 |
+| HDF5 | `third/hdf5`，当前子模块 1.14.6；CGNS IO 开启时使用 |
+| CGNS | `third/cgns`，当前子模块 4.5.2 |
+| BLMesh 多法向代码 | `third/blmesh_mnormal`，源码直接编入边界层库 |
 
-它声明在：
+CMake 优先复用父工程提供的 `BoundaryMesh::CGNS`、CGNS target 或 `tiger_geom`；独立构建则使用 `third/`。内置 HDF5/CGNS 为静态库，并关闭工具、示例、Fortran、Java及依赖自身测试。
+
+- Windows：仓库当前已有 Visual Studio 多配置构建产物；MSVC 使用 `/utf-8 /W0`。推荐 VS 2022，但最低 MSVC 版本待确认。
+- Linux/macOS：CMake 未禁止，非 MSVC 使用 `-w`；官方支持/CI 状态待确认。
+- 环境变量：独立构建无需专用变量；`TIGER_ROOT_DIR` 由顶层 CMake设置为源码根。
+- 现状：默认关闭全部编译警告，这不代表推荐实践。
+
+# 3. 项目目录结构
 
 ```text
-include/boundary_mesh/growth/regular_layer_generator.hpp
+new_boundaryMesh/
+├── CMakeLists.txt                 # targets、开关和测试入口
+├── cmake/                         # 编译选项、第三方接入
+├── apps/boundary_mesh_cli.cpp     # main()
+├── include/boundary_mesh/
+│   ├── core/                      # 标量、ID、Result
+│   ├── mesh/                      # 表面/体网格与拓扑
+│   ├── surface/                   # 表面几何/skewness
+│   ├── quality/                   # Prism/Hexa 质量
+│   ├── spatial/                   # AABB 和三角接触
+│   ├── growth/                    # 前沿、规则层、多法向、碰撞
+│   ├── transition/                # 层协调和过渡模板
+│   └── io/                        # CGNS 读取、VTK 写出
+├── src/                           # 与 include 基本镜像的实现
+│   ├── cli/ mesh/ surface/ quality/ spatial/
+│   └── growth/ transition/ io/
+├── tests/
+│   ├── unit/                      # 按模块的单元测试
+│   ├── integration/               # 流水线测试
+│   └── helpers/                   # CGNS fixture
+├── benchmarks/                    # 质量和 CGNS benchmark
+├── docs/design/                   # 架构/模块设计记录
+├── docs/plans/                    # 历史计划，不是运行配置
+└── third/                         # Eigen/geom/HDF5/CGNS/BLMesh
 ```
 
-完整调用链为：
+建议阅读顺序：本 README -> `src/cli/boundary_mesh_command.cpp` -> `reserved_layer_transition.*` -> 各阶段公开头文件 -> 实现与对应测试。历史计划可能落后于源码。
 
-```text
-main()
-  -> runBoundaryMeshCommand()
-  -> readCgnsSurface()
-  -> SurfaceTopologyBuilder::build()
-  -> GrowthPatchBuilder::build()
-  -> GrowthFrontBuilder::buildInitial()
-  -> generateRegularLayers()
-  -> writeLegacyVtk()
-```
+# 4. 编译方法
 
-## 3. 编译环境
+先在源码根目录取完整依赖：
 
-推荐环境：
-
-- Windows 10/11；
-- Visual Studio 2022，安装“使用 C++ 的桌面开发”；
-- CMake 3.20 或更高版本；
-- Git；
-- C++17 编译器。
-
-工程通过 Git submodule 提供 Eigen、tiger_geom、HDF5 和 CGNS。首次取得工程后执行：
-
-```powershell
+```bash
 git submodule update --init --recursive
 ```
 
-如果某个子模块目录为空，先执行上述命令，再配置 CMake。
+确认 `third/eigen`、`geom`、`hdf5`、`cgns`、`blmesh_mnormal` 非空。前四项在 `.gitmodules` 中；BLMesh 的来源/版本方式待确认。
 
-## 4. 独立编译
-
-在工程根目录打开 PowerShell：
+## Windows（Visual Studio）
 
 ```powershell
-cmake -S . -B build
-cmake --build build --config Release
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+  -DBOUNDARY_MESH_ENABLE_CGNS_IO=ON -DBUILD_TESTING=ON
+cmake --build build --config Debug --parallel
+ctest --test-dir build -C Debug --output-on-failure
+
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-生成的命令行程序为：
+CLI 通常位于 `build/Debug/boundary_mesh_cli.exe` 或 `build/Release/boundary_mesh_cli.exe`；静态库位于对应配置目录。
+
+## Linux/macOS（单配置生成器）
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
+  -DBOUNDARY_MESH_ENABLE_CGNS_IO=ON -DBUILD_TESTING=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release \
+  -DBOUNDARY_MESH_ENABLE_CGNS_IO=ON -DBUILD_TESTING=ON
+cmake --build build-release --parallel
+```
+
+CLI 通常为 `build-release/boundary_mesh_cli`。实际发行验证状态待确认。
+
+关闭 CGNS：
+
+```bash
+cmake -S . -B build-no-io -DBOUNDARY_MESH_ENABLE_CGNS_IO=OFF -DBUILD_TESTING=ON
+cmake --build build-no-io --parallel
+```
+
+此时 `boundary_mesh_io` 只含 VTK writer；不会生成 CGNS reader、CLI、CGNS 测试/benchmark。
+
+| target | 产物/职责 |
+| --- | --- |
+| `boundary_mesh_core` | 拓扑/网格基础静态库 |
+| `boundary_mesh_surface` | 面几何静态库 |
+| `boundary_mesh_quality` | 体质量静态库 |
+| `boundary_mesh_spatial` | 碰撞空间结构静态库 |
+| `boundary_mesh_boundary_layer` | 生长主静态库 |
+| `boundary_mesh_transition` | 保留层/模板静态库 |
+| `boundary_mesh_io` | VTK；开关 ON 时也含 CGNS |
+| `boundary_mesh_cli_support` / `boundary_mesh_cli` | CLI 库/程序，仅 CGNS ON |
+| `boundary_mesh_cgns_pipeline_benchmark` | CGNS benchmark，仅 CGNS ON |
+| `boundary_mesh_volume_cell_quality_benchmark` | 质量 benchmark，仅 BUILD_TESTING ON |
+
+CTest 不默认运行两个 benchmark，也不运行需外部路径的 `boundary_mesh_cgns_real_case_test`。
+
+# 5. 程序运行方法
+
+入口为 `apps/boundary_mesh_cli.cpp::main()`，实际逻辑为 `boundary_mesh::runBoundaryMeshCommand()`。
 
 ```text
-build/Release/boundary_mesh_cli.exe
+boundary_mesh_cli --input FILE --first-height VALUE
+  --growth-ratio VALUE --layer-count COUNT
+  [--maximum-skewness VALUE]
+  [--max-neighbor-layer-difference COUNT]
+  [--isotropic-height VALUE]
+  [--multi-normal true|false]
+  [--output-prefix PATH]
 ```
 
-Debug 版本可这样构建：
+| 参数 | 约束/默认值 |
+| --- | --- |
+| `--input` | 必填，CGNS 路径 |
+| `--first-height` | 必填，有限且 > 0 |
+| `--growth-ratio` | 必填，有限且 > 0 |
+| `--layer-count` | 必填，uint32 且 > 0 |
+| `--maximum-skewness` | 默认 0.95，范围 [0,1] |
+| `--max-neighbor-layer-difference` | 默认 1，uint32 |
+| `--isotropic-height` | 默认 1，必须 > 0 |
+| `--multi-normal` | 默认 false，仅 true/false/1/0 |
+| `--output-prefix` | 默认 `<输入目录>/<输入主名>` |
 
-```powershell
-cmake --build build --config Debug
-```
+参数必须严格按“名字 值”成对出现；重复、未知或缺值返回退出码 2。
 
-对应程序为：
-
-```text
-build/Debug/boundary_mesh_cli.exe
-```
-
-默认启用 CGNS 输入、VTK 输出和命令行程序。只想构建不依赖 CGNS 的核心算法库时，可以配置：
-
-```powershell
-cmake -S . -B build-no-io -DBOUNDARY_MESH_ENABLE_CGNS_IO=OFF
-cmake --build build-no-io --config Release
-```
-
-关闭 CGNS IO 后不会生成 `boundary_mesh_cli.exe`。
-
-## 5. 准备输入文件
-
-### 5.1 CGNS 表面网格
-
-输入文件必须满足以下条件：
-
-- CGNS 中的 Zone 类型为 `Unstructured`；
-- 坐标名称为 `CoordinateX`、`CoordinateY`、`CoordinateZ`；
-- 表面单元为 `TRI_3` 或 `QUAD_4`；
-- Zone 接口可以包含用于连接描述的 `BAR_2`；
-- 坐标必须是有限数值，不能包含 `NaN` 或无穷值；
-- 表面拓扑必须有效，不能存在越界顶点、重复顶点、非法共享边等问题；
-- Wall 面顶点顺序决定面法向，遵循右手法则。
-
-程序会根据 CGNS Zone 编号读取边界类型。Zone 名称可以是 `1`、`2`、`3` 等，但 `.bc.txt` 中填写的是 CGNS 的 Zone 编号，不是任意字符串标签。
-
-### 5.2 边界条件映射文件
-
-CGNS 文件旁必须有一个同名的 `.bc.txt` 文件。
-
-例如：
-
-```text
-模型目录/
-  2dot5_cf.cgns
-  2dot5_cf.bc.txt
-```
-
-`2dot5_cf.bc.txt` 示例：
+`.bc.txt` 示例（Zone 名须为正整数）：
 
 ```text
 Wall:
 1
 2
-3
-
 Far:
-4
-5
+3
 ```
 
-规则如下：
-
-1. 段名只能写成 `Wall:` 或 `Far:`，区分大小写；
-2. 每行填写一个正整数 Zone 编号；
-3. CGNS 中的每个 Zone 都必须出现一次；
-4. 同一个 Zone 不能重复归类；
-5. `.bc.txt` 必须和 CGNS 文件位于同一目录；
-6. 文件名必须是 `<CGNS文件名去掉扩展名>.bc.txt`。
-
-当前 CLI 的 `.bc.txt` 解析器尚未提供 `Symmetry:` 段。
-
-## 6. 运行命令行程序
-
-### 6.1 基本格式
+`case.cgns` 对应 `case.bc.txt`。每个 Zone 必须恰好出现一次；不支持注释、`Symmetry:` 或其他段名。
 
 ```powershell
 .\build\Release\boundary_mesh_cli.exe `
-    --input "输入文件.cgns" `
-    --first-height 0.1 `
-    --growth-ratio 1.2 `
-    --layer-count 10
+  --input C:\mesh\case.cgns `
+  --first-height 0.001 --growth-ratio 1.2 --layer-count 10 `
+  --output-prefix C:\mesh\out\case
 ```
 
-### 6.2 完整示例
+退出码：0 成功；2 参数；3 CGNS/映射读取；4 拓扑；5 Patch/Front；6 生长；7 输出目录/VTK。CLI 当前只打印阶段级错误，不打印底层结构化 error。
 
-```powershell
-.\build\Release\boundary_mesh_cli.exe `
-    --input "C:\Users\zpern\Desktop\todo\九院项目质量对标\test_case\2dot5_cf\2dot5_cf.cgns" `
-    --first-height 0.1 `
-    --growth-ratio 1.2 `
-    --layer-count 10 `
-    --maximum-skewness 0.95 `
-    --max-neighbor-layer-difference 1 `
-    --output-prefix ".\build\real_case\2dot5_cf_10_layers"
-```
-
-PowerShell 中行尾的反引号 `` ` `` 表示命令在下一行继续。也可以将所有参数写在同一行。
-
-### 6.3 参数说明
-
-| 参数 | 是否必填 | 说明 | 约束或默认值 |
-|---|---:|---|---|
-| `--input` | 是 | CGNS 表面网格路径 | 文件旁必须存在同名 `.bc.txt` |
-| `--first-height` | 是 | 第一层生长步长 | 有限数且大于 0 |
-| `--growth-ratio` | 是 | 相邻层步长增长倍率 | 有限数且大于 0 |
-| `--layer-count` | 是 | 每个 Wall 顶点请求的最大生长层数 | 正整数 |
-| `--maximum-skewness` | 否 | 候选体单元允许的最大 skewness | 默认 `0.95`，范围 `[0,1]` |
-| `--max-neighbor-layer-difference` | 否 | 相邻源面最终层数允许相差的最大值 | 默认 `1`，允许为 `0` |
-| `--output-prefix` | 否 | 两个 VTK 文件共用的输出前缀 | 默认使用输入 CGNS 的目录和文件名 |
-
-命令行模式会把同一组 `first_height`、`growth_ratio` 和 `layer_count` 赋给所有 Wall 顶点。若不同顶点需要不同参数，应通过 C++ 库接口构造 `SourceVertexGrowthProfile`。
-
-第 `k` 层未经平滑前的基准步长来自上一层实际步长乘以 `growth_ratio`。实际生长过程中还会对活动前沿的方向和步长进行平滑，因此最终局部步长可能和简单的等比数列略有差异。
-
-法向平滑包含一个 skewness 预优化阶段。顶点关联候选单元的最大等角
-skewness 超过 `0.8` 时，算法会在已有平滑法向附近搜索质量更好的方向；
-第一、第二级搜索角度分别为 `5°` 和 `2°`，每级使用 6 个均匀方位，
-最多执行两级。该过程只调整方向，不重新计算层高，也不会替代最终的
-`--maximum-skewness` 接受规则。C++ 接口可通过
-`options.field_smoothing.skewness.enabled = false` 关闭，以进行基线性能对比。
-
-CGNS pipeline benchmark 会额外输出
-`smoothing_activated_vertices`、`smoothing_updated_vertices`、
-`smoothing_maximum_skewness_before` 和
-`smoothing_maximum_skewness_after`，并同时报告关闭优化后的基线运行时间和
-`baseline_stop_skewness_exceeded`。
-
-### 6.4 `layer-count` 的含义
-
-`--layer-count 1` 表示生成一层体单元。一个体单元层必须由底面和顶面两层表面顶点构成，因此在 ParaView 中会看到两张表面，但它仍然只是一层 Prism/Hexa 体单元。
-
-判断实际生成层数应查看控制台：
+# 6. 程序整体架构
 
 ```text
-generate 1 boundarylayer
-finish 1 boundarylayer. add 58126 cell
+Core <- Surface <- Quality
+  ^        ^          ^
+  +------ Spatial ----+
+             ^
+      BoundaryLayer <- IO
+             ^
+          Transition
+             ^
+            CLI
 ```
-
-或者查看 VTK 中体单元的层次，不应把上下两张顶点面误认为两层体单元。
-
-## 7. 输出文件
-
-假设使用：
 
 ```text
---output-prefix .\build\real_case\case10
+main -> runBoundaryMeshCommand
+ -> readCgnsSurface
+ -> SurfaceTopologyBuilder::build
+ -> GrowthPatchBuilder::build
+ -> GrowthFrontBuilder::buildInitial
+ -> generateReservedLayerTransition
+    -> generateMultiNormalTransition（可选）
+    -> makeReservedTrialProfiles
+    -> generateRegularLayers
+    -> coordinateFront / TransitionLayerCoordinator
+    -> buildTriangleTransition / buildQuadTransition
+    -> mergeMultiNormalAndRegularMeshes
+    -> combineFarfieldAndTop
+ -> writeLegacyVtk（三次）
 ```
 
-程序会直接覆盖并生成：
+`SurfaceMesh` 使用全局 ID；`GrowthPatch` 保存 Wall 源 ID；`GrowthFront` 改用紧凑局部下标并保留回源映射；`LayerVertexTable` 连接源点/分支、层号和体网格点。最终合并会再次重映射 ID，不能把不同阶段的整数 ID 混用。
+
+# 7. 各模块功能说明
+
+## 7.1 core
+
+`types.hpp` 定义 `Scalar=double`、Eigen 三维点/向量及 uint32 的 Vertex/Edge/SurfaceFace/VolumeCell ID。ID 表示对应容器下标。
+
+### `Result<T,E>`
+
+用 `std::variant` 表示成功值或结构化错误。接口：`success/failure/hasValue/value/error`。错误态调用 `value()`（或反之）抛 `std::logic_error`，必须先检查。
+
+## 7.2 mesh
+
+### `SurfaceMesh`
+
+保存 `Triangle/Quad`、坐标和逐面 `SurfaceBoundaryTag`。`faces` 与 `face_tags` 必须同长；绕序决定法向和邻面方向。
+
+### `SurfaceTopologyBuilder` / `SurfaceTopology`
+
+验证非空、有限坐标、引用、面退化/重复、每边恰有两面、共享边方向相反。输出升序规范边、edge-to-face、face-to-edge、face-to-neighbor、vertex-to-face 快照。网格变更后必须整体重建。
+
+### `VolumeMesh`
+
+保存 Tetra/Pyramid/Prism/Hexa 及同长 `CellMetadata`（规则层/过渡、源面、层号）。Prism/Hexa 顶点顺序由 `PrismVertexOrder`/`HexaVertexOrder` 注释约定，质量算法依赖它。
+
+## 7.3 surface / quality
+
+`evaluateTriangle/evaluateQuad` 计算法向、面积、角和尺度；两个 `*EquiangularSkewness` 计算面偏斜度。
+
+`evaluatePrism/evaluateHexa` 以固定子四面体有向体积区分 `Valid/Degenerate/Reversed/LocallyInverted`，并以组成面最大 skewness 判断 `acceptable`。`RegularLayerStepper` 提交前调用。
+
+## 7.4 io
+
+### `readCgnsSurface()`
+
+读取坐标和 TRI_3/QUAD_4。Zone 名必须解析成唯一正 uint32。各 Zone 顶点先独立保存，再按显式 `Abutting1to1` + `PointList/PointListDonor` 连接用并查集合并；连接点坐标要求完全相同。最终按 `(zone_id, element_id)` 排面并压缩点 ID。
+
+内部 `readBoundaryConditionMap()` 要求所有 Zone 恰好映射一次，当前 `region_id=zone_id`。`writeLegacyVtk()` 重载支持表面/体网格。
+
+## 7.5 growth：Patch、Front、方向场
+
+### `GrowthPatchBuilder` / `GrowthPatch`
+
+提取 Wall 面/点。Patch 点按源 VertexId、源面按 SurfaceFaceId 排序；点记录相邻 Symmetry region（数据模型支持，但 CLI 映射不能创建 Symmetry）。
+
+### `GrowthFrontBuilder` / `GrowthFront`
+
+构建第 0 层紧凑活动前沿。`faces` 引用局部点，`source_face_ids` 映射回输入；`GrowthFrontVertex` 保存当前/根坐标、源点、方向、实际步长、可见性、角点和多法向分支。
+
+`FrontEvaluator` 评价几何；`buildFrontAdjacency` 建一环；`computeGrowthDirections` 选方向并施加 `SymmetryConstraints`；`GrowthFieldSmoother` 平滑方向/高度；`refineDirectionsForSkewness` 优化偏斜；`IsotropicStopEvaluator` 判断高度/前沿尺度阈值。
+
+## 7.6 growth：规则层
+
+### `GrowthProfileTable`
+
+`GrowthProfileBuilder` 保证每个 Patch 源点恰有一个合法 profile，并计算各层高度，检查有限性。
+
+### `RegularLayerStepper`
+
+执行一层预推出：构造候选点和 Prism/Hexa，做质量、固定障碍碰撞和同层自碰撞，生成仅含合格面的紧凑 `next_front`，返回新旧局部映射和停止事件。
+
+### `RegularLayerGenerator` / `generateRegularLayers()`
+
+多层事务控制器：初始化 profile、对称约束、原表面碰撞索引、面上限和终止传播；循环 step；提交合格单元/`LayerVertexTable`；维护 `ExposedBoundaryTracker`；最后构造真实顶面和 Farfield。错误时不返回部分成功结果。
+
+辅助职责：`LayerCollisionChecker` 过滤非法接触；`FaceLayerConstraintTable` 保存逐面上限；`TerminationPropagator` 传播直接停止/最大邻层差；`ExposedBoundaryTracker` 增量维护外露面。
+
+## 7.7 growth：多法向
+
+`generateMultiNormalTransition()` 是入口：建立 `IncidentFaceFan`，规划拆分分支，构造多分支拓扑，处理 Quad/三角化，生成过渡体，并通过长度调整尝试消除相交。结果含过渡体、`transformed_front`、源点/分支映射、面来源、前沿局部点到体点映射。
+
+实现复用 `third/blmesh_mnormal`，并有 `blmesh_*` 适配层；修改时同时检查 parity 测试。
+
+## 7.8 transition
+
+`makeReservedTrialProfiles()` 预留额外试层并查溢出。`TransitionLayerCoordinator` 根据逐面接受层数协调共享边邻居、识别高边，保证模板可处理。
+
+`buildTriangleTransition/buildQuadTransition` 根据试层数、高边局部下标和逐层顶点 ID 生成最终单元/顶面；Quad 可创建中心点。
+
+`generateReservedLayerTransition()` 是 CLI 最高层编排器：多法向前沿、试生长、层协调、模板、重复顶三角过滤、网格重映射/合并、Farfield 构造。
+
+## 7.9 spatial
+
+`Aabb/BinaryAabbTree` 做确定性 broad phase；`classifyTriangleContact/hasIllegalTriangleContact` 分类 narrow phase 并过滤合法共享拓扑；`CollisionIndex` 保存三角图元和 owner。
+
+# 8. 核心数据结构
+
+| 结构 | 表示/生命周期 | 关键映射 |
+| --- | --- | --- |
+| `SurfaceMesh` | 全流程只读输入表面 | VertexId/FaceId 等于容器下标；tags 同长 |
+| `SurfaceTopology` | 某版 SurfaceMesh 的派生快照 | 所有邻接引用源 ID；网格改动即失效 |
+| `GrowthPatch` | Wall 子集 | 保存排序源 ID，不复制面几何 |
+| `GrowthFront` | 某层活动紧凑表面 | 面引用局部点；显式映回源点/面 |
+| `GrowthFrontVertex` | 活动点状态 | root 不变、position 随层变；分支键为 source + branch |
+| `LayerVertexTable` | 源点/分支到逐层体点 | `layer_vertex_ids[0]` 是第 0 层 |
+| `VolumeMesh` | 阶段或最终混合体 | cell 与 metadata 同长；合并后点 ID 可变 |
+| `RegularLayerGrowthResult` | 规则层事务结果 | mesh、逐点/面状态、top/farfield、诊断 |
+| `MultiNormalTransitionResult` | 多法向结果/透传前沿 | transformed-front 到 transition volume 映射 |
+| `ReservedLayerTransitionResult` | CLI 最终结果 | trial mesh 不等于最终 mesh |
+| `Result<T,E>` | 函数返回期 | 访问前检查 `hasValue()` |
+
+# 9. 关键程序流程
+
+## 9.1 读取与拓扑
 
 ```text
-build/real_case/case10_boundary_layer.vtk
-build/real_case/case10_farfield_boundary.vtk
+readCgnsSurface
+ -> 校验 Base/维度/Zone/坐标/单元
+ -> 读 .bc.txt
+ -> 读各 Zone -> 显式连接合并 -> 稳定排序/压缩 ID
+ -> SurfaceTopologyBuilder::build
+ -> 闭流形/方向检查和邻接生成
 ```
 
-两个文件均为 ASCII Legacy VTK `UNSTRUCTURED_GRID`。
+同坐标不会自动焊接，必须有受支持连接。拓扑拒绝开放边，因此输入需为闭表面，而不是孤立 Wall 片。
 
-### 7.1 边界层体网格
+## 9.2 Patch/Front
 
 ```text
-*_boundary_layer.vtk
+选择 Wall -> 收集排序源面/点 -> 记录 Symmetry region
+ -> 源点到紧凑点映射 -> 重映射 Wall 面 -> layer=0
 ```
 
-包含实际成功提交的三棱柱和六面体体单元。因质量、碰撞或邻域层差限制而停止的面，不会继续向后生成单元。
-
-### 7.2 远场边界表面
+## 9.3 多法向
 
 ```text
-*_farfield_boundary.vtk
+关联面扇 -> 拆分策略 -> 多分支拓扑/前沿
+ -> 过渡体/Quad 处理 -> 相交检测和长度解析 -> 映射输出
 ```
 
-包含原始 Farfield 表面和边界层最终外露接口，可供后续远场体网格生成使用。
+`enabled=false` 仍走同一 API，`applied=false` 并透传等价前沿。
 
-如果没有提供 `--output-prefix`，输出前缀默认为输入文件路径。例如输入：
+## 9.4 规则层试生长
 
 ```text
-D:\case\model.cgns
+验证 profile/options -> 对称/邻接/碰撞索引
+ -> 每层：评价 -> 方向/高度平滑 -> 预推出
+ -> 质量 -> 碰撞 -> 终止传播 -> 提交 -> 压缩下一层
+ -> 请求层数到达或活动前沿为空
 ```
 
-默认输出：
+`IsotropicHeightReached` 是“接受当前单元后停止后续层”；其他质量/碰撞停止通常表示首个未接受层。
+
+## 9.5 保留层和输出
 
 ```text
-D:\case\model_boundary_layer.vtk
-D:\case\model_farfield_boundary.vtk
+逐面试接受层数 -> 协调/高边
+ -> LayerVertexTable 取各层点 -> Triangle/Quad 模板
+ -> 去内部重复顶三角 -> 多法向/规则网格合并
+ -> Farfield + top -> 3 个 VTK
 ```
 
-## 8. 控制台输出
+# 10. 新人修改功能时从哪里入手
 
-每次实际尝试生成一层时会输出：
+| 修改目标 | 优先文件/模块 |
+| --- | --- |
+| CLI 参数/默认值/退出码 | `src/cli/boundary_mesh_command.*` |
+| CGNS 类型/跨 Zone 合并 | `src/io/cgns_surface_reader.cpp`、CGNS error 头 |
+| `.bc.txt`/边界类别 | `src/io/boundary_condition_map.*`、`mesh_surface.hpp` |
+| VTK 格式 | `src/io/legacy_vtk_writer.cpp` |
+| 表面合法性/邻接 | `src/mesh/surface_topology_builder.cpp` |
+| Wall/Patch | `growth_patch_builder.cpp` |
+| 初始前沿/映射 | `growth_front_builder.cpp`、`growth_front.hpp` |
+| 方向/角点/对称 | `growth_direction.cpp`、`incident_face_fan.cpp`、symmetry builder |
+| 方向/高度平滑 | `growth_field_smoother.cpp`、`skewness_direction_refiner.cpp` |
+| 高度公式 | `growth_profile_builder.cpp` |
+| 单层候选接受 | `regular_layer_stepper.cpp` |
+| 多层循环/提交 | `regular_layer_generator.cpp`、`regular_layer_growth.hpp` |
+| Prism/Hexa 质量 | `src/quality/*_evaluator.cpp`、face skewness |
+| 碰撞语义 | `src/spatial/*`、`layer_collision_checker.cpp` |
+| 相邻停止传播 | `face_layer_constraint.cpp`、`termination_propagator.cpp` |
+| 多法向拆点 | `multi_normal_*`、`third/blmesh_mnormal` |
+| 层协调/高边 | `transition_layer_coordinator.cpp` |
+| 过渡单元 | triangle/quad transition template |
+| 最高层流水线 | `reserved_layer_transition.cpp` |
+| targets/依赖 | 顶层 CMake、`cmake/Dependencies.cmake` |
 
-```text
-generate 1 boundarylayer
-finish 1 boundarylayer. add 58126 cell
-```
+修改后先跑对应 unit，再跑相关 integration，最后全量 CTest。
 
-运行结束后会输出网格统计信息：
+# 11. 容易踩坑的地方
 
-```text
-input_vertices=52010
-input_faces=58599
-volume_cells=58126
-farfield_faces=58726
-maximum_skewness=0.95
-max_neighbor_layer_difference=1
-```
+1. **ID 作用域不同。** 源 ID、前沿局部下标、体点 ID 都是整数，必须经 source 映射、LayerVertexTable 或多法向映射转换。
+2. **面绕序是输入。** 它影响法向、生长、有向体积；共享边在两面中须反向。不要排序面顶点。
+3. **拓扑是快照。** SurfaceMesh 改动后必须重建。
+4. **输入须闭合流形。** 每边恰有两面；仅 Wall patch 会产生 BoundaryEdge。
+5. **Zone 名须为唯一正 uint32。** `wall`、`Zone1` 均失败。
+6. **跨 Zone 不是容差焊接。** 需显式连接且坐标完全相等。
+7. **.bc.txt 须全覆盖且无注释。**
+8. **核心支持 Symmetry，但 CLI 当前不能配置。**
+9. **trial mesh 不等于最终 mesh。** 后者经过协调、模板重建、合并。
+10. **Prism/Hexa 顶点顺序不可随意改。**
+11. **停止可能是接受后停止。** 尤其 IsotropicHeightReached。
+12. **排序是确定性/二分查找约束。** Patch、profile、映射需保持约定。
+13. **ID/层数为 uint32。** 不要绕过溢出检查。
+14. **默认关闭警告。**
+15. **CLI 隐藏底层 error。** 复杂失败应调试 Result 的 variant。
 
-停止原因统计含义如下：
+# 12. 调试建议
 
-| 输出字段 | 含义 |
-|---|---|
-| `stop_none` | 尚未记录完成或停止原因 |
-| `stop_vertex_layer_limit` | 源面顶点达到外部请求层数 |
-| `stop_degenerate_candidate` | 候选体单元退化 |
-| `stop_reversed_candidate` | 候选体单元整体反转 |
-| `stop_locally_inverted_candidate` | 候选体单元局部翻转 |
-| `stop_skewness_exceeded` | 候选体单元 skewness 超过上限 |
-| `stop_collision` | 候选单元发生非法几何接触或碰撞 |
-| `stop_neighbor_layer_constraint` | 为限制相邻区域层数差而提前停止 |
-| `stop_isotropic_height` | 当前单元已接受；BLMesh 风格局部/全局尺度及邻域共识达到停止条件 |
+- 读取：观察 `CgnsSurfaceError.code/path/zone_id/element_id/detail`，核对同名映射。
+- 拓扑：观察具体 `SurfaceTopologyError`、规范边、两关联面及局部方向。
+- Patch/Front：比较 Patch 源 ID 与 Front source 映射；确认面引用局部点。
+- 方向：在 `FrontEvaluator::evaluate`、`computeGrowthDirections`、`GrowthFieldSmoother::smooth` 断点，观察 position/root/direction/actual_height/visibility。
+- 停止：在 `RegularLayerStepper::step` 质量/碰撞分支观察 `VolumeCellEvaluation`、`FaceStopEvent`、点序和 source face。
+- 协调：观察 accepted layer、face constraints、termination 邻居和 high-edge 下标。
+- 多法向：观察 `(source_vertex_id, branch_id)`、vertex mapping、face origins、front-volume IDs；库 API 可启用中间 VTK，CLI 尚未暴露 debug 参数。
+- 合并：核对合并前后点数、所有 cell 引用、top remap 和 mesh merge。
+- 优先调试最小测试 target，再从完整 CLI 复现。
 
-`stop_vertex_layer_limit` 通常表示正常完成请求层数，不是错误。
+# 13. 后续维护建议
 
-## 9. 返回码
+## 现有代码事实
 
-命令行程序返回：
+- 主要阶段有单元/集成测试；benchmark 和真实 CGNS 案例不在默认 CTest。
+- CLI 为所有 Wall 点设置同一 profile，没有逐点配置入口。
+- CLI 仅输出阶段级失败；结构化错误留在库 API。
+- 映射只支持 Wall/Far，核心模型另有 Symmetry/BoundaryLayerInterface。
+- `boundary_mesh_boundary_layer` 同时含规则生长、多法向、碰撞、远场构造，并直接编译 BLMesh 源码，耦合较强。
+- 没有 install/export/package 规则，尚未形成可安装 SDK。
+- 默认关闭警告；历史 docs 可能描述旧入口。
 
-| 返回码 | 含义 |
-|---:|---|
-| `0` | 成功生成并写出两个 VTK 文件 |
-| `2` | 命令行参数缺失、重复或非法 |
-| `3` | CGNS 或 `.bc.txt` 读取失败 |
-| `4` | 表面拓扑构建失败 |
-| `5` | GrowthPatch 或初始 GrowthFront 构建失败 |
-| `6` | 边界层生成失败 |
-| `7` | 输出目录创建或 VTK 写出失败 |
+## 改进建议
 
-## 10. 运行测试
+1. 为 error variant 实现集中 formatter，并让 CLI 输出错误码、源实体和层号。
+2. 扩展边界配置 schema，支持 Symmetry、注释、region/zone 分离并保留旧格式测试。
+3. 将 BLMesh 适配和第三方源码封装为独立 target，明确版本。
+4. CI 覆盖 MSVC 与 GCC/Clang，并增加开启警告的 job；确认后记录官方平台矩阵。
+5. 增加 install/export 及消费方 smoke test。
+6. 将真实 CGNS 数据作为可选 fixture 接入 CI，补大网格、极端 ID/层数和错误消息回归。
+7. 拆分 CLI 的配置、pipeline 和序列化职责，降低单点编排耦合。
+8. 定期标记历史计划，以当前 API/测试同步架构文档和 README。
 
-构建并运行 Debug 测试：
-
-```powershell
-cmake --build build --config Debug
-ctest --test-dir build -C Debug --output-on-failure
-```
-
-构建并运行 Release 测试：
-
-```powershell
-cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
-```
-
-只运行某项测试时可以使用 `-R`：
-
-```powershell
-ctest --test-dir build -C Debug `
-    -R "boundary_mesh_regular_layer_growth_pipeline_test" `
-    --output-on-failure
-```
-
-## 11. 常见问题
-
-### 12.1 提示 `failed to read CGNS surface`
-
-检查：
-
-- CGNS 路径是否正确；
-- 同目录下是否存在同名 `.bc.txt`；
-- `.bc.txt` 是否覆盖所有 Zone；
-- 段名是否严格写成 `Wall:` 和 `Far:`；
-- Zone 是否为非结构网格；
-- 面单元是否为 `TRI_3` 或 `QUAD_4`。
-
-### 12.2 `layer-count=1` 为什么看到两张表面
-
-一层体单元由底面和顶面构成，所以会出现两张表面。检查 `volume_cells` 和逐层的 `add ... cell` 输出判断实际体单元层数。
-
-### 12.3 为什么部分区域提前停止
-
-查看 `stop_*` 统计。常见原因包括：
-
-- 候选单元翻转或退化；
-- skewness 超过阈值；
-- 撞到原始表面、已提交边界层或同层其他候选；
-- 相邻区域层数差超过允许值。
-- 当前实际层高相对前沿的平均、几何平均和最短周边尺度达到各向同性停止条件。
-
-不要仅通过放宽 skewness 判断碰撞问题；应先根据对应停止原因定位。
-
-`stop_isotropic_height` 不表示当前单元被丢弃。当前 Prism/Hexa 已经通过质量检查并写入网格，只是不再生成下一层。判据对 Triangle 使用 3 条周边边、对 Quad 使用 4 条周边边，并要求直接相邻活动顶点形成停止共识；它不使用 `sqrt(face_area)`。
-
-### 12.4 为什么没有生成命令行程序
-
-确认 CMake 配置中：
-
-```text
-BOUNDARY_MESH_ENABLE_CGNS_IO=ON
-```
-
-并确认 `third/hdf5`、`third/cgns` 子模块已经初始化。
-
-## 12. 工程目录概览
-
-```text
-apps/            命令行主程序
-benchmarks/      性能与真实数据流水线程序
-cmake/           编译选项和依赖设置
-docs/design/     架构和模块设计文档
-docs/plans/      各阶段实施计划
-include/         对外公开头文件
-src/             模块实现
-tests/unit/      单元测试
-tests/integration/ 集成测试
-third/           第三方子模块
-```
-
-建议初次阅读代码时按以下顺序进入：
-
-```text
-apps/boundary_mesh_cli.cpp
-src/cli/boundary_mesh_command.cpp
-include/boundary_mesh/growth/regular_layer_generator.hpp
-src/growth/regular_layer_generator.cpp
-```
+维护本文时，以源码、CMake 和测试确认事实；版本、平台支持或外部约定无法确认时继续标“待确认”。
