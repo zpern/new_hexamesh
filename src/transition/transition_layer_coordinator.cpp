@@ -19,7 +19,6 @@ namespace boundary_mesh
         struct WorkingFace
         {
             FaceLayerState layers;
-            std::size_t local_edge_count{};
             std::vector<Neighbor> neighbors;
         };
 
@@ -69,6 +68,17 @@ namespace boundary_mesh
                         ids.begin(), ids.end());
                 },
                 neighbors);
+        }
+
+        std::vector<EdgeId> faceEdgeIds(const FaceEdgeIds &edges)
+        {
+            return std::visit(
+                [](const auto &ids)
+                {
+                    return std::vector<EdgeId>(
+                        ids.begin(), ids.end());
+                },
+                edges);
         }
     }
 
@@ -127,7 +137,6 @@ namespace boundary_mesh
             }
             const auto ids = neighborIds(
                 topology.faceNeighbors()[face_index]);
-            face.local_edge_count = ids.size();
             for (std::size_t local = 0; local < ids.size(); ++local)
             {
                 if (ids[local].has_value() &&
@@ -146,6 +155,7 @@ namespace boundary_mesh
         for (const WorkingFace &face : faces)
         {
             std::size_t high_count = 0;
+            SurfaceFaceId high_neighbor_id{};
             std::vector<std::size_t> high_edges;
             for (const Neighbor &neighbor_entry : face.neighbors)
             {
@@ -167,25 +177,76 @@ namespace boundary_mesh
                     face.layers.occupied_layers + 1)
                 {
                     ++high_count;
+                    high_neighbor_id =
+                        neighbor_entry.source_face_id;
                     high_edges.push_back(neighbor_entry.local_edge);
                 }
             }
-            const bool is_quad = face.local_edge_count == 4;
-            if (high_count > (is_quad ? 2u : 1u))
+            if (high_count > 1)
                 return CoordinationResult::failure(
                     MultipleTransitionHighEdges{
                         face.layers.source_face_id,
                         high_edges});
-            if (high_count == 2)
+
+            if (high_count == 1)
             {
-                const std::size_t first = high_edges[0];
-                const std::size_t second = high_edges[1];
-                if ((first + 1) % 4 != second &&
-                    (second + 1) % 4 != first)
-                    return CoordinationResult::failure(
-                        MultipleTransitionHighEdges{
-                            face.layers.source_face_id,
-                            high_edges});
+                const std::size_t face_index =
+                    static_cast<std::size_t>(
+                        face.layers.source_face_id);
+                const auto local_edges = faceEdgeIds(
+                    topology.faceEdges()[face_index]);
+                const Edge &selected_edge = topology.edges()[
+                    static_cast<std::size_t>(
+                        local_edges[high_edges[0]])];
+                const VertexId selected_first =
+                    selected_edge.vertex_ids[0];
+                const VertexId selected_second =
+                    selected_edge.vertex_ids[1];
+
+                std::vector<VertexId> non_contact_vertices;
+                for (std::size_t local = 0;
+                     local < local_edges.size(); ++local)
+                {
+                    if (local == high_edges[0]) continue;
+                    const Edge &edge = topology.edges()[
+                        static_cast<std::size_t>(local_edges[local])];
+                    for (const VertexId vertex : edge.vertex_ids)
+                    {
+                        if (vertex == selected_first ||
+                            vertex == selected_second ||
+                            std::find(
+                                non_contact_vertices.begin(),
+                                non_contact_vertices.end(), vertex) !=
+                                non_contact_vertices.end())
+                            continue;
+                        non_contact_vertices.push_back(vertex);
+                    }
+                }
+
+                for (const VertexId vertex : non_contact_vertices)
+                {
+                    for (const SurfaceFaceId incident :
+                         topology.vertexFaces()[
+                             static_cast<std::size_t>(vertex)])
+                    {
+                        if (incident == face.layers.source_face_id ||
+                            incident == high_neighbor_id)
+                            continue;
+                        const WorkingFace *incident_face = findFace(
+                            faces, incident);
+                        if (incident_face != nullptr &&
+                            incident_face->layers.trial_layers >
+                                face.layers.trial_layers)
+                        {
+                            return CoordinationResult::failure(
+                                TransitionCornerLayerViolation{
+                                    face.layers.source_face_id,
+                                    high_edges[0],
+                                    vertex,
+                                    incident});
+                        }
+                    }
+                }
             }
         }
 

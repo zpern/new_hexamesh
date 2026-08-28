@@ -43,11 +43,20 @@ namespace boundary_mesh
         std::vector<std::size_t> high_edge_local_indices;
     };
 
+    struct TransitionCornerLayerViolation
+    {
+        SurfaceFaceId low_source_face_id{};
+        std::size_t high_edge_local_index{};
+        VertexId non_contact_vertex_id{};
+        SurfaceFaceId violating_source_face_id{};
+    };
+
     using TransitionCoordinationError = std::variant<
         MissingTransitionFaceState,
         DuplicateTransitionFaceState,
         UncoordinatedTransitionLayerDifference,
-        MultipleTransitionHighEdges>;
+        MultipleTransitionHighEdges,
+        TransitionCornerLayerViolation>;
 
     class TransitionLayerCoordinator
     {

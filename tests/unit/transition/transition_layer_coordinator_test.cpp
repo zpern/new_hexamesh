@@ -1,4 +1,8 @@
 #include <algorithm>
+
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <optional>
 #include <utility>
@@ -34,6 +38,22 @@ namespace
         SurfaceMesh mesh = makeMesh();
         mesh.face_tags[4] = {SurfaceBoundaryKind::Farfield, 0};
         mesh.face_tags[3] = {SurfaceBoundaryKind::Wall, 1};
+        return mesh;
+    }
+
+    SurfaceMesh makeCornerFanMesh()
+    {
+        SurfaceMesh mesh;
+        mesh.vertices = {
+            {0, 0, 1}, {0, 0, -1}, {1, 0, 0}, {0, 1, 0},
+            {-1, 0, 0}, {0, -1, 0}};
+        mesh.faces = {
+            Triangle{{0, 2, 3}}, Triangle{{0, 3, 4}},
+            Triangle{{0, 4, 5}}, Triangle{{0, 5, 2}},
+            Triangle{{1, 3, 2}}, Triangle{{1, 4, 3}},
+            Triangle{{1, 5, 4}}, Triangle{{1, 2, 5}}};
+        mesh.face_tags.resize(
+            mesh.faces.size(), {SurfaceBoundaryKind::Wall, 1});
         return mesh;
     }
 
@@ -95,10 +115,30 @@ int main()
     const auto adjacent_two_high = coordinator.coordinate(
         adjacent_patch.value(), adjacent_topology.value(),
         {{1, 2}, {2, 3}, {3, 3}});
-    assert(adjacent_two_high.hasValue());
-    const auto &adjacent_low = findFace(adjacent_two_high.value(), 1);
-    assert(adjacent_low.high_edge_local_index.has_value());
-    assert(adjacent_low.second_high_edge_local_index.has_value());
+    assert(!adjacent_two_high.hasValue());
+    assert(std::holds_alternative<MultipleTransitionHighEdges>(
+        adjacent_two_high.error()));
+
+    const SurfaceMesh corner_fan = makeCornerFanMesh();
+    const auto corner_topology =
+        SurfaceTopologyBuilder{}.build(corner_fan);
+    assert(corner_topology.hasValue());
+    const auto corner_patch = GrowthPatchBuilder{}.build(
+        corner_fan, corner_topology.value());
+    assert(corner_patch.hasValue());
+    const auto corner_violation = coordinator.coordinate(
+        corner_patch.value(), corner_topology.value(),
+        {{0, 2}, {1, 2}, {2, 3}, {3, 2},
+         {4, 3}, {5, 2}, {6, 2}, {7, 2}});
+    assert(!corner_violation.hasValue());
+    assert(std::holds_alternative<TransitionCornerLayerViolation>(
+        corner_violation.error()));
+
+    const auto valid_corner_fan = coordinator.coordinate(
+        corner_patch.value(), corner_topology.value(),
+        {{0, 2}, {1, 2}, {2, 2}, {3, 2},
+         {4, 3}, {5, 2}, {6, 2}, {7, 2}});
+    assert(valid_corner_fan.hasValue());
 
     const auto large_difference = coordinator.coordinate(
         patch.value(), topology.value(), {{1, 1}, {2, 5}, {4, 1}});
