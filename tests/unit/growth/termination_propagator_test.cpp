@@ -203,10 +203,22 @@ int main()
             layer5_filtered.value().next_front, layer6,
             delayed_constraints.value(), 1, delayed_pending);
     assert(layer6_filtered.hasValue());
-    assert(delayed_pending.empty());
+    assert((delayed_pending == std::vector<SurfaceFaceId>{5}));
     assert(delayed_constraints.value().find(2)->allowed_layer_count == 5);
     assert((layer6_filtered.value().next_front.source_face_ids ==
             std::vector<SurfaceFaceId>{5}));
+
+    LayerStepResult empty_layer7;
+    empty_layer7.layer = 7;
+    empty_layer7.next_front.layer = 7;
+    const auto delayed_exhausted =
+        delayed_propagator.value().filterSingleHighEdgeCandidates(
+            layer6_filtered.value().next_front, empty_layer7,
+            delayed_constraints.value(), 1, delayed_pending);
+    assert(delayed_exhausted.hasValue());
+    assert(delayed_pending.empty());
+    assert(delayed_exhausted.value().next_front.source_face_ids.empty());
+    assert(delayed_constraints.value().find(5)->allowed_layer_count == 6);
 
     SurfaceMesh triangle_mesh;
     triangle_mesh.vertices = {
@@ -296,11 +308,23 @@ int main()
             triangle_layer5.value().next_front, triangle_layer6,
             triangle_constraints.value(), 1, triangle_pending);
     assert(triangle_confirmed.hasValue());
-    assert(triangle_pending.empty());
+    assert((triangle_pending == std::vector<SurfaceFaceId>{3}));
     assert(triangle_constraints.value().find(1)->allowed_layer_count == 5);
     assert(triangle_constraints.value().find(2)->allowed_layer_count == 5);
     assert((triangle_confirmed.value().next_front.source_face_ids ==
             std::vector<SurfaceFaceId>{3}));
+
+    LayerStepResult empty_triangle_layer7;
+    empty_triangle_layer7.layer = 7;
+    empty_triangle_layer7.next_front.layer = 7;
+    const auto triangle_exhausted =
+        triangle_propagator.value().filterSingleHighEdgeCandidates(
+            triangle_confirmed.value().next_front, empty_triangle_layer7,
+            triangle_constraints.value(), 1, triangle_pending);
+    assert(triangle_exhausted.hasValue());
+    assert(triangle_pending.empty());
+    assert(triangle_exhausted.value().next_front.source_face_ids.empty());
+    assert(triangle_constraints.value().find(3)->allowed_layer_count == 6);
 
     auto isotropic_runtime = initial.value();
     const std::vector<FaceStopEvent> isotropic_stop{{

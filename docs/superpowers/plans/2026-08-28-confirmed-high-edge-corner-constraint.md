@@ -145,7 +145,7 @@ const auto layer6_filtered =
         layer5_filtered.value().next_front, layer6,
         delayed_constraints.value(), 1, delayed_pending);
 assert(layer6_filtered.hasValue());
-assert(delayed_pending.empty());
+assert((delayed_pending == std::vector<SurfaceFaceId>{5}));
 assert(delayed_constraints.value().find(2)->allowed_layer_count == 5);
 assert((layer6_filtered.value().next_front.source_face_ids ==
         std::vector<SurfaceFaceId>{5}));
@@ -195,7 +195,7 @@ const auto triangle_confirmed =
         triangle_layer5.value().next_front, triangle_layer6,
         triangle_constraints.value(), 1, triangle_pending);
 assert(triangle_confirmed.hasValue());
-assert(triangle_pending.empty());
+assert((triangle_pending == std::vector<SurfaceFaceId>{3}));
 assert(triangle_constraints.value().find(1)->allowed_layer_count == 5);
 assert(triangle_constraints.value().find(2)->allowed_layer_count == 5);
 assert((triangle_confirmed.value().next_front.source_face_ids ==

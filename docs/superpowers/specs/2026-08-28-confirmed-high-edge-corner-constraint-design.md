@@ -85,6 +85,12 @@ When a present stop cell is deferred, it must be inserted into
 `pending_stop_cells` even if no constraint changed during the current call.
 The list remains sorted and unique.
 
+If corner limiting and edge-neighbor propagation make the confirmed high
+neighbor itself stop in the current layer, that neighbor is scheduled as a new
+pending face. It is resolved recursively against the following existing
+candidate layer. When no following candidate exists, it has no high neighbor
+and the pending decision ends without requesting an additional trial layer.
+
 Pending faces must not be treated as ordinary continuing faces. They exist only
 as deferred topology decisions and are processed independently of
 `current_front.source_face_ids` on the next call.
