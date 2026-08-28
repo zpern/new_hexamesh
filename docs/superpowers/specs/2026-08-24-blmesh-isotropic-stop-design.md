@@ -120,7 +120,7 @@ Consequently, after a candidate cell passes quality evaluation:
 - otherwise retain the face in the continuing front.
 
 Existing termination propagation then enforces
-`max_neighbor_layer_difference`. Collision filtering remains later in the
+`max_layer_diff`. Collision filtering remains later in the
 existing pipeline and may remove additional accepted candidates without
 changing the isotropic scale calculation.
 

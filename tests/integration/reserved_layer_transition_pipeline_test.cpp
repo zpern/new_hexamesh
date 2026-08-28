@@ -113,7 +113,10 @@ int main()
     assert(combined.value().multi_normal_transition.applied);
     assert(!combined.value().multi_normal_transition
                 .transition_cells.cells.empty());
-    assert(combined.value().reserved_transition_cell_count > 0);
+    for (const CellMetadata &metadata :
+         combined.value().multi_normal_transition.transition_cells.metadata)
+        assert(metadata.role == CellRole::MultiNormalTransition);
+    assert(combined.value().reserved_transition_cell_count == 0);
     assert(combined.value().mesh.cells.size() ==
            combined.value().multi_normal_transition
                    .transition_cells.cells.size() +

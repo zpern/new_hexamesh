@@ -81,7 +81,8 @@ int main()
             result.mesh.metadata.end(),
             [](const CellMetadata &metadata)
             {
-                return metadata.role != CellRole::Transition;
+                return metadata.role !=
+                    CellRole::MultiNormalTransition;
             }))
     {
         return 10;

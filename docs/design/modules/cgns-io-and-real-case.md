@@ -246,7 +246,7 @@ boundary_mesh_cli `
 - `first_height` 与 `growth_ratio` 必须是有限正数；
 - `layer_count` 允许为 0；
 - `maximum_skewness` 默认 0.95；
-- `max_neighbor_layer_difference` 默认 1，允许为 0；
+- `max_layer_diff` 默认 1，允许为 0；
 - `output_prefix` 缺省时使用输入 CGNS 所在目录与文件 stem；
 - 全部 Wall 顶点获得独立但初值相同的 `VertexGrowthProfile`；
 - CLI 不提供逐点 profile 文件。
@@ -363,7 +363,7 @@ first_height = 0.1
 growth_ratio = 1.0
 layer_count = 1
 maximum_skewness = 0.95
-max_neighbor_layer_difference = 1
+max_layer_diff = 1
 ```
 
 完整流程必须返回 0，并生成两个非空且结构可重新解析的 VTK。允许部分 Wall 面因质量或碰撞正常停止。

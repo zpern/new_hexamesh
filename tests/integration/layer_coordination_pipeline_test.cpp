@@ -18,14 +18,7 @@ namespace
     {
         SurfaceMesh mesh;
         mesh.vertices = {
-            {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0},
-            {1.0, 1.0, 0.0}, {0.0, 1.0, 0.0},
-            {0.0, 0.0, 1.0}, {1.0, 0.0, 1.0},
-            {1.0, 1.0, 1.0}, {0.0, 1.0, 1.0},
-            {0.30, 0.10, 1.08},
-            {0.70, 0.10, 1.08},
-            {0.50, 0.40, 1.08},
-            {0.50, 0.20, 1.12}};
+            {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {1.0, 1.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}, {1.0, 0.0, 1.0}, {1.0, 1.0, 1.0}, {0.0, 1.0, 1.0}, {0.30, 0.10, 1.08}, {0.70, 0.10, 1.08}, {0.50, 0.40, 1.08}, {0.50, 0.20, 1.12}};
         mesh.faces = {
             Quad{{0, 3, 2, 1}},
             Triangle{{4, 5, 6}},
@@ -57,10 +50,7 @@ namespace
     {
         SurfaceMesh mesh;
         mesh.vertices = {
-            {0, 0, 0}, {1, 0, 0}, {2, 0, 0},
-            {0, 1, 0}, {1, 1, 0}, {2, 1, 0},
-            {0, 0, 1}, {1, 0, 1}, {2, 0, 1},
-            {0, 1, 1}, {1, 1, 1}, {2, 1, 1}};
+            {0, 0, 0}, {1, 0, 0}, {2, 0, 0}, {0, 1, 0}, {1, 1, 0}, {2, 1, 0}, {0, 0, 1}, {1, 0, 1}, {2, 0, 1}, {0, 1, 1}, {1, 1, 1}, {2, 1, 1}};
         mesh.faces = {
             Quad{{0, 3, 4, 1}}, Quad{{1, 4, 5, 2}},
             Quad{{6, 7, 10, 9}}, Quad{{7, 8, 11, 10}},
@@ -122,7 +112,7 @@ namespace
                 {vertex.source_vertex_id, {0.1, 1.0, 1}});
         }
         RegularLayerGrowthOptions options;
-        options.max_neighbor_layer_difference = maximum_difference;
+        options.max_layer_diff = maximum_difference;
         const auto result = generateRegularLayers(
             mesh,
             topology.value(),
@@ -145,25 +135,28 @@ namespace
     {
         const SurfaceMesh mesh = makeQualityPair();
         const auto topology = SurfaceTopologyBuilder{}.build(mesh);
-        if (!topology.hasValue()) return false;
+        if (!topology.hasValue())
+            return false;
         const auto patch = GrowthPatchBuilder{}.build(mesh, topology.value());
-        if (!patch.hasValue()) return false;
+        if (!patch.hasValue())
+            return false;
         const auto front = GrowthFrontBuilder{}.buildInitial(
             mesh, patch.value());
-        if (!front.hasValue()) return false;
+        if (!front.hasValue())
+            return false;
 
         std::vector<SourceVertexGrowthProfile> profiles;
         for (const PatchVertex &vertex : patch.value().vertices())
         {
             const Scalar height = vertex.source_vertex_id == VertexId{6}
-                ? Scalar{0.5}
-                : Scalar{0.1};
+                                      ? Scalar{0.5}
+                                      : Scalar{0.1};
             profiles.push_back(
                 {vertex.source_vertex_id, {height, 1.0, 1}});
         }
         RegularLayerGrowthOptions options;
         options.cell_quality.maximum_skewness = 0.05;
-        options.max_neighbor_layer_difference = maximum_difference;
+        options.max_layer_diff = maximum_difference;
         const auto result = generateRegularLayers(
             mesh,
             topology.value(),
@@ -171,7 +164,8 @@ namespace
             front.value(),
             profiles,
             options);
-        if (!result.hasValue()) return false;
+        if (!result.hasValue())
+            return false;
         output = result.value();
         return true;
     }
@@ -182,12 +176,15 @@ namespace
     {
         const SurfaceMesh mesh = makeQualityPair();
         const auto topology = SurfaceTopologyBuilder{}.build(mesh);
-        if (!topology.hasValue()) return false;
+        if (!topology.hasValue())
+            return false;
         const auto patch = GrowthPatchBuilder{}.build(mesh, topology.value());
-        if (!patch.hasValue()) return false;
+        if (!patch.hasValue())
+            return false;
         const auto front = GrowthFrontBuilder{}.buildInitial(
             mesh, patch.value());
-        if (!front.hasValue()) return false;
+        if (!front.hasValue())
+            return false;
 
         std::vector<SourceVertexGrowthProfile> profiles;
         for (const PatchVertex &vertex : patch.value().vertices())
@@ -195,9 +192,8 @@ namespace
             const bool left_unique =
                 vertex.source_vertex_id == VertexId{6} ||
                 vertex.source_vertex_id == VertexId{9};
-            profiles.push_back({
-                vertex.source_vertex_id,
-                {0.1, 1.0, left_unique ? 1u : 2u}});
+            profiles.push_back({vertex.source_vertex_id,
+                                {0.1, 1.0, left_unique ? 1u : 2u}});
         }
         if (reverse_profiles)
         {
@@ -209,7 +205,8 @@ namespace
             patch.value(),
             front.value(),
             profiles);
-        if (!result.hasValue()) return false;
+        if (!result.hasValue())
+            return false;
         output = result.value();
         return true;
     }
@@ -226,13 +223,16 @@ namespace
             }
         }
         const auto topology = SurfaceTopologyBuilder{}.build(mesh);
-        if (!topology.hasValue()) return false;
+        if (!topology.hasValue())
+            return false;
         const auto patch = GrowthPatchBuilder{}.build(
             mesh, topology.value());
-        if (!patch.hasValue()) return false;
+        if (!patch.hasValue())
+            return false;
         const auto front = GrowthFrontBuilder{}.buildInitial(
             mesh, patch.value());
-        if (!front.hasValue()) return false;
+        if (!front.hasValue())
+            return false;
 
         std::vector<SourceVertexGrowthProfile> profiles;
         for (const PatchVertex &vertex : patch.value().vertices())
@@ -242,7 +242,7 @@ namespace
         }
         RegularLayerGrowthOptions options;
         options.isotropic_height = Scalar{0.12};
-        options.max_neighbor_layer_difference = 0;
+        options.max_layer_diff = 0;
         const auto result = generateRegularLayers(
             mesh,
             topology.value(),
@@ -250,7 +250,8 @@ namespace
             front.value(),
             profiles,
             options);
-        if (!result.hasValue()) return false;
+        if (!result.hasValue())
+            return false;
         output = result.value();
         return true;
     }
@@ -324,7 +325,8 @@ namespace
         for (std::size_t index = 0; index < first.mesh.vertices.size(); ++index)
         {
             if ((first.mesh.vertices[index] -
-                 second.mesh.vertices[index]).norm() != 0.0)
+                 second.mesh.vertices[index])
+                    .norm() != 0.0)
             {
                 return false;
             }
@@ -383,15 +385,14 @@ namespace
                     {
                         const std::size_t index =
                             static_cast<std::size_t>(vertex_id);
-                        if (index < used.size()) used[index] = true;
+                        if (index < used.size())
+                            used[index] = true;
                     }
                 },
                 face);
         }
         return std::all_of(used.begin(), used.end(), [](bool value)
-        {
-            return value;
-        });
+                           { return value; });
     }
 }
 
@@ -400,17 +401,24 @@ int main()
     using namespace boundary_mesh;
 
     RegularLayerGrowthResult difference_zero;
-    if (!run(0, difference_zero)) return 1;
+    if (!run(0, difference_zero))
+        return 1;
     const FaceGrowthRecord *collision_zero = faceRecord(
         difference_zero, SurfaceFaceId{1});
     const FaceGrowthRecord *neighbor_zero = faceRecord(
         difference_zero, SurfaceFaceId{2});
-    if (collision_zero == nullptr || neighbor_zero == nullptr) return 2;
-    if (collision_zero->accepted_layer_count != 0) return 3;
-    if (collision_zero->status != FaceGrowthStatus::Stopped) return 4;
-    if (collision_zero->stop_reason != FaceStopReason::Collision) return 5;
-    if (neighbor_zero->accepted_layer_count != 0) return 6;
-    if (neighbor_zero->status != FaceGrowthStatus::Stopped) return 7;
+    if (collision_zero == nullptr || neighbor_zero == nullptr)
+        return 2;
+    if (collision_zero->accepted_layer_count != 0)
+        return 3;
+    if (collision_zero->status != FaceGrowthStatus::Stopped)
+        return 4;
+    if (collision_zero->stop_reason != FaceStopReason::Collision)
+        return 5;
+    if (neighbor_zero->accepted_layer_count != 0)
+        return 6;
+    if (neighbor_zero->status != FaceGrowthStatus::Stopped)
+        return 7;
     if (neighbor_zero->stop_reason !=
         FaceStopReason::NeighborLayerConstraint)
     {
@@ -418,32 +426,42 @@ int main()
                   << static_cast<int>(neighbor_zero->stop_reason) << '\n';
         return 8;
     }
-    if (!difference_zero.mesh.cells.empty()) return 9;
+    if (!difference_zero.mesh.cells.empty())
+        return 9;
 
     RegularLayerGrowthResult difference_one;
-    if (!run(1, difference_one)) return 10;
+    if (!run(1, difference_one))
+        return 10;
     const FaceGrowthRecord *collision_one = faceRecord(
         difference_one, SurfaceFaceId{1});
     const FaceGrowthRecord *neighbor_one = faceRecord(
         difference_one, SurfaceFaceId{2});
-    if (collision_one == nullptr || neighbor_one == nullptr) return 11;
-    if (collision_one->accepted_layer_count != 0) return 12;
-    if (collision_one->stop_reason != FaceStopReason::Collision) return 13;
-    if (neighbor_one->accepted_layer_count != 1) return 14;
-    if (neighbor_one->status != FaceGrowthStatus::Completed) return 15;
+    if (collision_one == nullptr || neighbor_one == nullptr)
+        return 11;
+    if (collision_one->accepted_layer_count != 0)
+        return 12;
+    if (collision_one->stop_reason != FaceStopReason::Collision)
+        return 13;
+    if (neighbor_one->accepted_layer_count != 1)
+        return 14;
+    if (neighbor_one->status != FaceGrowthStatus::Completed)
+        return 15;
     if (neighbor_one->stop_reason != FaceStopReason::VertexLayerLimit)
     {
         return 16;
     }
-    if (difference_one.mesh.cells.size() != 1) return 17;
+    if (difference_one.mesh.cells.size() != 1)
+        return 17;
 
     RegularLayerGrowthResult quality_zero;
-    if (!runQuality(0, quality_zero)) return 18;
+    if (!runQuality(0, quality_zero))
+        return 18;
     const FaceGrowthRecord *quality_failure = faceRecord(
         quality_zero, SurfaceFaceId{2});
     const FaceGrowthRecord *quality_neighbor = faceRecord(
         quality_zero, SurfaceFaceId{3});
-    if (quality_failure == nullptr || quality_neighbor == nullptr) return 19;
+    if (quality_failure == nullptr || quality_neighbor == nullptr)
+        return 19;
     if (quality_failure->accepted_layer_count != 0 ||
         quality_failure->status != FaceGrowthStatus::Stopped ||
         quality_failure->stop_reason != FaceStopReason::SkewnessExceeded)
@@ -466,7 +484,8 @@ int main()
     }
 
     RegularLayerGrowthResult quality_one;
-    if (!runQuality(1, quality_one)) return 22;
+    if (!runQuality(1, quality_one))
+        return 22;
     const FaceGrowthRecord *quality_one_neighbor = faceRecord(
         quality_one, SurfaceFaceId{3});
     if (quality_one_neighbor == nullptr ||
@@ -478,7 +497,8 @@ int main()
     }
 
     RegularLayerGrowthResult layer_difference;
-    if (!runLayerDifference(false, layer_difference)) return 24;
+    if (!runLayerDifference(false, layer_difference))
+        return 24;
     const FaceGrowthRecord *left = faceRecord(
         layer_difference, SurfaceFaceId{2});
     const FaceGrowthRecord *right = faceRecord(
@@ -538,9 +558,9 @@ int main()
         return 28;
     }
 
-
     RegularLayerGrowthResult isotropic_propagation;
-    if (!runIsotropicPropagation(isotropic_propagation)) return 29;
+    if (!runIsotropicPropagation(isotropic_propagation))
+        return 29;
     const FaceGrowthRecord *isotropic_direct = faceRecord(
         isotropic_propagation, SurfaceFaceId{2});
     const FaceGrowthRecord *isotropic_neighbor = faceRecord(

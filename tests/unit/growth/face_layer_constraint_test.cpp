@@ -11,14 +11,13 @@ using namespace boundary_mesh;
 int main()
 {
     RegularLayerGrowthOptions options;
-    assert(options.max_neighbor_layer_difference == 1);
-    options.max_neighbor_layer_difference = 0;
-    assert(options.max_neighbor_layer_difference == 0);
+    assert(options.max_layer_diff == 1);
+    options.max_layer_diff = 0;
+    assert(options.max_layer_diff == 0);
 
     SurfaceMesh mesh;
     mesh.vertices = {
-        {0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0},
-        {0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}};
+        {0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}};
     mesh.faces = {
         Quad{{0, 3, 2, 1}}, Quad{{4, 5, 6, 7}},
         Quad{{0, 1, 5, 4}}, Quad{{1, 2, 6, 5}},
@@ -39,9 +38,7 @@ int main()
     assert(front.hasValue());
 
     const std::vector<SourceVertexGrowthProfile> source_profiles{
-        {0, {0.1, 1.0, 7}}, {1, {0.1, 1.0, 7}},
-        {4, {0.1, 1.0, 2}}, {5, {0.1, 1.0, 5}},
-        {6, {0.1, 1.0, 8}}, {7, {0.1, 1.0, 7}}};
+        {0, {0.1, 1.0, 7}}, {1, {0.1, 1.0, 7}}, {4, {0.1, 1.0, 2}}, {5, {0.1, 1.0, 5}}, {6, {0.1, 1.0, 8}}, {7, {0.1, 1.0, 7}}};
     const auto profiles = GrowthProfileBuilder{}.build(
         patch.value(), source_profiles);
     assert(profiles.hasValue());

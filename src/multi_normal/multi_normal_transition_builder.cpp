@@ -148,7 +148,7 @@ namespace boundary_mesh
             if (volume < Scalar{0}) std::swap(ids[1], ids[2]);
             output.transition_cells.cells.push_back(Tetra{ids});
             output.transition_cells.metadata.push_back(CellMetadata{
-                CellRole::Transition, source_face_id, 0});
+                CellRole::MultiNormalTransition, source_face_id, 0});
         };
 
         for (std::size_t face_index = 0;

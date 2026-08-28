@@ -90,7 +90,8 @@ namespace boundary_mesh
             {
                 const std::size_t front_index =
                     static_cast<std::size_t>(front_ids[corner]);
-                if (front_index >= front.vertices.size()) return false;
+                if (front_index >= front.vertices.size())
+                    return false;
                 const GrowthFrontVertex &vertex =
                     front.vertices[front_index];
                 const LayerVertexRecord *record = findLayerVertices(
@@ -166,9 +167,9 @@ namespace boundary_mesh
                              ++edge)
                         {
                             VertexId first = face.vertex_ids[edge];
-                            VertexId second = face.vertex_ids[
-                                (edge + 1) % face.vertex_ids.size()];
-                            if (second < first) std::swap(first, second);
+                            VertexId second = face.vertex_ids[(edge + 1) % face.vertex_ids.size()];
+                            if (second < first)
+                                std::swap(first, second);
                             edge_uses[{first, second}].push_back(
                                 EdgeUse{face_index, edge});
                         }
@@ -181,7 +182,8 @@ namespace boundary_mesh
             for (const auto &[edge, uses] : edge_uses)
             {
                 (void)edge;
-                if (uses.size() != 2) continue;
+                if (uses.size() != 2)
+                    continue;
                 const auto &first = output[uses[0].face].layers;
                 const auto &second = output[uses[1].face].layers;
                 const std::uint32_t low = std::min(
@@ -262,7 +264,7 @@ namespace boundary_mesh
                             }
                             if (index < interface_count)
                                 id = multi_normal
-                                    .transformed_front_volume_vertex_ids[index];
+                                         .transformed_front_volume_vertex_ids[index];
                             else
                                 id = static_cast<VertexId>(
                                     transition_vertex_count +
@@ -270,7 +272,8 @@ namespace boundary_mesh
                         }
                     },
                     face);
-                if (!valid) return false;
+                if (!valid)
+                    return false;
             }
             return true;
         }
@@ -282,9 +285,9 @@ namespace boundary_mesh
         {
             SurfaceMesh output;
             const auto appendFace = [&output](
-                const SurfaceFace &face,
-                const SurfaceBoundaryTag &tag,
-                const std::vector<Point3> &points)
+                                        const SurfaceFace &face,
+                                        const SurfaceBoundaryTag &tag,
+                                        const std::vector<Point3> &points)
             {
                 SurfaceFace remapped = face;
                 std::visit(
@@ -294,7 +297,8 @@ namespace boundary_mesh
                         {
                             const std::size_t index =
                                 static_cast<std::size_t>(id);
-                            if (index >= points.size()) return;
+                            if (index >= points.size())
+                                return;
                             id = static_cast<VertexId>(
                                 output.vertices.size());
                             output.vertices.push_back(points[index]);
@@ -488,7 +492,8 @@ namespace boundary_mesh
         filtered_top.vertices = output.mesh.vertices;
         for (std::size_t index = 0; index < candidates.size(); ++index)
         {
-            if (!exposed[index]) continue;
+            if (!exposed[index])
+                continue;
             filtered_top.faces.push_back(candidates[index]);
             filtered_top.face_tags.push_back(
                 output.boundary_layer_top.face_tags[index]);
@@ -497,6 +502,7 @@ namespace boundary_mesh
         return PipelineResult::success(std::move(output));
     }
 
+    // with multi-normal transition
     Result<ReservedLayerTransitionResult,
            CombinedReservedLayerTransitionError>
     generateReservedLayerTransition(
@@ -530,6 +536,7 @@ namespace boundary_mesh
             multi_normal.value().transformed_front,
             trial_profiles.value(),
             trial_options);
+
         if (!trial.hasValue())
             return PipelineResult::failure(trial.error());
 
@@ -646,7 +653,8 @@ namespace boundary_mesh
         filtered_top.vertices = output.mesh.vertices;
         for (std::size_t index = 0; index < candidates.size(); ++index)
         {
-            if (!exposed[index]) continue;
+            if (!exposed[index])
+                continue;
             filtered_top.faces.push_back(candidates[index]);
             filtered_top.face_tags.push_back(
                 output.boundary_layer_top.face_tags[index]);
@@ -656,9 +664,12 @@ namespace boundary_mesh
             output.mesh.metadata.begin(),
             output.mesh.metadata.end(),
             [](const CellMetadata &metadata)
-            { return metadata.role == CellRole::Transition; });
+            {
+                return metadata.role ==
+                       CellRole::ReservedLayerTransition;
+            });
         output.regular_cell_count = output.mesh.cells.size() -
-            output.reserved_transition_cell_count;
+                                    output.reserved_transition_cell_count;
         const std::size_t reserved_vertex_count = output.mesh.vertices.size();
         if (!remapTopForMultiNormalMerge(
                 output.boundary_layer_top,

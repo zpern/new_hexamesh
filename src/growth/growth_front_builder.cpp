@@ -28,8 +28,7 @@ namespace boundary_mesh
                     InvalidPatchVertex{patch_vertex.source_vertex_id});
             }
 
-            const VertexId local_id =
-                static_cast<VertexId>(front.vertices.size());
+            const VertexId local_id = static_cast<VertexId>(front.vertices.size());
             local_ids.emplace(patch_vertex.source_vertex_id, local_id);
             const Point3 &position = mesh.vertices[source_index];
             front.vertices.push_back(
@@ -42,8 +41,7 @@ namespace boundary_mesh
 
         for (const SurfaceFaceId source_face_id : patch.sourceFaceIds())
         {
-            const std::size_t source_index =
-                static_cast<std::size_t>(source_face_id);
+            const std::size_t source_index = static_cast<std::size_t>(source_face_id);
             if (source_index >= mesh.faces.size())
             {
                 return FrontResult::failure(

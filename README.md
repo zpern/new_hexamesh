@@ -250,7 +250,7 @@ main -> runBoundaryMeshCommand
 
 ### `VolumeMesh`
 
-保存 Tetra/Pyramid/Prism/Hexa 及同长 `CellMetadata`（规则层/过渡、源面、层号）。Prism/Hexa 顶点顺序由 `PrismVertexOrder`/`HexaVertexOrder` 注释约定，质量算法依赖它。
+保存 Tetra/Pyramid/Prism/Hexa 及同长 `CellMetadata`。单元角色明确区分 `RegularLayer`、`MultiNormalTransition` 和 `ReservedLayerTransition`，并记录源面与层号。Prism/Hexa 顶点顺序由 `PrismVertexOrder`/`HexaVertexOrder` 注释约定，质量算法依赖它。
 
 ## 7.3 surface / quality
 

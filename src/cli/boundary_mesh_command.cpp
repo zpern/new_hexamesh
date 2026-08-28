@@ -294,8 +294,7 @@ namespace boundary_mesh
 
         RegularLayerGrowthOptions growth_options;
         growth_options.cell_quality.maximum_skewness = command_options.maximum_skewness;
-        growth_options.max_neighbor_layer_difference =
-            command_options.max_layer_diff;
+        growth_options.max_layer_diff = command_options.max_layer_diff;
         growth_options.isotropic_height = command_options.isotropic_height;
 
         MultiNormalOptions multi_normal_options;
@@ -310,6 +309,7 @@ namespace boundary_mesh
             profiles,
             multi_normal_options,
             growth_options);
+
         if (!growth.hasValue())
         {
             error << "failed to generate boundary layers\n";
@@ -378,7 +378,7 @@ namespace boundary_mesh
                << "maximum_skewness="
                << command_options.maximum_skewness
                << '\n'
-               << "max_neighbor_layer_difference="
+               << "max_layer_diff="
                << command_options.max_layer_diff
                << '\n'
                << "isotropic_height="

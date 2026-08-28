@@ -24,44 +24,37 @@ int main()
 {
     const auto expect_argument_error =
         [](const std::vector<std::string> &arguments)
-        {
-            std::ostringstream output;
-            std::ostringstream error;
-            assert(boundary_mesh::runBoundaryMeshCommand(
-                       arguments,
-                       output,
-                       error) == 2);
-            assert(output.str().empty());
-            assert(error.str().find("usage:") != std::string::npos);
-        };
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        assert(boundary_mesh::runBoundaryMeshCommand(
+                   arguments,
+                   output,
+                   error) == 2);
+        assert(output.str().empty());
+        assert(error.str().find("usage:") != std::string::npos);
+    };
     expect_argument_error({});
     expect_argument_error({"--unknown", "1"});
-    expect_argument_error({
-        "--input", "a.cgns", "--input", "b.cgns",
-        "--first-height", "0.1", "--growth-ratio", "1",
-        "--layer-count", "1"});
-    expect_argument_error({
-        "--input", "a.cgns", "--first-height", "nan",
-        "--growth-ratio", "1", "--layer-count", "1"});
-    expect_argument_error({
-        "--input", "a.cgns", "--first-height", "0.1",
-        "--growth-ratio", "1", "--layer-count", "4294967296"});
-    expect_argument_error({
-        "--input", "a.cgns", "--first-height", "0.1",
-        "--growth-ratio", "1", "--layer-count", "1",
-        "--isotropic-height", "0"});
-    expect_argument_error({
-        "--input", "a.cgns", "--first-height", "0.1",
-        "--growth-ratio", "1", "--layer-count", "1",
-        "--isotropic-height", "-1"});
-    expect_argument_error({
-        "--input", "a.cgns", "--first-height", "0.1",
-        "--growth-ratio", "1", "--layer-count", "1",
-        "--isotropic-height", "nan"});
-    expect_argument_error({
-        "--input", "a.cgns", "--first-height", "0.1",
-        "--growth-ratio", "1", "--layer-count", "1",
-        "--isotropic-height", "inf"});
+    expect_argument_error({"--input", "a.cgns", "--input", "b.cgns",
+                           "--first-height", "0.1", "--growth-ratio", "1",
+                           "--layer-count", "1"});
+    expect_argument_error({"--input", "a.cgns", "--first-height", "nan",
+                           "--growth-ratio", "1", "--layer-count", "1"});
+    expect_argument_error({"--input", "a.cgns", "--first-height", "0.1",
+                           "--growth-ratio", "1", "--layer-count", "4294967296"});
+    expect_argument_error({"--input", "a.cgns", "--first-height", "0.1",
+                           "--growth-ratio", "1", "--layer-count", "1",
+                           "--isotropic-height", "0"});
+    expect_argument_error({"--input", "a.cgns", "--first-height", "0.1",
+                           "--growth-ratio", "1", "--layer-count", "1",
+                           "--isotropic-height", "-1"});
+    expect_argument_error({"--input", "a.cgns", "--first-height", "0.1",
+                           "--growth-ratio", "1", "--layer-count", "1",
+                           "--isotropic-height", "nan"});
+    expect_argument_error({"--input", "a.cgns", "--first-height", "0.1",
+                           "--growth-ratio", "1", "--layer-count", "1",
+                           "--isotropic-height", "inf"});
 
     const auto directory =
         std::filesystem::temp_directory_path() /
@@ -93,7 +86,7 @@ int main()
     assert(error.str().empty());
     assert(output.str().find("maximum_skewness=0.95") !=
            std::string::npos);
-    assert(output.str().find("max_neighbor_layer_difference=1") !=
+    assert(output.str().find("max_layer_diff=1") !=
            std::string::npos);
     if (output.str().find("isotropic_height=1") ==
         std::string::npos)

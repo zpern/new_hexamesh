@@ -38,7 +38,7 @@
 `RegularLayerGrowthOptions` 增加：
 
 ```cpp
-std::uint32_t max_neighbor_layer_difference{1}; // 共享边两侧最大允许层数差
+std::uint32_t max_layer_diff{1}; // 共享边两侧最大允许层数差
 ```
 
 该值为无符号整数：
@@ -113,7 +113,7 @@ Triangle–Triangle、Triangle–Quad 和 Quad–Quad 均按同一规则处理�
 ```text
 neighbor.allowed = min(
     neighbor.allowed,
-    current.allowed + max_neighbor_layer_difference)
+    current.allowed + max_layer_diff)
 ```
 
 加法必须使用更宽整数或饱和计算，禁止 `uint32_t` 回绕。

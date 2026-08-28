@@ -12,7 +12,7 @@
 
 - 执行时只允许主代理内联完成，不使用子代理。
 - 阶段 06、07、10 的计划全部确认以前，不执行本计划。
-- `max_neighbor_layer_difference` 默认 1，允许外部传入 0 或任意 `uint32_t`。
+- `max_layer_diff` 默认 1，允许外部传入 0 或任意 `uint32_t`。
 - 只沿 GrowthPatch 内共享完整源边传播，不沿仅共享顶点传播。
 - 用户请求、质量失败、碰撞和邻接约束全部参与传播。
 - 直接停止原因优先，邻接原因不得覆盖直接质量或碰撞原因。
@@ -71,15 +71,15 @@ docs/plans/07-layer-coordination.md                       实际提交和验证�
 
 **Interfaces:**
 - Consumes: `GrowthPatch`、初始 `GrowthFront`、`GrowthProfileTable`。
-- Produces: `FaceLayerConstraintTable`、`FaceLayerLimitKind`、`max_neighbor_layer_difference` 和 `NeighborLayerConstraint`。
+- Produces: `FaceLayerConstraintTable`、`FaceLayerLimitKind`、`max_layer_diff` 和 `NeighborLayerConstraint`。
 
 - [ ] **Step 1: 写公共类型和逐面最小值 RED 测试**
 
 ```cpp
 RegularLayerGrowthOptions options;
-assert(options.max_neighbor_layer_difference == 1);
-options.max_neighbor_layer_difference = 0;
-assert(options.max_neighbor_layer_difference == 0);
+assert(options.max_layer_diff == 1);
+options.max_layer_diff = 0;
+assert(options.max_layer_diff == 0);
 
 const auto table = buildFaceLayerConstraints(patch, front, profiles);
 assert(table.hasValue());
@@ -135,7 +135,7 @@ NeighborLayerConstraint // 因共享边邻域层数上限传播而提前停止
 在 options 增加：
 
 ```cpp
-std::uint32_t max_neighbor_layer_difference{1}; // 共享边两侧最大允许层数差
+std::uint32_t max_layer_diff{1}; // 共享边两侧最大允许层数差
 ```
 
 新增：

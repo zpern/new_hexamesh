@@ -15,7 +15,7 @@
 - `current_base_area` 必须来自当前层动态前沿评估。
 - 当前候选单元通过质量和碰撞检查后必须保留；停止面不得进入下一层活动前沿。
 - 默认 `isotropic_height` 为 `1.0`，外部值必须有限且严格大于 `0`。
-- 各向同性停止必须参与 `max_neighbor_layer_difference` 传播。
+- 各向同性停止必须参与 `max_layer_diff` 传播。
 - 不修改 skewness、碰撞、平滑和过渡单元算法。
 - 使用 TDD；每个生产行为必须先观察对应测试因功能缺失而失败。
 - 不提交 `.superpowers/`。
@@ -82,7 +82,7 @@ struct LayerStepResult
 struct RegularLayerGrowthOptions
 {
     VolumeCellQualityOptions cell_quality;
-    std::uint32_t max_neighbor_layer_difference{1};
+    std::uint32_t max_layer_diff{1};
     Scalar isotropic_height{1};
 };
 ```
@@ -286,7 +286,7 @@ assert(growth.faces[0].stop_layer == 2);
 // 顶面存在于 farfield_boundary，且没有第二层进度输出。
 ```
 
-在 `layer_coordination_pipeline_test.cpp` 构造相邻源面，验证直接各向同性停止使邻面层数满足 `max_neighbor_layer_difference`。
+在 `layer_coordination_pipeline_test.cpp` 构造相邻源面，验证直接各向同性停止使邻面层数满足 `max_layer_diff`。
 
 - [ ] **Step 6: 运行流水线测试并确认 RED**
 
@@ -305,7 +305,7 @@ ctest --test-dir build -C Debug -R "boundary_mesh_(regular_layer_growth|layer_co
 const auto isotropic_propagation = propagator.applyDirectStops(
     constraints,
     step_result.value().accepted_stopped_faces,
-    options.max_neighbor_layer_difference);
+    options.max_layer_diff);
 ```
 
 由于事件层号是 `L+1`，约束上限为 `L`，本层候选在后续 `filterCandidates` 中仍保留并继续经过障碍和同层碰撞检查。

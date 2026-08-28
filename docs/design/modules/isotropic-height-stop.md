@@ -50,7 +50,7 @@ H > 1.8 * Lmin
 3. 对应源面不进入下一层 `GrowthFront`；
 4. 当前单元成为该源面的最后一个边界层单元；
 5. 停止原因记录为 `FaceStopReason::IsotropicHeightReached`；
-6. 该停止参与现有 `max_neighbor_layer_difference` 邻域传播。
+6. 该停止参与现有 `max_layer_diff` 邻域传播。
 
 若当前接受的是第 `L` 层，则：
 

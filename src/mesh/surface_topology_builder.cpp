@@ -309,23 +309,14 @@ namespace boundary_mesh
         /// 登记一个面的所有顶点和局部边。
         template <std::size_t Count>
         std::array<EdgeId, Count> appendFace(
-            const std::array<
-                VertexId,
-                Count> &vertex_ids,
+            const std::array<VertexId, Count> &vertex_ids,
             SurfaceFaceId face_id,
             bool is_internal,
-            std::unordered_map<
-                EdgeKey,
-                EdgeId,
-                EdgeKeyHash> &edge_ids,
+            std::unordered_map<EdgeKey, EdgeId, EdgeKeyHash> &edge_ids,
             std::vector<Edge> &edges,
-            std::vector<EdgeIncidence>
-                &edge_incidence,
-            std::vector<
-                std::vector<SurfaceFaceId>>
-                &vertex_faces,
-            std::optional<
-                SurfaceTopologyError> &error)
+            std::vector<EdgeIncidence> &edge_incidence,
+            std::vector<std::vector<SurfaceFaceId>> &vertex_faces,
+            std::optional<SurfaceTopologyError> &error)
         {
             std::array<EdgeId, Count>
                 face_edge_ids{};
@@ -520,31 +511,17 @@ namespace boundary_mesh
         }
 
         // 第二阶段按面和局部边顺序创建稳定 EdgeId。
-        std::unordered_map<
-            EdgeKey,
-            EdgeId,
-            EdgeKeyHash>
-            edge_ids;
-
+        std::unordered_map<EdgeKey, EdgeId, EdgeKeyHash> edge_ids;
         std::vector<Edge> edges;
-
-        std::vector<EdgeIncidence>
-            edge_incidence;
-
-        std::vector<FaceEdgeIds>
-            face_edges;
+        std::vector<EdgeIncidence> edge_incidence;
+        std::vector<FaceEdgeIds> face_edges;
 
         // 在遍历一个面的局部边期间传递首个边拓扑错误。
-        std::optional<SurfaceTopologyError>
-            edge_error;
+        std::optional<SurfaceTopologyError> edge_error;
 
-        std::vector<
-            std::vector<SurfaceFaceId>>
-            vertex_faces(
-                mesh.vertices.size());
+        std::vector<std::vector<SurfaceFaceId>> vertex_faces(mesh.vertices.size());
 
-        face_edges.reserve(
-            mesh.faces.size());
+        face_edges.reserve(mesh.faces.size());
 
         for (std::size_t face_index = 0;
              face_index < mesh.faces.size();

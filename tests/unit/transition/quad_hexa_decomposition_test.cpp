@@ -42,7 +42,7 @@ int main()
     assert(result.value().top_faces.size() == 2);
     assert(result.value().metadata.size() == 7);
     for (const CellMetadata &metadata : result.value().metadata)
-        assert(metadata.role == CellRole::Transition);
+        assert(metadata.role == CellRole::ReservedLayerTransition);
 
     auto one = input;
     one.trial_layers = 1;

@@ -70,8 +70,8 @@ int main(int argc, char **argv)
 
     const std::filesystem::path input(argv[1]);
     const std::filesystem::path prefix = argc == 3
-        ? std::filesystem::path(argv[2])
-        : input.parent_path() / input.stem();
+                                             ? std::filesystem::path(argv[2])
+                                             : input.parent_path() / input.stem();
     std::error_code directory_error;
     if (!prefix.parent_path().empty())
     {
@@ -126,13 +126,12 @@ int main(int argc, char **argv)
     profiles.reserve(patch.value().vertices().size());
     for (const auto &vertex : patch.value().vertices())
     {
-        profiles.push_back({
-            vertex.source_vertex_id,
-            {0.1, 1.0, 1}});
+        profiles.push_back({vertex.source_vertex_id,
+                            {0.1, 1.0, 1}});
     }
     RegularLayerGrowthOptions options;
     options.cell_quality.maximum_skewness = 0.95;
-    options.max_neighbor_layer_difference = 1;
+    options.max_layer_diff = 1;
 
     RegularLayerGrowthOptions baseline_options = options;
     baseline_options.field_smoothing.skewness.enabled = false;

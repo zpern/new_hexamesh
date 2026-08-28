@@ -39,7 +39,7 @@ namespace boundary_mesh
                     [&](const PatchVertex &patch_vertex)
                     {
                         return patch_vertex.source_vertex_id ==
-                            vertex.source_vertex_id;
+                               vertex.source_vertex_id;
                     });
                 if (!known)
                 {
@@ -152,7 +152,7 @@ namespace boundary_mesh
                     [&](const FaceStopEvent &previous)
                     {
                         return previous.source_face_id ==
-                            event.source_face_id;
+                               event.source_face_id;
                     });
                 if (!existed)
                 {
@@ -174,19 +174,18 @@ namespace boundary_mesh
                 {
                     using Face = std::decay_t<decltype(bottom)>;
                     const Face *top = std::get_if<Face>(&next_face);
-                    if (top == nullptr) return false;
+                    if (top == nullptr)
+                        return false;
 
                     if constexpr (std::is_same_v<Face, Triangle>)
                     {
                         Prism cell;
                         for (std::size_t local = 0; local < 3; ++local)
                         {
-                            cell.vertex_ids[local] = previous_global_ids[
-                                static_cast<std::size_t>(
-                                    bottom.vertex_ids[local])];
-                            cell.vertex_ids[local + 3] = next_global_ids[
-                                static_cast<std::size_t>(
-                                    top->vertex_ids[local])];
+                            cell.vertex_ids[local] = previous_global_ids[static_cast<std::size_t>(
+                                bottom.vertex_ids[local])];
+                            cell.vertex_ids[local + 3] = next_global_ids[static_cast<std::size_t>(
+                                top->vertex_ids[local])];
                         }
                         cells.push_back(cell);
                     }
@@ -195,12 +194,10 @@ namespace boundary_mesh
                         Hexa cell;
                         for (std::size_t local = 0; local < 4; ++local)
                         {
-                            cell.vertex_ids[local] = previous_global_ids[
-                                static_cast<std::size_t>(
-                                    bottom.vertex_ids[local])];
-                            cell.vertex_ids[local + 4] = next_global_ids[
-                                static_cast<std::size_t>(
-                                    top->vertex_ids[local])];
+                            cell.vertex_ids[local] = previous_global_ids[static_cast<std::size_t>(
+                                bottom.vertex_ids[local])];
+                            cell.vertex_ids[local + 4] = next_global_ids[static_cast<std::size_t>(
+                                top->vertex_ids[local])];
                         }
                         cells.push_back(cell);
                     }
@@ -315,8 +312,7 @@ namespace boundary_mesh
                         auto face = value;
                         for (VertexId &vertex_id : face.vertex_ids)
                         {
-                            vertex_id = remap[
-                                static_cast<std::size_t>(vertex_id)];
+                            vertex_id = remap[static_cast<std::size_t>(vertex_id)];
                         }
                         return face;
                     },
@@ -380,7 +376,7 @@ namespace boundary_mesh
         const TerminationPropagator &propagator =
             propagator_result.value();
         const auto initial_propagation = propagator.propagateInitial(
-            constraints, options.max_neighbor_layer_difference);
+            constraints, options.max_layer_diff);
         if (!initial_propagation.hasValue())
         {
             return GrowthResult::failure(initial_propagation.error());
@@ -483,17 +479,15 @@ namespace boundary_mesh
             result.smoothing_diagnostics.maximum_skewness_before =
                 std::max(
                     result.smoothing_diagnostics.maximum_skewness_before,
-                    step_result.value().smoothing_diagnostics
-                        .maximum_skewness_before);
+                    step_result.value().smoothing_diagnostics.maximum_skewness_before);
             result.smoothing_diagnostics.maximum_skewness_after =
                 std::max(
                     result.smoothing_diagnostics.maximum_skewness_after,
-                    step_result.value().smoothing_diagnostics
-                        .maximum_skewness_after);
+                    step_result.value().smoothing_diagnostics.maximum_skewness_after);
             const auto quality_propagation = propagator.applyDirectStops(
                 constraints,
                 directQualityStops(step_result.value().stopped_faces),
-                options.max_neighbor_layer_difference);
+                options.max_layer_diff);
             if (!quality_propagation.hasValue())
             {
                 return GrowthResult::failure(quality_propagation.error());
@@ -510,7 +504,7 @@ namespace boundary_mesh
                 propagator.applyDirectStops(
                     constraints,
                     quality_step.value().accepted_stopped_faces,
-                    options.max_neighbor_layer_difference);
+                    options.max_layer_diff);
             if (!isotropic_propagation.hasValue())
             {
                 return GrowthResult::failure(
@@ -542,7 +536,7 @@ namespace boundary_mesh
                 addedCollisionStops(
                     obstacle_step.value().stopped_faces,
                     isotropic_step.value().stopped_faces),
-                options.max_neighbor_layer_difference);
+                options.max_layer_diff);
             if (!obstacle_propagation.hasValue())
             {
                 return GrowthResult::failure(obstacle_propagation.error());
@@ -573,22 +567,22 @@ namespace boundary_mesh
                 addedCollisionStops(
                     collision_step.value().stopped_faces,
                     propagated_obstacle_step.value().stopped_faces),
-                options.max_neighbor_layer_difference);
+                options.max_layer_diff);
             if (!self_propagation.hasValue())
             {
                 return GrowthResult::failure(self_propagation.error());
             }
             const auto final_step = options.enforce_single_high_edge
-                ? propagator.filterSingleHighEdgeCandidates(
-                      current_front,
-                      collision_step.value(),
-                      constraints,
-                      options.max_neighbor_layer_difference,
-                      pending_stop_cells)
-                : propagator.filterCandidates(
-                      current_front,
-                      collision_step.value(),
-                      constraints);
+                                        ? propagator.filterSingleHighEdgeCandidates(
+                                              current_front,
+                                              collision_step.value(),
+                                              constraints,
+                                              options.max_layer_diff,
+                                              pending_stop_cells)
+                                        : propagator.filterCandidates(
+                                              current_front,
+                                              collision_step.value(),
+                                              constraints);
             if (!final_step.hasValue())
             {
                 return GrowthResult::failure(final_step.error());

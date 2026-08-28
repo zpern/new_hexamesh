@@ -42,8 +42,7 @@ namespace boundary_mesh
                 continue;
             }
 
-            source_face_ids.push_back(
-                static_cast<SurfaceFaceId>(face_index));
+            source_face_ids.push_back(static_cast<SurfaceFaceId>(face_index));
             std::visit(
                 [&](const auto &face)
                 {

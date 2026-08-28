@@ -55,7 +55,7 @@ namespace boundary_mesh
             low[first], low[second],
             high[second], high[first], low[apex]}});
         result.metadata.push_back(CellMetadata{
-            CellRole::Transition,
+            CellRole::ReservedLayerTransition,
             input.source_face_id,
             occupied + 1});
 

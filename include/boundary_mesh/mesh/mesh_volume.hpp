@@ -79,8 +79,9 @@ namespace boundary_mesh
 
     enum class CellRole
     {
-        RegularLayer, // 规则边界层单元
-        Transition    // 局部停止或拓扑变化产生的过渡单元
+        RegularLayer,           // 规则边界层单元
+        MultiNormalTransition,  // 多法向拆点和拓扑变化产生的过渡单元
+        ReservedLayerTransition // 规则层停止或层差产生的保留层过渡单元
     };
 
     struct CellMetadata

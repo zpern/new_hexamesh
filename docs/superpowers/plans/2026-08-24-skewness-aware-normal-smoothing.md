@@ -135,7 +135,7 @@ struct RegularLayerGrowthOptions
 {
     VolumeCellQualityOptions cell_quality;
     GrowthFieldSmoothingOptions field_smoothing;
-    std::uint32_t max_neighbor_layer_difference{1};
+    std::uint32_t max_layer_diff{1};
     Scalar isotropic_height{1};
 };
 

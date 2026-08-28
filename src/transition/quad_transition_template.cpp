@@ -132,11 +132,11 @@ namespace boundary_mesh
             result.volume_cells.push_back(pyramid);
             result.volume_cells.push_back(tetra);
             result.metadata.push_back(CellMetadata{
-                CellRole::Transition,
+                CellRole::ReservedLayerTransition,
                 input.source_face_id,
                 occupied + 1});
             result.metadata.push_back(CellMetadata{
-                CellRole::Transition,
+                CellRole::ReservedLayerTransition,
                 input.source_face_id,
                 occupied + 1});
         }
@@ -189,7 +189,7 @@ namespace boundary_mesh
                 result.side_cells.push_back(cell);
                 result.volume_cells.push_back(cell);
                 result.metadata.push_back(CellMetadata{
-                    CellRole::Transition,
+                CellRole::ReservedLayerTransition,
                     input.source_face_id,
                     occupied + 1});
             }
@@ -198,7 +198,7 @@ namespace boundary_mesh
                 result.side_cells.push_back(cell);
                 result.volume_cells.push_back(cell);
                 result.metadata.push_back(CellMetadata{
-                    CellRole::Transition,
+                    CellRole::ReservedLayerTransition,
                     input.source_face_id,
                     occupied + 1});
             }
@@ -348,7 +348,7 @@ namespace boundary_mesh
         {
             result.volume_cells.push_back(pyramid);
             result.metadata.push_back(CellMetadata{
-                CellRole::Transition,
+                CellRole::ReservedLayerTransition,
                 input.source_face_id,
                 regular + 1});
         }
@@ -386,9 +386,13 @@ namespace boundary_mesh
                 Tetra{{top[1], top[3], top[0], c}});
         }
         result.metadata.push_back(CellMetadata{
-            CellRole::Transition, input.source_face_id, regular + 1});
+            CellRole::ReservedLayerTransition,
+            input.source_face_id,
+            regular + 1});
         result.metadata.push_back(CellMetadata{
-            CellRole::Transition, input.source_face_id, regular + 1});
+            CellRole::ReservedLayerTransition,
+            input.source_face_id,
+            regular + 1});
         if (double_high_common.has_value())
         {
             const auto appended = appendDoubleSideTransition(

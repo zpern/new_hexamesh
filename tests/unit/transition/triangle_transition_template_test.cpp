@@ -49,7 +49,8 @@ int main()
             std::array<VertexId, 5>{3, 4, 7, 6, 5}));
     assert(step.value().top_faces.size() == 3);
     assert(step.value().metadata.size() == 2);
-    assert(step.value().metadata[1].role == CellRole::Transition);
+    assert(step.value().metadata[1].role ==
+           CellRole::ReservedLayerTransition);
 
     for (std::size_t edge = 0; edge < 3; ++edge)
     {

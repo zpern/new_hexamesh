@@ -520,11 +520,11 @@ std::ostringstream err;
 const int code = runBoundaryMeshCommand(args, out, err);
 assert(code == 0);
 assert(out.str().find("maximum_skewness=0.95") != std::string::npos);
-assert(out.str().find("max_neighbor_layer_difference=1") != std::string::npos);
+assert(out.str().find("max_layer_diff=1") != std::string::npos);
 assert(err.str().empty());
 ```
 
-缺少必填项、重复参数、未知参数、非法 double、负数、`layer_count` 溢出、`max_neighbor_layer_difference` 溢出分别返回参数类非零退出码。
+缺少必填项、重复参数、未知参数、非法 double、负数、`layer_count` 溢出、`max_layer_diff` 溢出分别返回参数类非零退出码。
 
 - [x] **Step 2: 写封闭小立方体一层 RED 测试**
 
@@ -558,7 +558,7 @@ struct BoundaryMeshCommandOptions
     Scalar growth_ratio{}; // 全部 Wall 顶点的增长率
     std::uint32_t layer_count{}; // 全部 Wall 顶点的请求层数
     Scalar maximum_skewness{0.95}; // 候选单元最大 skewness
-    std::uint32_t max_neighbor_layer_difference{1}; // 相邻源面最大层数差
+    std::uint32_t max_layer_diff{1}; // 相邻源面最大层数差
     std::filesystem::path output_prefix; // 两个 VTK 的公共前缀
 };
 

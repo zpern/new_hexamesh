@@ -14,7 +14,7 @@ int main()
         Point3{1, 0, 1}, Point3{0, 1, 1}};
     transition.transition_cells.cells = {Tetra{{0, 1, 2, 3}}};
     transition.transition_cells.metadata = {
-        {CellRole::Transition, 10, 0}};
+        {CellRole::MultiNormalTransition, 10, 0}};
     transition.transformed_front.vertices = {
         {Point3{0, 0, 1}, 0}, {Point3{1, 0, 1}, 1},
         {Point3{0, 1, 1}, 2}};
@@ -32,7 +32,8 @@ int main()
     if (!merged.hasValue() || merged.value().vertices.size() != 7 ||
         merged.value().cells.size() != 2 ||
         merged.value().metadata.size() != 2 ||
-        merged.value().metadata[0].role != CellRole::Transition ||
+        merged.value().metadata[0].role !=
+            CellRole::MultiNormalTransition ||
         merged.value().metadata[1].role != CellRole::RegularLayer ||
         std::get<Prism>(merged.value().cells[1]).vertex_ids !=
             std::array<VertexId, 6>{1, 2, 3, 4, 5, 6})

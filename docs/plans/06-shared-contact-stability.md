@@ -207,7 +207,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 - [x] **Step 3: 运行十层案例**
 
-使用 `first_height=0.1`、`growth_ratio=1.0`、`layer_count=10`、`maximum_skewness=0.95`、`max_neighbor_layer_difference=1`。记录每层新增体单元、总 `volume_cells`、`farfield_faces` 和停止原因。
+使用 `first_height=0.1`、`growth_ratio=1.0`、`layer_count=10`、`maximum_skewness=0.95`、`max_layer_diff=1`。记录每层新增体单元、总 `volume_cells`、`farfield_faces` 和停止原因。
 
 - [x] **Step 4: 检查 VTK**
 
