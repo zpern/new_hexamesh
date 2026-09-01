@@ -79,7 +79,7 @@ int main()
 
     static_assert(
         static_cast<std::size_t>(
-            FaceStopReason::IsotropicHeightReached) == 8);
+            FaceStopReason::IsotropicHeightReached) == 9);
 
     return 0;
 }
