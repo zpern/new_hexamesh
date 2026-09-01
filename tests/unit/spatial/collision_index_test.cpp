@@ -28,6 +28,7 @@ int main()
 
     const auto topology = SurfaceTopologyBuilder{}.build(mesh);
     assert(topology.hasValue());
+    mesh.face_tags[2] = {SurfaceBoundaryKind::Internal, 4};
     const auto index = buildOriginalSurfaceCollisionIndex(
         mesh,
         topology.value());

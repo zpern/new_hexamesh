@@ -218,8 +218,10 @@ namespace boundary_mesh
              face_index < mesh.faces.size();
              ++face_index)
         {
-            if (mesh.face_tags[face_index].kind ==
-                SurfaceBoundaryKind::Symmetry)
+            const SurfaceBoundaryKind kind =
+                mesh.face_tags[face_index].kind;
+            if (kind == SurfaceBoundaryKind::Symmetry ||
+                kind == SurfaceBoundaryKind::Internal)
             {
                 continue;
             }
