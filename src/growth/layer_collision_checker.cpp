@@ -214,6 +214,16 @@ namespace boundary_mesh
         const GrowthFront &current_front,
         const LayerStepResult &step)
     {
+        return buildLayerBoundaryCandidates(
+            current_front, step, SlidingSurfaceSet{});
+    }
+
+    Result<std::vector<LayerBoundaryCandidate>, SpatialError>
+    buildLayerBoundaryCandidates(
+        const GrowthFront &current_front,
+        const LayerStepResult &step,
+        const SlidingSurfaceSet &sliding_surfaces)
+    {
         if (step.next_front.faces.size() !=
                 step.previous_front_face_indices.size() ||
             step.next_front.vertices.size() !=
@@ -272,7 +282,35 @@ namespace boundary_mesh
                      step.next_front.layer,
                      step.next_front.vertices[top_index].branch_id});
             }
-            candidates.push_back({std::move(bottom), std::move(top)});
+            std::vector<SurfaceBoundaryTag> side_tags;
+            side_tags.reserve(top_ids.size());
+            for (std::size_t local = 0; local < top_ids.size(); ++local)
+            {
+                const std::size_t next = (local + 1) % top_ids.size();
+                const std::size_t first_bottom =
+                    step.previous_front_vertex_indices[
+                        static_cast<std::size_t>(top_ids[local])];
+                const std::size_t second_bottom =
+                    step.previous_front_vertex_indices[
+                        static_cast<std::size_t>(top_ids[next])];
+                const auto &first = current_front.vertices[first_bottom]
+                    .boundary.sliding_region_ids;
+                const auto &second = current_front.vertices[second_bottom]
+                    .boundary.sliding_region_ids;
+                std::vector<std::uint32_t> shared;
+                std::set_intersection(
+                    first.begin(), first.end(), second.begin(), second.end(),
+                    std::back_inserter(shared));
+                SurfaceBoundaryTag tag{
+                    SurfaceBoundaryKind::BoundaryLayerInterface, 0};
+                if (!shared.empty())
+                    if (const SlidingSurface *surface =
+                            sliding_surfaces.find(shared.front()))
+                        tag = {surface->boundary_kind, surface->region_id};
+                side_tags.push_back(tag);
+            }
+            candidates.push_back({
+                std::move(bottom), std::move(top), std::move(side_tags)});
         }
         return Result<std::vector<LayerBoundaryCandidate>, SpatialError>::success(
             std::move(candidates));

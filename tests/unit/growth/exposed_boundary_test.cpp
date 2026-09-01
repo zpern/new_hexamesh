@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 
 #include <boundary_mesh/growth/exposed_boundary.hpp>
@@ -29,7 +30,10 @@ int main()
         triangleFace(
             {{0, 0, 1}, {1, 0, 1}, {1, 1, 1}},
             {{0, 1}, {1, 1}, {2, 1}},
-            0)};
+            0),
+        {{SurfaceBoundaryKind::Symmetry, 7},
+         {SurfaceBoundaryKind::BoundaryLayerInterface, 1},
+         {SurfaceBoundaryKind::BoundaryLayerInterface, 1}}};
     const LayerBoundaryCandidate second{
         triangleFace(
             {{0, 0, 0}, {1, 1, 0}, {0, 1, 0}},
@@ -45,6 +49,13 @@ int main()
     assert(first_update.hasValue());
     tracker.apply(first_update.value());
     assert(tracker.faceCount() == 4);
+    assert(std::any_of(
+        tracker.faces().begin(), tracker.faces().end(),
+        [](const BoundaryFace &face)
+        {
+            return face.boundary_kind == SurfaceBoundaryKind::Symmetry &&
+                   face.region_id == 7;
+        }));
 
     const auto second_update = tracker.prepare({second});
     assert(second_update.hasValue());
@@ -53,5 +64,5 @@ int main()
 
     const auto triangles = tracker.collisionTriangles();
     assert(triangles.hasValue());
-    assert(triangles.value().size() == 10);
+    assert(triangles.value().size() == 8);
 }

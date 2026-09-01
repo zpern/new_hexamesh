@@ -654,7 +654,7 @@ namespace boundary_mesh
             }
 
             auto boundary_candidates = buildLayerBoundaryCandidates(
-                current_front, step);
+                current_front, step, sliding_surfaces.value());
             if (!boundary_candidates.hasValue())
             {
                 return GrowthResult::failure(
@@ -678,6 +678,10 @@ namespace boundary_mesh
                     surface_mesh.face_tags[source_index].region_id;
                 candidate.bottom.region_id = region_id;
                 candidate.top.region_id = region_id;
+                for (SurfaceBoundaryTag &tag : candidate.side_tags)
+                    if (tag.kind ==
+                        SurfaceBoundaryKind::BoundaryLayerInterface)
+                        tag.region_id = region_id;
             }
             const auto boundary_update = exposed_boundary.prepare(
                 boundary_candidates.value());

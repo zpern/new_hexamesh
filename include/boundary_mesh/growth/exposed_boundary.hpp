@@ -25,12 +25,15 @@ namespace boundary_mesh
         std::vector<CollisionVertexKey> vertex_keys; // 与 points 一一对应的分层拓扑键
         SurfaceFaceId source_face_id{}; // 产生该边界面的输入 Wall 面
         std::uint32_t region_id{}; // 对应输入 Wall 的区域编号
+        SurfaceBoundaryKind boundary_kind{
+            SurfaceBoundaryKind::BoundaryLayerInterface};
     };
 
     struct LayerBoundaryCandidate
     {
         BoundaryFace bottom; // 候选体单元与当前前沿重合的底面
         BoundaryFace top;    // 候选体单元提交后的新顶面
+        std::vector<SurfaceBoundaryTag> side_tags; // 按底面有向边保存侧面类别
     };
 
     struct ExposedBoundaryUpdate

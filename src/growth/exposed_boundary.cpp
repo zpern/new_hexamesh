@@ -149,7 +149,12 @@ namespace boundary_mesh
                      candidate.top.vertex_keys[next],
                      candidate.top.vertex_keys[index]},
                     candidate.top.source_face_id,
-                    candidate.top.region_id});
+                    index < candidate.side_tags.size()
+                        ? candidate.side_tags[index].region_id
+                        : candidate.top.region_id,
+                    index < candidate.side_tags.size()
+                        ? candidate.side_tags[index].kind
+                        : candidate.top.boundary_kind});
             }
             return faces;
         }
@@ -307,6 +312,9 @@ namespace boundary_mesh
         for (std::size_t face_index = 0; face_index < faces_.size(); ++face_index)
         {
             const BoundaryFace &face = faces_[face_index];
+            if (face.boundary_kind == SurfaceBoundaryKind::Symmetry ||
+                face.boundary_kind == SurfaceBoundaryKind::Internal)
+                continue;
             const std::array<std::array<std::size_t, 3>, 2> splits{{
                 {{0, 1, 2}}, {{0, 2, 3}}}};
             const std::size_t split_count = face.points.size() == 3 ? 1 : 2;

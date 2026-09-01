@@ -6,6 +6,7 @@
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 #include <boundary_mesh/growth/growth_front.hpp>
 #include <boundary_mesh/growth/regular_layer_growth.hpp>
+#include <boundary_mesh/growth/sliding_surface.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
 #include <boundary_mesh/spatial/spatial_error.hpp>
 
@@ -15,6 +16,12 @@ namespace boundary_mesh
     buildLayerBoundaryCandidates(
         const GrowthFront &current_front,
         const LayerStepResult &step);
+
+    Result<std::vector<LayerBoundaryCandidate>, SpatialError>
+    buildLayerBoundaryCandidates(
+        const GrowthFront &current_front,
+        const LayerStepResult &step,
+        const SlidingSurfaceSet &sliding_surfaces);
 
     class LayerCollisionChecker
     {
