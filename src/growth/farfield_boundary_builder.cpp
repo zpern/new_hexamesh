@@ -227,8 +227,7 @@ namespace boundary_mesh
                     Quad{{ids[0], ids[1], ids[2], ids[3]}});
             }
             output.face_tags.push_back(
-                {SurfaceBoundaryKind::BoundaryLayerInterface,
-                 face.region_id});
+                {face.boundary_kind, face.region_id});
         }
 
         return Result<SurfaceMesh, SpatialError>::success(

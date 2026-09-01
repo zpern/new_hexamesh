@@ -31,7 +31,12 @@ int main()
         9};
 
     ExposedBoundaryTracker tracker;
-    const auto update = tracker.prepare({{bottom, top}});
+    const auto update = tracker.prepare({{
+        bottom,
+        top,
+        {{SurfaceBoundaryKind::Symmetry, 30},
+         {SurfaceBoundaryKind::Internal, 40},
+         {SurfaceBoundaryKind::BoundaryLayerInterface, 9}}}});
     assert(update.hasValue());
     tracker.apply(update.value());
 
@@ -41,14 +46,25 @@ int main()
     assert(result.value().faces.size() == result.value().face_tags.size());
     assert(result.value().face_tags.front().kind ==
            SurfaceBoundaryKind::Farfield);
-    for (std::size_t index = 1;
-         index < result.value().face_tags.size();
-         ++index)
+    std::size_t interface_count = 0;
+    std::size_t symmetry_count = 0;
+    std::size_t internal_count = 0;
+    for (const SurfaceBoundaryTag tag : result.value().face_tags)
     {
-        assert(result.value().face_tags[index].kind ==
-               SurfaceBoundaryKind::BoundaryLayerInterface);
-        assert(result.value().face_tags[index].region_id == 9);
+        interface_count += tag.kind ==
+            SurfaceBoundaryKind::BoundaryLayerInterface;
+        symmetry_count += tag.kind == SurfaceBoundaryKind::Symmetry;
+        internal_count += tag.kind == SurfaceBoundaryKind::Internal;
     }
+    assert(interface_count == 2);
+    assert(symmetry_count == 1);
+    assert(internal_count == 1);
+
+    const auto top_only = extractBoundaryLayerTop(result.value());
+    assert(top_only.hasValue());
+    assert(top_only.value().faces.size() == 2);
+    for (const SurfaceBoundaryTag tag : top_only.value().face_tags)
+        assert(tag.kind == SurfaceBoundaryKind::BoundaryLayerInterface);
 
     std::vector<bool> used(result.value().vertices.size(), false);
     bool reversed_top_found = false;
