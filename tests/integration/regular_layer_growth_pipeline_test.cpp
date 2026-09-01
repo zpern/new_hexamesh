@@ -96,6 +96,29 @@ namespace
         return mesh;
     }
 
+    SurfaceMesh makeSlidingMesh()
+    {
+        SurfaceMesh mesh;
+        mesh.vertices = {
+            {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0},
+            {0,0,1}, {1,0,1}, {1,1,1}, {0,1,1},
+            {0,0,2}};
+        mesh.faces = {
+            Quad{{0,3,2,1}}, Quad{{4,5,6,7}},
+            Quad{{0,1,5,4}}, Quad{{1,2,6,5}},
+            Quad{{2,3,7,6}}, Quad{{3,0,4,7}},
+            Triangle{{4,7,8}}};
+        mesh.face_tags = {
+            {SurfaceBoundaryKind::Farfield, 20},
+            {SurfaceBoundaryKind::Wall, 10},
+            {SurfaceBoundaryKind::Symmetry, 30},
+            {SurfaceBoundaryKind::Farfield, 21},
+            {SurfaceBoundaryKind::Farfield, 22},
+            {SurfaceBoundaryKind::Farfield, 23},
+            {SurfaceBoundaryKind::Internal, 40}};
+        return mesh;
+    }
+
     bool sameCell(const VolumeCell &first, const VolumeCell &second)
     {
         return std::visit(
@@ -384,6 +407,60 @@ int main()
         !quad_region_found)
     {
         return 24;
+    }
+
+    const SurfaceMesh sliding_surface = makeSlidingMesh();
+    const auto sliding_topology =
+        SurfaceTopologyBuilder{}.build(sliding_surface);
+    if (!sliding_topology.hasValue()) return 25;
+    const auto sliding_patch = GrowthPatchBuilder{}.build(
+        sliding_surface, sliding_topology.value());
+    if (!sliding_patch.hasValue()) return 26;
+    const auto sliding_front = GrowthFrontBuilder{}.buildInitial(
+        sliding_surface, sliding_patch.value());
+    if (!sliding_front.hasValue()) return 27;
+    std::vector<SourceVertexGrowthProfile> sliding_profiles;
+    for (const PatchVertex &vertex : sliding_patch.value().vertices())
+        sliding_profiles.push_back(
+            {vertex.source_vertex_id, {0.1, 1.0, 1}});
+    const auto sliding_growth = generateRegularLayers(
+        sliding_surface,
+        sliding_topology.value(),
+        sliding_patch.value(),
+        sliding_front.value(),
+        sliding_profiles);
+    if (!sliding_growth.hasValue() ||
+        sliding_growth.value().mesh.cells.size() != 1)
+        return 28;
+
+    bool symmetry_side = false;
+    bool internal_side = false;
+    for (const SurfaceBoundaryTag tag :
+         sliding_growth.value().farfield_boundary.face_tags)
+    {
+        symmetry_side = symmetry_side ||
+            (tag.kind == SurfaceBoundaryKind::Symmetry &&
+             tag.region_id == 30);
+        internal_side = internal_side ||
+            (tag.kind == SurfaceBoundaryKind::Internal &&
+             tag.region_id == 40);
+    }
+    if (!symmetry_side || !internal_side) return 29;
+    for (const SurfaceBoundaryTag tag :
+         sliding_growth.value().top_surface.face_tags)
+        if (tag.kind != SurfaceBoundaryKind::BoundaryLayerInterface)
+            return 30;
+
+    const VolumeMesh &sliding_mesh = sliding_growth.value().mesh;
+    for (std::size_t index = 0; index < sliding_mesh.vertices.size(); ++index)
+    {
+        const Point3 &point = sliding_mesh.vertices[index];
+        if ((index == 4 || index == 5 || index == 9 || index == 10) &&
+            std::abs(point.y()) > 1e-12)
+            return 31;
+        if ((index == 4 || index == 7 || index == 9 || index == 12) &&
+            std::abs(point.x()) > 1e-12)
+            return 32;
     }
 
     return 0;

@@ -11,14 +11,14 @@
 输入：
 
 - 一个 CGNS 文件：单个 Base，`CellDimension=2`、`PhysicalDimension=3`，非结构 Zone，面仅支持 `TRI_3`/`QUAD_4`；
-- 同目录同主名的 `<主名>.bc.txt`，将每个 Zone 标为 `Wall` 或 `Farfield`；
+- 同目录同主名的 `<主名>.bc.txt`，将每个 Zone 标为 `Wall`、`Farfield`、`Symmetry` 或 `Internal`；
 - 首层高度、增长率、层数及可选质量/协调/多法向参数。
 
 输出：
 
 - `<prefix>_boundary_layer.vtk`：混合体边界层网格（可含 Tetra/Pyramid/Prism/Hexa）；
-- `<prefix>_farfield_boundary.vtk`：原 Farfield 与最终边界层顶面组成的表面；
-- `<prefix>_boundary_layer_top.vtk`：最终边界层外露顶面；
+- `<prefix>_farfield_boundary.vtk`：完整边界，包含 Farfield、BoundaryLayerInterface、Symmetry 和 Internal；
+- `<prefix>_boundary_layer_top.vtk`：只包含最终 BoundaryLayerInterface 外露顶面；
 - 标准输出中的输入规模、单元计数和停止原因统计。
 
 ```text
@@ -190,6 +190,8 @@ Internal:
 
 `case.cgns` 对应 `case.bc.txt`。每个 Zone 必须恰好出现一次；不支持注释或其他未知段名。`Symmetry:` 和 `Internal:` 区域约束与 Wall 共点的边界层顶点沿对应表面滑移。
 
+滑移面按 region 建立。轴面识别沿用参考工程参数：`reference_length = 0.02 * average_edge_length`，`axis_epsilon = 0.1 * reference_length`，依次识别 X/Y/Z 常量面；三个轴均不满足时启用三角曲面最近点算法。方向/步长平滑完成后施加方向约束，质量与碰撞检查前再投影最终候选位置。多滑移面按 region ID 升序迭代，最多 20 次；不收敛时以 `SlidingProjectionFailure` 局部停止相关面。
+
 ```powershell
 .\build\Release\boundary_mesh_cli.exe `
   --input C:\mesh\case.cgns `
@@ -274,13 +276,13 @@ main -> runBoundaryMeshCommand
 
 ### `GrowthPatchBuilder` / `GrowthPatch`
 
-提取 Wall 面/点。Patch 点按源 VertexId、源面按 SurfaceFaceId 排序；点记录相邻 Symmetry region（数据模型支持，但 CLI 映射不能创建 Symmetry）。
+提取 Wall 面/点。Patch 点按源 VertexId、源面按 SurfaceFaceId 排序；点记录相邻 Symmetry/Internal region，供滑移约束和逐层侧面标记使用。
 
 ### `GrowthFrontBuilder` / `GrowthFront`
 
 构建第 0 层紧凑活动前沿。`faces` 引用局部点，`source_face_ids` 映射回输入；`GrowthFrontVertex` 保存当前/根坐标、源点、方向、实际步长、可见性、角点和多法向分支。
 
-`FrontEvaluator` 评价几何；`buildFrontAdjacency` 建一环；`computeGrowthDirections` 选方向并施加 `SymmetryConstraints`；`GrowthFieldSmoother` 平滑方向/高度；`refineDirectionsForSkewness` 优化偏斜；`IsotropicStopEvaluator` 判断高度/前沿尺度阈值。
+`FrontEvaluator` 评价几何；`buildFrontAdjacency` 建一环；`computeGrowthDirections` 选初始方向；`GrowthFieldSmoother` 平滑方向/高度；随后对 Symmetry/Internal 施加滑移方向约束，并把最终候选位置二次投影到滑移面，再进行各项质量与碰撞判断。轴对齐区域使用解析投影；不满足 X/Y/Z 判定的区域使用三角曲面最近点投影。
 
 ## 7.6 growth：规则层
 
@@ -290,7 +292,7 @@ main -> runBoundaryMeshCommand
 
 ### `RegularLayerStepper`
 
-执行一层预推出：构造候选点和 Prism/Hexa，做质量、固定障碍碰撞和同层自碰撞，生成仅含合格面的紧凑 `next_front`，返回新旧局部映射和停止事件。
+执行一层预推出：构造候选点和 Prism/Hexa，做滑移约束、质量、固定障碍碰撞和同层自碰撞，生成仅含合格面的紧凑 `next_front`，返回新旧局部映射和停止事件。原始及动态生成的 Symmetry/Internal 面主动排除在碰撞障碍之外；投影失败只停止受影响的局部面。
 
 ### `RegularLayerGenerator` / `generateRegularLayers()`
 
@@ -419,7 +421,7 @@ readCgnsSurface
 5. **Zone 名须为唯一正 uint32。** `wall`、`Zone1` 均失败。
 6. **跨 Zone 不是容差焊接。** 需显式连接且坐标完全相等。
 7. **.bc.txt 须全覆盖且无注释。**
-8. **核心支持 Symmetry，但 CLI 当前不能配置。**
+8. **Symmetry/Internal 都是滑移面。** 二者使用相同约束算法但保留各自 kind；与 Wall 相邻的侧面会逐层生成并保留。
 9. **trial mesh 不等于最终 mesh。** 后者经过协调、模板重建、合并。
 10. **Prism/Hexa 顶点顺序不可随意改。**
 11. **停止可能是接受后停止。** 尤其 IsotropicHeightReached。
@@ -447,7 +449,7 @@ readCgnsSurface
 - 主要阶段有单元/集成测试；benchmark 和真实 CGNS 案例不在默认 CTest。
 - CLI 为所有 Wall 点设置同一 profile，没有逐点配置入口。
 - CLI 仅输出阶段级失败；结构化错误留在库 API。
-- 映射只支持 Wall/Far，核心模型另有 Symmetry/BoundaryLayerInterface。
+- 边界映射支持 Wall/Far/Symmetry/Internal；生成结果还使用 BoundaryLayerInterface 标记边界层外顶面。
 - `boundary_mesh_boundary_layer` 同时含规则生长、多法向、碰撞、远场构造，并直接编译 BLMesh 源码，耦合较强。
 - 没有 install/export/package 规则，尚未形成可安装 SDK。
 - 默认关闭警告；历史 docs 可能描述旧入口。
@@ -455,7 +457,7 @@ readCgnsSurface
 ## 改进建议
 
 1. 为 error variant 实现集中 formatter，并让 CLI 输出错误码、源实体和层号。
-2. 扩展边界配置 schema，支持 Symmetry、注释、region/zone 分离并保留旧格式测试。
+2. 若需扩展边界配置 schema，可增加注释和 region/zone 分离，同时保留当前四段格式的兼容测试。
 3. 将 BLMesh 适配和第三方源码封装为独立 target，明确版本。
 4. CI 覆盖 MSVC 与 GCC/Clang，并增加开启警告的 job；确认后记录官方平台矩阵。
 5. 增加 install/export 及消费方 smoke test。

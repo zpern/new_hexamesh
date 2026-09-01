@@ -38,9 +38,13 @@ namespace
         for (std::size_t index = 0; index < faces.size(); ++index)
         {
             mesh.faces.push_back(faces[index]);
+            const bool sliding =
+                other_kind == SurfaceBoundaryKind::Symmetry ||
+                other_kind == SurfaceBoundaryKind::Internal;
             mesh.face_tags.push_back({
                 index == 1 ? top_kind : other_kind,
-                index == 1 ? 10u : 20u});
+                index == 1 ? 10u :
+                    (sliding ? 20u + static_cast<std::uint32_t>(index) : 20u)});
         }
     }
 }
