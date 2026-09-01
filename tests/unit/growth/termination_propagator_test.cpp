@@ -132,6 +132,25 @@ int main()
     assert(actual_constraints.find(4)->allowed_layer_count == 4);
     assert((actual_pending == std::vector<SurfaceFaceId>{2}));
 
+    LayerStepResult zero_layer_candidates = actual_candidates;
+    zero_layer_candidates.layer = 1;
+    zero_layer_candidates.next_front.layer = 1;
+    zero_layer_candidates.stopped_faces = {{
+        0, 1, 1, FaceStopReason::Collision}};
+    auto zero_layer_constraints = initial.value();
+    std::vector<SurfaceFaceId> zero_layer_pending;
+    const auto zero_layer_filtered =
+        propagator.value().filterSingleHighEdgeCandidates(
+            front.value(),
+            zero_layer_candidates,
+            zero_layer_constraints,
+            1,
+            zero_layer_pending);
+    assert(zero_layer_filtered.hasValue());
+    assert(zero_layer_constraints.find(4)->allowed_layer_count == 10);
+    assert((zero_layer_filtered.value().next_front.source_face_ids ==
+            std::vector<SurfaceFaceId>{2, 4}));
+
     const SurfaceMesh delayed_mesh = makeDelayedSelectionMesh();
     const auto delayed_topology =
         SurfaceTopologyBuilder{}.build(delayed_mesh);

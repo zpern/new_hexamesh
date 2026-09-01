@@ -479,6 +479,8 @@ namespace boundary_mesh
                     {stopped_id, step.layer});
             const std::uint32_t completed_layer =
                 stop_cell.completed_layer;
+            if (completed_layer == 0)
+                continue;
 
             const NeighborEntry::EdgeRule *selected = nullptr;
             for (const NeighborEntry::EdgeRule &rule : entry->edge_rules)
