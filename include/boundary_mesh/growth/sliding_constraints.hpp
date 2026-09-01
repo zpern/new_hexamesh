@@ -7,6 +7,7 @@
 #include <boundary_mesh/core/result.hpp>
 #include <boundary_mesh/core/types.hpp>
 #include <boundary_mesh/growth/growth_direction_error.hpp>
+#include <boundary_mesh/growth/sliding_surface.hpp>
 
 namespace boundary_mesh
 {
@@ -24,6 +25,14 @@ namespace boundary_mesh
         std::vector<std::size_t> plane_indices;    // 线性独立平面在 planes 中的下标
     };
 
+    struct SlidingPositionProjection
+    {
+        Point3 position{Point3::Zero()};
+        std::uint32_t iterations{};
+        Scalar position_change{};
+        Scalar max_surface_residual{};
+    };
+
     class SlidingConstraintBuilder;
 
     /// 已验证的逐顶点对称平面约束，可重复应用到本层的生长方向。
@@ -39,6 +48,16 @@ namespace boundary_mesh
             std::size_t front_vertex_index,
             const Vector3 &raw_direction) const;
 
+        Result<Vector3, GrowthDirectionError> constrainDirection(
+            std::size_t front_vertex_index,
+            const Point3 &current_position,
+            const Vector3 &raw_direction) const;
+
+        Result<SlidingPositionProjection, GrowthDirectionError>
+        projectPosition(
+            std::size_t front_vertex_index,
+            const Point3 &candidate) const;
+
     private:
         friend class SlidingConstraintBuilder;
 
@@ -47,5 +66,6 @@ namespace boundary_mesh
         std::uint32_t layer_{};            // 约束所属的前沿层号
         std::vector<SlidingPlane> planes_; // 按 region_id 升序排列的有效平面
         std::vector<VertexSlidingConstraint> vertices_; // 与前沿顶点一一对应
+        SlidingSurfaceSet surfaces_;
     };
 }

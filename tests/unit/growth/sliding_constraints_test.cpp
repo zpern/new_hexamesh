@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <boundary_mesh/growth/sliding_constraint_builder.hpp>
+#include <boundary_mesh/growth/sliding_surface_builder.hpp>
 
 namespace
 {
@@ -261,6 +262,42 @@ int main()
     {
         return 17;
     }
+
+    const auto surfaces = SlidingSurfaceBuilder{}.build(mesh);
+    if (!surfaces.hasValue()) return 18;
+    const auto final_constraints = SlidingConstraintBuilder{}.build(
+        surfaces.value(), single_front, evaluation);
+    if (!final_constraints.hasValue()) return 19;
+    const Point3 current{0.0, 0.0, 0.0};
+    const auto constrained = final_constraints.value().constrainDirection(
+        0, current, Vector3{1.0, 2.0, 3.0});
+    if (!constrained.hasValue() ||
+        std::abs(constrained.value().y()) > 1e-12)
+        return 20;
+    const auto projected = final_constraints.value().projectPosition(
+        0, Point3{0.2, 0.4, 0.6});
+    if (!projected.hasValue() ||
+        std::abs(projected.value().position.y()) > 1e-12 ||
+        projected.value().iterations != 1)
+        return 21;
+
+    SurfaceMesh curved_mesh;
+    curved_mesh.vertices = {
+        Point3{0,0,0}, Point3{1,0,1}, Point3{0,1,1}};
+    curved_mesh.faces = {Triangle{{0,1,2}}};
+    curved_mesh.face_tags = {{SurfaceBoundaryKind::Internal, 50}};
+    const auto curved_surfaces = SlidingSurfaceBuilder{}.build(curved_mesh);
+    GrowthFront curved_front = makeFront({50});
+    curved_front.vertices[0].position = Point3{0.2,0.2,0.4};
+    const auto curved_constraints = SlidingConstraintBuilder{}.build(
+        curved_surfaces.value(), curved_front, evaluation);
+    const auto curved_position = curved_constraints.value().projectPosition(
+        0, Point3{0.2,0.2,1.4});
+    if (!curved_position.hasValue() ||
+        std::abs(curved_position.value().position.z() -
+                 curved_position.value().position.x() -
+                 curved_position.value().position.y()) > 1e-12)
+        return 22;
 
     return 0;
 }

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <variant>
+#include <vector>
 
 #include <boundary_mesh/core/types.hpp>
 #include <boundary_mesh/surface/face_evaluation.hpp>
@@ -50,6 +51,16 @@ namespace boundary_mesh
         VertexId source_vertex_id{};      // 对应的输入表面顶点编号
         std::uint32_t layer{};            // 发生错误的前沿层号
     };
+    struct SlidingProjectionNotConverged
+    {
+        std::size_t front_vertex_index{};
+        VertexId source_vertex_id{};
+        std::uint32_t layer{};
+        std::vector<std::uint32_t> region_ids;
+        std::uint32_t iterations{};
+        Scalar position_change{};
+        Scalar max_surface_residual{};
+    };
 
     using GrowthDirectionError = std::variant<
         DirectionInputMismatch,
@@ -58,5 +69,6 @@ namespace boundary_mesh
         SlidingInputMismatch,
         InvalidSlidingSurface,
         OverConstrainedGrowthVertex,
-        UndefinedConstrainedDirection>;
+        UndefinedConstrainedDirection,
+        SlidingProjectionNotConverged>;
 }

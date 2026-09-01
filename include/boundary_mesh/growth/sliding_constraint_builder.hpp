@@ -17,5 +17,11 @@ namespace boundary_mesh
             const SurfaceMesh &mesh,
             const GrowthFront &front,
             const FrontEvaluation &evaluation) const;
+
+        Result<SlidingConstraints, GrowthDirectionError>
+        build(
+            const SlidingSurfaceSet &surfaces,
+            const GrowthFront &front,
+            const FrontEvaluation &evaluation) const;
     };
 }
