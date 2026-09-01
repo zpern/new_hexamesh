@@ -4,6 +4,7 @@
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <string>
 #include <unordered_set>
@@ -39,6 +40,57 @@ namespace boundary_mesh
             cgsize_t element_id{}; // CGNS 1-based 元素编号
             SurfaceFace face; // 尚未加入输出数组的面
             SurfaceBoundaryTag tag; // 与面对应的边界标签
+        };
+
+        struct ExactPointKey
+        {
+            double x{};
+            double y{};
+            double z{};
+
+            bool operator==(const ExactPointKey &other) const noexcept
+            {
+                return x == other.x &&
+                       y == other.y &&
+                       z == other.z;
+            }
+        };
+
+        struct ExactPointKeyHash
+        {
+            std::size_t operator()(const ExactPointKey &key) const noexcept
+            {
+                std::size_t value = std::hash<double>{}(key.x);
+                const auto combine = [&](double component)
+                {
+                    const std::size_t component_hash =
+                        std::hash<double>{}(component);
+                    value ^= component_hash +
+                        std::size_t{0x9e3779b9} +
+                        (value << 6) + (value >> 2);
+                };
+                combine(key.y);
+                combine(key.z);
+                return value;
+            }
+        };
+
+        ExactPointKey exactPointKey(const Point3 &point) noexcept
+        {
+            const auto normalize_zero = [](double value)
+            {
+                return value == 0.0 ? 0.0 : value;
+            };
+            return {
+                normalize_zero(point.x()),
+                normalize_zero(point.y()),
+                normalize_zero(point.z())};
+        }
+
+        struct CoordinateOccurrence
+        {
+            std::uint32_t zone_id{};
+            std::size_t vertex_index{};
         };
 
         class DisjointSet
@@ -824,6 +876,38 @@ namespace boundary_mesh
                         second_vertices[
                             same_direction ? 1 : 0]);
                 }
+            }
+        }
+
+        std::unordered_map<
+            ExactPointKey,
+            std::vector<CoordinateOccurrence>,
+            ExactPointKeyHash> coordinate_occurrences;
+        for (const ZoneInfo &zone : zones)
+        {
+            for (std::size_t local_vertex = 0;
+                 local_vertex <
+                    static_cast<std::size_t>(zone.vertex_count);
+                 ++local_vertex)
+            {
+                const std::size_t vertex_index =
+                    zone.vertex_offset + local_vertex;
+                auto &matches = coordinate_occurrences[
+                    exactPointKey(mesh.vertices[vertex_index])];
+                const auto prior = std::find_if(
+                    matches.begin(),
+                    matches.end(),
+                    [&](const CoordinateOccurrence &candidate)
+                    {
+                        return candidate.zone_id != zone.id;
+                    });
+                if (prior != matches.end())
+                {
+                    connected_vertices.merge(
+                        prior->vertex_index,
+                        vertex_index);
+                }
+                matches.push_back({zone.id, vertex_index});
             }
         }
 

@@ -48,6 +48,12 @@ namespace boundary_mesh::test
         bool reverse_point_order = false,
         bool mismatch_coordinate = false);
 
+    void writeTwoZoneUnconnectedSurface(
+        const std::filesystem::path &path,
+        double second_shared_x = 1.0,
+        bool use_negative_zero = false,
+        bool duplicate_within_first_zone = false);
+
     void writeTwoZoneOrderVariantSurface(
         const std::filesystem::path &path,
         bool reverse_zone_order = false,

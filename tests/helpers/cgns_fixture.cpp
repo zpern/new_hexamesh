@@ -225,6 +225,70 @@ namespace boundary_mesh::test
         requireCgns(cg_close(file));
     }
 
+    void writeTwoZoneUnconnectedSurface(
+        const std::filesystem::path &path,
+        double second_shared_x,
+        bool use_negative_zero,
+        bool duplicate_within_first_zone)
+    {
+        int file{};
+        requireCgns(cg_open(
+            path.string().c_str(), CG_MODE_WRITE, &file));
+        int base{};
+        requireCgns(cg_base_write(file, "Surface", 2, 3, &base));
+
+        const cgsize_t first_size[3]{
+            duplicate_within_first_zone ? 5 : 4, 1, 0};
+        const cgsize_t second_size[3]{4, 1, 0};
+        int first_zone{};
+        int second_zone{};
+        requireCgns(cg_zone_write(
+            file, base, "1", first_size,
+            CGNS_ENUMV(Unstructured), &first_zone));
+        requireCgns(cg_zone_write(
+            file, base, "2", second_size,
+            CGNS_ENUMV(Unstructured), &second_zone));
+
+        const double first_x[5]{0.0, 1.0, 1.0, 0.0, 0.0};
+        const double first_y[5]{0.0, 0.0, 1.0, 1.0, 0.0};
+        const double first_z[5]{0.0, 0.0, 0.0, 0.0, 0.0};
+        const double second_x[4]{
+            second_shared_x, 2.0, 2.0, second_shared_x};
+        const double second_y[4]{0.0, 0.0, 1.0, 1.0};
+        const double second_z[4]{
+            use_negative_zero ? -0.0 : 0.0, 0.0, 0.0, 0.0};
+        const auto write_coordinates = [&] (
+            int zone,
+            const double *x,
+            const double *y,
+            const double *z)
+        {
+            int coordinate{};
+            requireCgns(cg_coord_write(
+                file, base, zone, CGNS_ENUMV(RealDouble),
+                "CoordinateX", x, &coordinate));
+            requireCgns(cg_coord_write(
+                file, base, zone, CGNS_ENUMV(RealDouble),
+                "CoordinateY", y, &coordinate));
+            requireCgns(cg_coord_write(
+                file, base, zone, CGNS_ENUMV(RealDouble),
+                "CoordinateZ", z, &coordinate));
+        };
+        write_coordinates(first_zone, first_x, first_y, first_z);
+        write_coordinates(second_zone, second_x, second_y, second_z);
+
+        const cgsize_t quad[4]{1, 2, 3, 4};
+        int section{};
+        requireCgns(cg_section_write(
+            file, base, first_zone, "Quad", CGNS_ENUMV(QUAD_4),
+            1, 1, 0, quad, &section));
+        requireCgns(cg_section_write(
+            file, base, second_zone, "Quad", CGNS_ENUMV(QUAD_4),
+            1, 1, 0, quad, &section));
+
+        requireCgns(cg_close(file));
+    }
+
     void writeClosedCubeSurface(
         const std::filesystem::path &path,
         bool reverse_zone_order,

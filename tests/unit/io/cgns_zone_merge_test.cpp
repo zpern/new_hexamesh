@@ -1,5 +1,6 @@
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -38,6 +39,18 @@ namespace
             },
             face);
     }
+
+    std::size_t sharedVertexCount(
+        const boundary_mesh::SurfaceFace &first,
+        const boundary_mesh::SurfaceFace &second)
+    {
+        const auto first_ids = vertexIds(first);
+        const auto second_ids = vertexIds(second);
+        std::size_t shared{};
+        for (const auto vertex_id : first_ids)
+            shared += second_ids.count(vertex_id);
+        return shared;
+    }
 }
 
 int main()
@@ -60,14 +73,50 @@ int main()
     assert(mesh.vertices.size() == 6);
     assert(mesh.faces.size() == 2);
 
-    const auto first = vertexIds(mesh.faces[0]);
-    const auto second = vertexIds(mesh.faces[1]);
-    std::size_t shared{};
-    for (const auto vertex_id : first)
+    assert(sharedVertexCount(mesh.faces[0], mesh.faces[1]) == 2);
+
+    const auto write_map = [&](const std::filesystem::path &fixture_path)
     {
-        shared += second.count(vertex_id);
-    }
-    assert(shared == 2);
+        std::ofstream(
+            fixture_path.parent_path() /
+            (fixture_path.stem().string() + ".bc.txt"))
+            << "Wall:\n1\n2\n";
+    };
+
+    const auto unconnected_path = directory / "unconnected.cgns";
+    boundary_mesh::test::writeTwoZoneUnconnectedSurface(
+        unconnected_path);
+    write_map(unconnected_path);
+    const auto unconnected = readCgnsSurface(unconnected_path);
+    assert(unconnected.hasValue());
+    assert(unconnected.value().vertices.size() == 6);
+    assert(sharedVertexCount(
+        unconnected.value().faces[0],
+        unconnected.value().faces[1]) == 2);
+
+    const auto near_path = directory / "near.cgns";
+    boundary_mesh::test::writeTwoZoneUnconnectedSurface(
+        near_path, std::nextafter(1.0, 2.0));
+    write_map(near_path);
+    const auto near = readCgnsSurface(near_path);
+    assert(near.hasValue());
+    assert(near.value().vertices.size() == 8);
+
+    const auto zero_path = directory / "signed-zero.cgns";
+    boundary_mesh::test::writeTwoZoneUnconnectedSurface(
+        zero_path, 1.0, true);
+    write_map(zero_path);
+    const auto zero = readCgnsSurface(zero_path);
+    assert(zero.hasValue());
+    assert(zero.value().vertices.size() == 6);
+
+    const auto same_zone_path = directory / "same-zone.cgns";
+    boundary_mesh::test::writeTwoZoneUnconnectedSurface(
+        same_zone_path, 1.0, false, true);
+    write_map(same_zone_path);
+    const auto same_zone = readCgnsSurface(same_zone_path);
+    assert(same_zone.hasValue());
+    assert(same_zone.value().vertices.size() == 7);
 
     const auto reversed_path = directory / "reversed.cgns";
     boundary_mesh::test::writeTwoZoneConnectedSurface(

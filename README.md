@@ -23,7 +23,7 @@
 
 ```text
 CGNS + .bc.txt + CLI 参数
- -> 读取、跨 Zone 合并显式连接顶点
+ -> 读取、合并显式连接及跨 Zone 精确重合顶点
  -> 验证闭合流形表面并构建拓扑
  -> 提取 Wall GrowthPatch -> 建立第 0 层 GrowthFront
  -> 可选多法向拆点/过渡
@@ -268,7 +268,7 @@ main -> runBoundaryMeshCommand
 
 ### `readCgnsSurface()`
 
-读取坐标和 TRI_3/QUAD_4。Zone 名必须解析成唯一正 uint32。各 Zone 顶点先独立保存，再按显式 `Abutting1to1` + `PointList/PointListDonor` 连接用并查集合并；连接点坐标要求完全相同。最终按 `(zone_id, element_id)` 排面并压缩点 ID。
+读取坐标和 TRI_3/QUAD_4。Zone 名必须解析成唯一正 uint32。各 Zone 顶点先独立保存，再按显式 `Abutting1to1` + `PointList/PointListDonor` 连接用并查集合并；连接点坐标要求完全相同。显式连接处理后，还会补充合并不同 Zone 间 X/Y/Z 完全相同的顶点（`+0/-0` 等价）；不做容差焊接，也不合并同一 Zone 内的重复坐标。最终按 `(zone_id, element_id)` 排面并压缩点 ID。
 
 内部 `readBoundaryConditionMap()` 要求所有 Zone 恰好映射一次，当前 `region_id=zone_id`。`writeLegacyVtk()` 重载支持表面/体网格。
 
@@ -342,7 +342,7 @@ main -> runBoundaryMeshCommand
 readCgnsSurface
  -> 校验 Base/维度/Zone/坐标/单元
  -> 读 .bc.txt
- -> 读各 Zone -> 显式连接合并 -> 稳定排序/压缩 ID
+ -> 读各 Zone -> 显式连接合并 -> 跨 Zone 精确坐标补充合并 -> 稳定排序/压缩 ID
  -> SurfaceTopologyBuilder::build
  -> 闭流形/方向检查和邻接生成
 ```
@@ -419,7 +419,7 @@ readCgnsSurface
 3. **拓扑是快照。** SurfaceMesh 改动后必须重建。
 4. **输入须闭合流形。** 每边恰有两面；仅 Wall patch 会产生 BoundaryEdge。
 5. **Zone 名须为唯一正 uint32。** `wall`、`Zone1` 均失败。
-6. **跨 Zone 不是容差焊接。** 需显式连接且坐标完全相等。
+6. **跨 Zone 不做容差焊接。** 显式连接优先；缺少连接时仅自动合并坐标完全相同的跨 Zone 顶点，同一 Zone 内不自动合并。
 7. **.bc.txt 须全覆盖且无注释。**
 8. **Symmetry/Internal 都是滑移面。** 二者使用相同约束算法但保留各自 kind；与 Wall 相邻的侧面会逐层生成并保留。
 9. **trial mesh 不等于最终 mesh。** 后者经过协调、模板重建、合并。
