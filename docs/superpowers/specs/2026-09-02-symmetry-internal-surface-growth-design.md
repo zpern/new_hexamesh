@@ -195,10 +195,11 @@ SurfaceBoundaryKind::Internal
 每次接受一层生长后，对上一层前沿的每条规范无向边：
 
 1. 求两个端点 `sliding_region_ids` 的交集；
-2. 对每个共同 region 查找其 `SlidingSurface`；
-3. 若两个端点均在本层成功生成上层点，则使用下层边和上层边建立 Quad；
-4. 侧面方向根据相邻体单元外向约定确定，而不是依赖输入边遍历顺序；
-5. 使用原始滑移类别和 region 标记：
+2. 按参考 `UpdateSymmetry()` 对交集排序并取最小 region ID 作为该侧面的唯一归属，避免在两个滑移面交线上生成几何重合的重复 Quad；
+3. 查找该 region 的 `SlidingSurface`；
+4. 若两个端点均在本层成功生成上层点，则使用下层边和上层边建立 Quad；
+5. 侧面方向根据相邻体单元外向约定确定，而不是依赖输入边遍历顺序；
+6. 使用原始滑移类别和 region 标记：
 
 ```cpp
 SurfaceBoundaryTag{original_kind, region_id}
