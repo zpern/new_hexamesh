@@ -182,9 +182,13 @@ Wall:
 2
 Far:
 3
+Symmetry:
+4
+Internal:
+5
 ```
 
-`case.cgns` 对应 `case.bc.txt`。每个 Zone 必须恰好出现一次；不支持注释、`Symmetry:` 或其他段名。
+`case.cgns` 对应 `case.bc.txt`。每个 Zone 必须恰好出现一次；不支持注释或其他未知段名。`Symmetry:` 和 `Internal:` 区域约束与 Wall 共点的边界层顶点沿对应表面滑移。
 
 ```powershell
 .\build\Release\boundary_mesh_cli.exe `

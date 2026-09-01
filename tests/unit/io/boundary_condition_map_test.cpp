@@ -56,6 +56,22 @@ int main()
         return 3;
     }
 
+    if (!writeText(
+            path,
+            "Internal:\n4\nSymmetry:\n3\nFar:\n1\nWall:\n2\n"))
+    {
+        return 11;
+    }
+    const auto mixed = readBoundaryConditionMap(path, {1, 2, 3, 4});
+    if (!mixed.hasValue() ||
+        mixed.value().find(1)->kind != SurfaceBoundaryKind::Farfield ||
+        mixed.value().find(2)->kind != SurfaceBoundaryKind::Wall ||
+        mixed.value().find(3)->kind != SurfaceBoundaryKind::Symmetry ||
+        mixed.value().find(4)->kind != SurfaceBoundaryKind::Internal)
+    {
+        return 12;
+    }
+
     const auto missing_file = readBoundaryConditionMap(
         root / "missing.bc.txt", {1});
     if (!hasError(

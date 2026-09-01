@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -52,6 +53,16 @@ namespace boundary_mesh
             }
             return Result<std::uint32_t, BoundaryMapError>::success(value);
         }
+
+        std::optional<SurfaceBoundaryKind> sectionKind(
+            const std::string &name)
+        {
+            if (name == "Far:") return SurfaceBoundaryKind::Farfield;
+            if (name == "Wall:") return SurfaceBoundaryKind::Wall;
+            if (name == "Symmetry:") return SurfaceBoundaryKind::Symmetry;
+            if (name == "Internal:") return SurfaceBoundaryKind::Internal;
+            return std::nullopt;
+        }
     }
 
     const BoundaryZoneEntry *BoundaryZoneMap::find(
@@ -92,12 +103,10 @@ namespace boundary_mesh
             ++line_number;
             const std::string line = trimAscii(raw_line);
             if (line.empty()) continue;
-            if (line == "Far:" || line == "Wall:")
+            if (const auto kind = sectionKind(line))
             {
                 has_section = true;
-                current_kind = line == "Far:"
-                    ? SurfaceBoundaryKind::Farfield
-                    : SurfaceBoundaryKind::Wall;
+                current_kind = *kind;
                 continue;
             }
             if (line.find(':') != std::string::npos)
