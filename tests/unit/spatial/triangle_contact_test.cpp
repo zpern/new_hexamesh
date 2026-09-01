@@ -303,6 +303,89 @@ int main()
         3);
     assert(!hasIllegalTriangleContact(oblique_edge_a, oblique_edge_b).value());
 
+    const Point3 plane_center_bottom{
+        -58.0, -19.0, 4.64708e-10};
+    const Point3 plane_center_top{
+        -58.0, -18.8772, -6.39795e-06};
+    const std::array<Point3, 4> plane_left_side{{
+        {-58.0, -18.8889, -2.05136},
+        plane_center_bottom,
+        plane_center_top,
+        {-58.0, -18.7703, -2.03684}}};
+    const std::array<CollisionVertexKey, 4> plane_left_keys{{
+        {1844, 0, 0}, {1843, 0, 0},
+        {1843, 1, 0}, {1844, 1, 0}}};
+    const CollisionTriangle plane_left_split = makeCollisionTriangle(
+        {{plane_left_side[0],
+          plane_left_side[1],
+          plane_left_side[2]}},
+        {{plane_left_keys[0],
+          plane_left_keys[1],
+          plane_left_keys[2]}},
+        plane_left_side,
+        plane_left_keys,
+        4);
+
+    const std::array<Point3, 4> plane_right_side{{
+        plane_center_bottom,
+        {-58.0, -18.9, 2.05},
+        {-58.0, -18.7705, 2.03684},
+        plane_center_top}};
+    const std::array<CollisionVertexKey, 4> plane_right_keys{{
+        {1843, 0, 0}, {2048, 0, 0},
+        {2048, 1, 0}, {1843, 1, 0}}};
+    const CollisionTriangle plane_right_split = makeCollisionTriangle(
+        {{plane_right_side[0],
+          plane_right_side[2],
+          plane_right_side[3]}},
+        {{plane_right_keys[0],
+          plane_right_keys[2],
+          plane_right_keys[3]}},
+        plane_right_side,
+        plane_right_keys,
+        4);
+    if (hasIllegalTriangleContact(
+            plane_left_split,
+            plane_right_split)
+            .value())
+    {
+        return 2;
+    }
+
+    std::array<Point3, 4> folded_right_side = plane_right_side;
+    folded_right_side[1] = {-58.0, -18.9, -0.25};
+    folded_right_side[2] = {-58.0, -18.7705, -0.2};
+    const CollisionTriangle folded_right_split = makeCollisionTriangle(
+        {{folded_right_side[0],
+          folded_right_side[2],
+          folded_right_side[3]}},
+        {{plane_right_keys[0],
+          plane_right_keys[2],
+          plane_right_keys[3]}},
+        folded_right_side,
+        plane_right_keys,
+        4);
+    if (!hasIllegalTriangleContact(
+             plane_left_split,
+             folded_right_split)
+             .value())
+    {
+        return 3;
+    }
+
+    CollisionTriangle unrelated_plane_overlap = plane_right_split;
+    unrelated_plane_overlap.vertex_keys =
+        {{{3000, 0}, {3001, 1}, {3002, 1}}};
+    unrelated_plane_overlap.boundary_vertex_keys =
+        {{{3000, 0}, {3001, 0}, {3002, 1}, {3003, 1}}};
+    if (!hasIllegalTriangleContact(
+             plane_left_split,
+             unrelated_plane_overlap)
+             .value())
+    {
+        return 4;
+    }
+
     const std::array<Point3, 4> stable_side_points{{
         {277.05828857421875,
          -8.6681995391845703,

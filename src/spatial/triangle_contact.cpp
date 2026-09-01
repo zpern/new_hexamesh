@@ -24,6 +24,7 @@ namespace boundary_mesh
         {
             TriangleContactKind kind{TriangleContactKind::Disjoint};
             std::vector<Point3> points;
+            Scalar coplanar_overlap_area{};
         };
 
         enum class SharedFeatureKind
@@ -37,6 +38,7 @@ namespace boundary_mesh
         struct SharedFeature
         {
             SharedFeatureKind kind{SharedFeatureKind::None};
+            std::size_t same_count{};
             std::vector<Point3> points;
             std::array<Point3, 4> face_points{};
             std::uint8_t face_point_count{};
@@ -371,8 +373,10 @@ namespace boundary_mesh
                     project(second[1], axis),
                     project(second[2], axis)}};
                 polygon = clipPolygon(std::move(polygon), clip);
+                evidence.coplanar_overlap_area = polygonArea(polygon);
                 evidence.kind =
-                    polygon.size() >= 3 && polygonArea(polygon) > Scalar{0}
+                    polygon.size() >= 3 &&
+                            evidence.coplanar_overlap_area > Scalar{0}
                     ? TriangleContactKind::CoplanarOverlap
                     : (distinctPointCount(polygon) >= 2
                            ? TriangleContactKind::EdgeTouch
@@ -515,7 +519,87 @@ namespace boundary_mesh
             {
                 feature.kind = SharedFeatureKind::Points;
             }
+            feature.same_count = shared_keys.size();
             return feature;
+        }
+
+        Scalar maximumBoundaryEdgeSquared(
+            const CollisionTriangle &triangle)
+        {
+            const std::size_t count = boundaryVertexCount(triangle);
+            Scalar maximum = Scalar{0};
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                const Scalar squared =
+                    (boundaryPoint(triangle, (index + 1) % count) -
+                     boundaryPoint(triangle, index))
+                        .squaredNorm();
+                if (!std::isfinite(squared))
+                    return std::numeric_limits<Scalar>::infinity();
+                maximum = std::max(maximum, squared);
+            }
+            return maximum;
+        }
+
+        Scalar pointSegmentDistanceSquared(
+            const Point3 &point,
+            const Point3 &first,
+            const Point3 &second)
+        {
+            const Vector3 edge = second - first;
+            const Scalar squared_length = edge.squaredNorm();
+            if (!std::isfinite(squared_length) ||
+                squared_length <= Scalar{0})
+                return std::numeric_limits<Scalar>::infinity();
+            const Scalar parameter = std::clamp(
+                (point - first).dot(edge) / squared_length,
+                Scalar{0}, Scalar{1});
+            return (point - (first + parameter * edge)).squaredNorm();
+        }
+
+        bool isMachineScaleSharedEdgeResidue(
+            const CollisionTriangle &first,
+            const CollisionTriangle &second,
+            const SharedFeature &feature,
+            const TriangleContactEvidence &evidence)
+        {
+            if (boundaryVertexCount(first) != 4 ||
+                boundaryVertexCount(second) != 4 ||
+                feature.kind != SharedFeatureKind::Segment ||
+                feature.same_count != 2 ||
+                feature.points.size() != 2 ||
+                evidence.kind != TriangleContactKind::CoplanarOverlap)
+                return false;
+
+            const Scalar scale_squared = std::max(
+                maximumBoundaryEdgeSquared(first),
+                maximumBoundaryEdgeSquared(second));
+            if (!std::isfinite(scale_squared) || scale_squared <= Scalar{0})
+                return false;
+            constexpr Scalar multiplier = Scalar{128};
+            const Scalar epsilon =
+                std::numeric_limits<Scalar>::epsilon();
+            const Scalar area_tolerance =
+                multiplier * epsilon * scale_squared;
+            const Scalar length_tolerance_squared =
+                multiplier * multiplier * epsilon * epsilon *
+                scale_squared;
+            if (!std::isfinite(evidence.coplanar_overlap_area) ||
+                evidence.coplanar_overlap_area > area_tolerance)
+                return false;
+            return std::all_of(
+                evidence.points.begin(), evidence.points.end(),
+                [&](const Point3 &point)
+                {
+                    const Scalar distance_squared =
+                        pointSegmentDistanceSquared(
+                            point,
+                            feature.points[0],
+                            feature.points[1]);
+                    return std::isfinite(distance_squared) &&
+                           distance_squared <=
+                               length_tolerance_squared;
+                });
         }
 
         bool samePoint(const Point3 &left, const Point3 &right)
@@ -810,12 +894,19 @@ namespace boundary_mesh
                 SpatialError::InvalidTopologyReference);
         }
 
+        const SharedFeature feature = makeSharedFeature(first, second);
+        if (feature.kind == SharedFeatureKind::Face &&
+            first_count == 4 && second_count == 4 &&
+            feature.same_count == 4)
+        {
+            return Result<bool, SpatialError>::success(false);
+        }
+
         const auto evidence = contactEvidence(first.points, second.points);
         if (!evidence.hasValue())
         {
             return Result<bool, SpatialError>::failure(evidence.error());
         }
-        const SharedFeature feature = makeSharedFeature(first, second);
         if (evidence.value().kind == TriangleContactKind::Disjoint)
         {
             return Result<bool, SpatialError>::success(false);
@@ -842,6 +933,9 @@ namespace boundary_mesh
         if (shared.count == 2 &&
             feature.kind == SharedFeatureKind::Segment)
         {
+            if (isMachineScaleSharedEdgeResidue(
+                    first, second, feature, evidence.value()))
+                return Result<bool, SpatialError>::success(false);
             return Result<bool, SpatialError>::success(
                 evidence.value().kind ==
                 TriangleContactKind::CoplanarOverlap);
