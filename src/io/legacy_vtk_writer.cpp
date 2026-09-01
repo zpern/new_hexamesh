@@ -55,7 +55,8 @@ namespace boundary_mesh
         VtkWriteStatus writeCells(
             const std::filesystem::path &path,
             const std::vector<Point3> &vertices,
-            const std::vector<CellView> &cells)
+            const std::vector<CellView> &cells,
+            const std::vector<CellMetadata> *metadata)
         {
             const std::uint64_t maximum =
                 std::numeric_limits<std::uint32_t>::max();
@@ -92,6 +93,14 @@ namespace boundary_mesh
                              vertex_id});
                     }
                 }
+            }
+            if (metadata != nullptr && metadata->size() != cells.size())
+            {
+                return VtkWriteStatus::failure(
+                    {VtkWriteErrorCode::InvalidCellMetadataCount,
+                     path,
+                     cells.size(),
+                     0});
             }
 
             std::filesystem::path temporary = path;
@@ -136,6 +145,22 @@ namespace boundary_mesh
             {
                 output << cell.vtk_type << '\n';
             }
+            if (metadata != nullptr)
+            {
+                output << "CELL_DATA " << cells.size() << '\n'
+                       << "SCALARS source_face_id unsigned_int 1\n"
+                       << "LOOKUP_TABLE default\n";
+                for (const CellMetadata &value : *metadata)
+                    output << value.source_face_id << '\n';
+                output << "SCALARS layer unsigned_int 1\n"
+                       << "LOOKUP_TABLE default\n";
+                for (const CellMetadata &value : *metadata)
+                    output << value.layer << '\n';
+                output << "SCALARS cell_role int 1\n"
+                       << "LOOKUP_TABLE default\n";
+                for (const CellMetadata &value : *metadata)
+                    output << static_cast<int>(value.role) << '\n';
+            }
             output.close();
             if (!output)
             {
@@ -178,7 +203,7 @@ namespace boundary_mesh
         {
             cells.push_back(surfaceCell(face));
         }
-        return writeCells(path, mesh.vertices, cells);
+        return writeCells(path, mesh.vertices, cells, nullptr);
     }
 
     VtkWriteStatus writeLegacyVtk(
@@ -191,6 +216,6 @@ namespace boundary_mesh
         {
             cells.push_back(volumeCell(cell));
         }
-        return writeCells(path, mesh.vertices, cells);
+        return writeCells(path, mesh.vertices, cells, &mesh.metadata);
     }
 }

@@ -52,6 +52,11 @@ int main()
         Pyramid{{0, 1, 2, 3, 4}},
         Prism{{0, 1, 2, 4, 5, 6}},
         Hexa{{0, 1, 2, 3, 4, 5, 6, 7}}};
+    volume.metadata = {
+        {CellRole::RegularLayer, 11, 1},
+        {CellRole::ReservedLayerTransition, 12, 2},
+        {CellRole::MultiNormalTransition, 13, 3},
+        {CellRole::RegularLayer, 14, 4}};
 
     SurfaceMesh surface;
     surface.vertices = volume.vertices;
@@ -73,7 +78,20 @@ int main()
     const std::string surface_text = fileText(surface_path);
     if (volume_text.find("old content") != std::string::npos ||
         volume_text.find("ASCII") == std::string::npos ||
-        volume_text.find("CELL_DATA") != std::string::npos ||
+        volume_text.find("CELL_DATA 4\n") == std::string::npos ||
+        volume_text.find(
+            "SCALARS source_face_id unsigned_int 1\n"
+            "LOOKUP_TABLE default\n11\n12\n13\n14\n") ==
+            std::string::npos ||
+        volume_text.find(
+            "SCALARS layer unsigned_int 1\n"
+            "LOOKUP_TABLE default\n1\n2\n3\n4\n") ==
+            std::string::npos ||
+        volume_text.find(
+            "SCALARS cell_role int 1\n"
+            "LOOKUP_TABLE default\n0\n2\n1\n0\n") ==
+            std::string::npos ||
+        surface_text.find("CELL_DATA") != std::string::npos ||
         volume_text.find("POINT_DATA") != std::string::npos ||
         cellTypes(volume_text) != std::vector<int>({10, 14, 13, 12}) ||
         cellTypes(surface_text) != std::vector<int>({5, 9}))
@@ -105,12 +123,30 @@ int main()
         return 5;
     }
 
+    VolumeMesh invalid_metadata = volume;
+    invalid_metadata.metadata.pop_back();
+    const std::filesystem::path invalid_metadata_path =
+        root / "invalid_metadata.vtk";
+    {
+        std::ofstream sentinel(invalid_metadata_path);
+        sentinel << "preserve this content";
+    }
+    const auto invalid_metadata_status = writeLegacyVtk(
+        invalid_metadata_path, invalid_metadata);
+    if (invalid_metadata_status.hasValue() ||
+        invalid_metadata_status.error().code !=
+            VtkWriteErrorCode::InvalidCellMetadataCount ||
+        fileText(invalid_metadata_path) != "preserve this content")
+    {
+        return 6;
+    }
+
     const auto open_failure = writeLegacyVtk(
         root / "missing" / "output.vtk", surface);
     if (open_failure.hasValue() ||
         open_failure.error().code != VtkWriteErrorCode::FileOpenFailure)
     {
-        return 6;
+        return 7;
     }
 
     std::error_code cleanup_error;

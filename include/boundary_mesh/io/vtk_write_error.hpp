@@ -11,6 +11,7 @@ namespace boundary_mesh
     {
         FileOpenFailure,        // 无法创建临时输出文件
         InvalidVertexReference, // 单元引用了不存在的顶点
+        InvalidCellMetadataCount, // 体单元与元数据数量不一致
         CountOverflow,          // Legacy VTK 连接计数不可表示
         WriteFailure,           // 流写入或关闭失败
         ReplaceFailure          // 无法用完整临时文件替换目标
