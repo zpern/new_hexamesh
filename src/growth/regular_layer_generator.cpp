@@ -16,6 +16,7 @@
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
+#include <boundary_mesh/growth/sliding_surface_builder.hpp>
 #include <boundary_mesh/growth/termination_propagator.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
 
@@ -451,6 +452,10 @@ namespace boundary_mesh
         }
 
         ExposedBoundaryTracker exposed_boundary;
+        const auto sliding_surfaces = SlidingSurfaceBuilder{}.build(surface_mesh);
+        if (!sliding_surfaces.hasValue())
+            return GrowthResult::failure(GrowthDirectionFailure{
+                current_front.layer + 1, sliding_surfaces.error()});
         while (!current_front.faces.empty())
         {
             const std::uint32_t target_layer =
@@ -467,7 +472,8 @@ namespace boundary_mesh
             }
 
             const auto step_result = RegularLayerStepper{}.step(
-                current_front, profile_table, constraints, options);
+                current_front, profile_table, constraints,
+                sliding_surfaces.value(), options);
             if (!step_result.hasValue())
             {
                 return GrowthResult::failure(step_result.error());

@@ -12,6 +12,7 @@
 #include <boundary_mesh/growth/growth_direction.hpp>
 #include <boundary_mesh/growth/growth_field_smoother.hpp>
 #include <boundary_mesh/growth/isotropic_stop_evaluator.hpp>
+#include <boundary_mesh/growth/sliding_constraint_builder.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
@@ -144,6 +145,22 @@ namespace boundary_mesh
         const GrowthFront &current_front,
         const GrowthProfileTable &profiles,
         const FaceLayerConstraintTable &constraints,
+        const RegularLayerGrowthOptions &options) const
+    {
+        GrowthFront unconstrained = current_front;
+        for (GrowthFrontVertex &vertex : unconstrained.vertices)
+            vertex.boundary.sliding_region_ids.clear();
+        return step(
+            unconstrained, profiles, constraints,
+            SlidingSurfaceSet{}, options);
+    }
+
+    Result<LayerStepResult, RegularLayerGrowthError>
+    RegularLayerStepper::step(
+        const GrowthFront &current_front,
+        const GrowthProfileTable &profiles,
+        const FaceLayerConstraintTable &constraints,
+        const SlidingSurfaceSet &sliding_surfaces,
         const RegularLayerGrowthOptions &options) const
     {
         using StepResult =
@@ -344,8 +361,16 @@ namespace boundary_mesh
         }
         output.smoothing_diagnostics = field_result.value().diagnostics;
 
+        const auto sliding = SlidingConstraintBuilder{}.build(
+            sliding_surfaces, eligible.front, front_evaluation.value());
+        if (!sliding.hasValue())
+            return StepResult::failure(GrowthDirectionFailure{
+                target_layer, sliding.error()});
+
         GrowthFront candidate_front = eligible.front;
         candidate_front.layer = target_layer;
+        std::vector<bool> projection_failed(
+            candidate_front.vertices.size(), false);
         for (std::size_t vertex_index = 0;
              vertex_index < candidate_front.vertices.size();
              ++vertex_index)
@@ -362,9 +387,26 @@ namespace boundary_mesh
                 raw_direction.visibility_cosine;
             candidate_vertex.complex_corner =
                 raw_direction.complex_corner;
-            candidate_vertex.position +=
-                candidate_vertex.actual_height *
-                candidate_vertex.direction;
+            const auto constrained = sliding.value().constrainDirection(
+                vertex_index,
+                eligible.front.vertices[vertex_index].position,
+                candidate_vertex.direction);
+            if (!constrained.hasValue())
+            {
+                projection_failed[vertex_index] = true;
+                continue;
+            }
+            candidate_vertex.direction = constrained.value();
+            const Point3 raw_candidate = candidate_vertex.position +
+                candidate_vertex.actual_height * candidate_vertex.direction;
+            const auto projected = sliding.value().projectPosition(
+                vertex_index, raw_candidate);
+            if (!projected.hasValue())
+            {
+                projection_failed[vertex_index] = true;
+                continue;
+            }
+            candidate_vertex.position = projected.value().position;
             if (!candidate_front.vertices[vertex_index].position.allFinite())
             {
                 return StepResult::failure(
@@ -389,6 +431,22 @@ namespace boundary_mesh
              eligible_face_index < eligible.front.faces.size();
              ++eligible_face_index)
         {
+            bool failed_projection = false;
+            for (const VertexId vertex_id :
+                 faceVertexIds(eligible.front.faces[eligible_face_index]))
+                failed_projection = failed_projection ||
+                    projection_failed[static_cast<std::size_t>(vertex_id)];
+            if (failed_projection)
+            {
+                const std::size_t previous_face_index =
+                    eligible.previous_face_indices[eligible_face_index];
+                output.stopped_faces.push_back(FaceStopEvent{
+                    previous_face_index,
+                    current_front.source_face_ids[previous_face_index],
+                    target_layer,
+                    FaceStopReason::SlidingProjectionFailure});
+                continue;
+            }
             const auto quality = std::visit(
                 [&](const auto &face)
                     -> Result<VolumeCellEvaluation,

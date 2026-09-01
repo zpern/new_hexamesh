@@ -5,6 +5,7 @@
 #include <boundary_mesh/growth/growth_profile.hpp>
 #include <boundary_mesh/growth/regular_layer_growth.hpp>
 #include <boundary_mesh/growth/regular_layer_growth_error.hpp>
+#include <boundary_mesh/growth/sliding_surface.hpp>
 
 namespace boundary_mesh
 {
@@ -17,6 +18,14 @@ namespace boundary_mesh
             const GrowthFront &current_front,
             const GrowthProfileTable &profiles,
             const FaceLayerConstraintTable &constraints,
+            const RegularLayerGrowthOptions &options = {}) const;
+
+        Result<LayerStepResult, RegularLayerGrowthError>
+        step(
+            const GrowthFront &current_front,
+            const GrowthProfileTable &profiles,
+            const FaceLayerConstraintTable &constraints,
+            const SlidingSurfaceSet &sliding_surfaces,
             const RegularLayerGrowthOptions &options = {}) const;
     };
 }

@@ -203,10 +203,10 @@ namespace boundary_mesh
                 << "[--output-prefix PATH]\n";
         }
 
-        std::array<std::size_t, 9> stopReasonCounts(
+        std::array<std::size_t, 10> stopReasonCounts(
             const RegularLayerGrowthResult &growth)
         {
-            std::array<std::size_t, 9> counts{};
+            std::array<std::size_t, 10> counts{};
             for (const FaceGrowthRecord &face : growth.faces)
             {
                 ++counts[static_cast<std::size_t>(face.stop_reason)];
@@ -226,8 +226,9 @@ namespace boundary_mesh
                    << "stop_locally_inverted_candidate=" << counts[4] << '\n'
                    << "stop_skewness_exceeded=" << counts[5] << '\n'
                    << "stop_collision=" << counts[6] << '\n'
-                   << "stop_neighbor_layer_constraint=" << counts[7] << '\n'
-                   << "stop_isotropic_height=" << counts[8] << '\n';
+                   << "stop_sliding_projection=" << counts[7] << '\n'
+                   << "stop_neighbor_layer_constraint=" << counts[8] << '\n'
+                   << "stop_isotropic_height=" << counts[9] << '\n';
         }
     }
 

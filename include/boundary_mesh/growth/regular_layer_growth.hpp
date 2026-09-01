@@ -29,6 +29,7 @@ namespace boundary_mesh
         LocallyInvertedCandidate, // 候选单元局部翻转
         SkewnessExceeded,         // 候选单元偏斜度超过阈值
         Collision,                // 候选单元发生非法几何接触
+        SlidingProjectionFailure, // 滑移方向或最终位置投影失败
         NeighborLayerConstraint,  // 因共享边邻域层数上限传播而提前停止
         IsotropicHeightReached    // 当前单元已接受，达到各向同性阈值后停止
     };
