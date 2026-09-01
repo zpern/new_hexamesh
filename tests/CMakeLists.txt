@@ -413,6 +413,19 @@ add_test(
     COMMAND boundary_mesh_sliding_constraints_test
 )
 
+add_executable(
+    boundary_mesh_sliding_surface_builder_test
+    unit/growth/sliding_surface_builder_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_sliding_surface_builder_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_sliding_surface_builder_test
+    COMMAND boundary_mesh_sliding_surface_builder_test
+)
+
 # 15：阶段 03 的公开接口流水线集成测试
 add_executable(
     boundary_mesh_growth_front_pipeline_test
