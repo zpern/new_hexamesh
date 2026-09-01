@@ -635,6 +635,19 @@ add_test(
     COMMAND boundary_mesh_spatial_binary_aabb_tree_test
 )
 
+add_executable(
+    boundary_mesh_triangle_surface_index_test
+    unit/spatial/triangle_surface_index_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_triangle_surface_index_test
+    PRIVATE BoundaryMesh::Spatial
+)
+add_test(
+    NAME boundary_mesh_triangle_surface_index_test
+    COMMAND boundary_mesh_triangle_surface_index_test
+)
+
 # 30：三角形接触分类及合法共享拓扑过滤
 add_executable(
     boundary_mesh_spatial_triangle_contact_test

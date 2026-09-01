@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 #include <boundary_mesh/core/result.hpp>
@@ -17,6 +18,11 @@ namespace boundary_mesh
 
         std::vector<std::size_t> query(
             const Aabb &bounds) const;
+
+        std::size_t nearest(
+            const Point3 &point,
+            const std::function<Scalar(std::size_t)> &squared_distance,
+            Scalar &best_squared_distance) const;
 
     private:
         struct Node

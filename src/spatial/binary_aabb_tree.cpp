@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <numeric>
+#include <queue>
 
 namespace boundary_mesh
 {
@@ -24,6 +25,12 @@ namespace boundary_mesh
             return {
                 left.minimum.cwiseMin(right.minimum),
                 left.maximum.cwiseMax(right.maximum)};
+        }
+
+        Scalar squaredDistance(const Aabb &box, const Point3 &point)
+        {
+            return (point - point.cwiseMax(box.minimum).cwiseMin(box.maximum))
+                .squaredNorm();
         }
     }
 
@@ -186,5 +193,58 @@ namespace boundary_mesh
             std::unique(result.begin(), result.end()),
             result.end());
         return result;
+    }
+
+    std::size_t BinaryAabbTree::nearest(
+        const Point3 &point,
+        const std::function<Scalar(std::size_t)> &squared_distance,
+        Scalar &best_squared_distance) const
+    {
+        if (nodes_.empty() || !point.allFinite())
+        {
+            best_squared_distance = std::numeric_limits<Scalar>::infinity();
+            return std::numeric_limits<std::size_t>::max();
+        }
+        using QueueEntry = std::pair<Scalar, std::size_t>;
+        std::priority_queue<
+            QueueEntry,
+            std::vector<QueueEntry>,
+            std::greater<QueueEntry>> queue;
+        queue.push({squaredDistance(nodes_[0].bounds, point), 0});
+        std::size_t best = std::numeric_limits<std::size_t>::max();
+        best_squared_distance = std::numeric_limits<Scalar>::infinity();
+        while (!queue.empty())
+        {
+            const auto [lower_bound, node_index] = queue.top();
+            queue.pop();
+            if (lower_bound > best_squared_distance) break;
+            const Node &node = nodes_[node_index];
+            if (node.leaf)
+            {
+                for (std::size_t offset = 0; offset < node.count; ++offset)
+                {
+                    const std::size_t primitive =
+                        primitive_indices_[node.first + offset];
+                    const Scalar distance = squared_distance(primitive);
+                    if (distance < best_squared_distance ||
+                        (distance == best_squared_distance && primitive < best))
+                    {
+                        best = primitive;
+                        best_squared_distance = distance;
+                    }
+                }
+            }
+            else
+            {
+                for (const std::size_t child : {node.left, node.right})
+                {
+                    const Scalar distance =
+                        squaredDistance(nodes_[child].bounds, point);
+                    if (distance <= best_squared_distance)
+                        queue.push({distance, child});
+                }
+            }
+        }
+        return best;
     }
 }
