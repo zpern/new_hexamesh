@@ -267,9 +267,8 @@ namespace boundary_mesh
                                 output[incident].layers.trial_layers <=
                                     output[face_index].layers.trial_layers)
                                 continue;
-                            corner_violations.push_back({
-                                vertex,
-                                output[incident].layers.source_face_id});
+                            corner_violations.push_back({vertex,
+                                                         output[incident].layers.source_face_id});
                             break;
                         }
                     }
@@ -410,6 +409,7 @@ namespace boundary_mesh
         return exposed;
     }
 
+    // no multi-normal transition
     Result<ReservedLayerTransitionResult, ReservedLayerTransitionError>
     generateReservedLayerTransition(
         const SurfaceMesh &surface_mesh,
@@ -598,6 +598,7 @@ namespace boundary_mesh
         const auto trial_profiles = makeReservedTrialProfiles(profiles);
         if (!trial_profiles.hasValue())
             return PipelineResult::failure(trial_profiles.error());
+
         RegularLayerGrowthOptions trial_options = options;
         trial_options.enforce_single_high_edge = true;
         auto trial = generateRegularLayers(
