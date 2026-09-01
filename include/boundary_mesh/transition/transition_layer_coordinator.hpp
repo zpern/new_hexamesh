@@ -19,6 +19,7 @@ namespace boundary_mesh
         FaceLayerState layers;
         std::optional<std::size_t> high_edge_local_index;
         std::optional<std::size_t> second_high_edge_local_index;
+        std::optional<VertexId> third_continuing_vertex_id;
     };
 
     struct MissingTransitionFaceState

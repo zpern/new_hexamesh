@@ -121,6 +121,21 @@ namespace boundary_mesh
             return found == faces.end() ? nullptr : &*found;
         }
 
+        template <std::size_t Size>
+        std::optional<std::size_t> localVertexIndex(
+            const std::array<VertexId, Size> &ids,
+            const std::optional<VertexId> vertex_id)
+        {
+            if (!vertex_id.has_value())
+                return std::nullopt;
+            const auto found = std::find(
+                ids.begin(), ids.end(), *vertex_id);
+            if (found == ids.end())
+                return std::nullopt;
+            return static_cast<std::size_t>(
+                std::distance(ids.begin(), found));
+        }
+
         Result<std::vector<CoordinatedTransitionFace>,
                TransitionCoordinationError>
         coordinateFront(
@@ -141,6 +156,7 @@ namespace boundary_mesh
             };
             std::map<std::pair<VertexId, VertexId>, std::vector<EdgeUse>>
                 edge_uses;
+            std::map<VertexId, std::vector<std::size_t>> vertex_uses;
             std::vector<CoordinatedTransitionFace> output(
                 front.faces.size());
             for (std::size_t face_index = 0;
@@ -162,6 +178,8 @@ namespace boundary_mesh
                 std::visit(
                     [&](const auto &face)
                     {
+                        for (const VertexId vertex : face.vertex_ids)
+                            vertex_uses[vertex].push_back(face_index);
                         for (std::size_t edge = 0;
                              edge < face.vertex_ids.size();
                              ++edge)
@@ -228,6 +246,48 @@ namespace boundary_mesh
                 if (edges.size() == 2)
                     output[face_index].second_high_edge_local_index =
                         edges[1];
+                if (quad && edges.size() == 1)
+                {
+                    const Quad &face = std::get<Quad>(
+                        front.faces[face_index]);
+                    const std::size_t edge = edges[0];
+                    std::vector<std::pair<VertexId, SurfaceFaceId>>
+                        corner_violations;
+                    for (const std::size_t local : {
+                             (edge + 2) % 4,
+                             (edge + 3) % 4})
+                    {
+                        const VertexId vertex = face.vertex_ids[local];
+                        const auto uses = vertex_uses.find(vertex);
+                        if (uses == vertex_uses.end())
+                            continue;
+                        for (const std::size_t incident : uses->second)
+                        {
+                            if (incident == face_index ||
+                                output[incident].layers.trial_layers <=
+                                    output[face_index].layers.trial_layers)
+                                continue;
+                            corner_violations.push_back({
+                                vertex,
+                                output[incident].layers.source_face_id});
+                            break;
+                        }
+                    }
+                    if (corner_violations.size() == 1)
+                    {
+                        output[face_index].third_continuing_vertex_id =
+                            corner_violations[0].first;
+                    }
+                    else if (corner_violations.size() > 1)
+                    {
+                        return ResultType::failure(
+                            TransitionCornerLayerViolation{
+                                output[face_index].layers.source_face_id,
+                                edge,
+                                corner_violations[0].first,
+                                corner_violations[0].second});
+                    }
+                }
             }
             return ResultType::success(std::move(output));
         }
@@ -442,6 +502,17 @@ namespace boundary_mesh
                             state->high_edge_local_index;
                         input.second_high_edge_local_index =
                             state->second_high_edge_local_index;
+                        input.third_continuing_vertex_local_index =
+                            localVertexIndex(
+                                source_face.vertex_ids,
+                                state->third_continuing_vertex_id);
+                        if (state->third_continuing_vertex_id.has_value() &&
+                            !input.third_continuing_vertex_local_index
+                                 .has_value())
+                            return TransitionTemplateResult::failure(
+                                TransitionTemplateError{
+                                    InvalidTransitionTemplateInput{
+                                        source_id}});
                         input.mesh_vertices = &output.mesh.vertices;
                         input.center_vertex_id = static_cast<VertexId>(
                             output.mesh.vertices.size());
@@ -604,6 +675,17 @@ namespace boundary_mesh
                             state.high_edge_local_index;
                         input.second_high_edge_local_index =
                             state.second_high_edge_local_index;
+                        input.third_continuing_vertex_local_index =
+                            localVertexIndex(
+                                face.vertex_ids,
+                                state.third_continuing_vertex_id);
+                        if (state.third_continuing_vertex_id.has_value() &&
+                            !input.third_continuing_vertex_local_index
+                                 .has_value())
+                            return TransitionTemplateResult::failure(
+                                TransitionTemplateError{
+                                    InvalidTransitionTemplateInput{
+                                        source_id}});
                         input.mesh_vertices = &output.mesh.vertices;
                         input.center_vertex_id = static_cast<VertexId>(
                             output.mesh.vertices.size());

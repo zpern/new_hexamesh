@@ -60,6 +60,28 @@ int main()
         assert(value.value().top_faces.size() == 4);
     }
 
+    auto single_high_three_continuing = input;
+    single_high_three_continuing.trial_layers = 1;
+    single_high_three_continuing.layer_vertex_ids.resize(2);
+    single_high_three_continuing.high_edge_local_index = 2;
+    single_high_three_continuing.third_continuing_vertex_local_index = 0;
+    const auto three_continuing_result = buildQuadTransition(
+        single_high_three_continuing);
+    assert(three_continuing_result.hasValue());
+    assert(three_continuing_result.value().volume_cells.size() == 4);
+    assert((std::get<Pyramid>(
+                three_continuing_result.value().volume_cells[0]).vertex_ids ==
+            std::array<VertexId,5>{3,0,4,7,1}));
+    assert((std::get<Pyramid>(
+                three_continuing_result.value().volume_cells[1]).vertex_ids ==
+            std::array<VertexId,5>{3,7,6,2,1}));
+    assert((std::get<Tetra>(
+                three_continuing_result.value().volume_cells[2]).vertex_ids ==
+            std::array<VertexId,4>{7,6,5,1}));
+    assert((std::get<Tetra>(
+                three_continuing_result.value().volume_cells[3]).vertex_ids ==
+            std::array<VertexId,4>{7,4,5,1}));
+
     auto double_high = input;
     double_high.second_high_edge_local_index = 3;
     const auto double_result = buildQuadTransition(double_high);

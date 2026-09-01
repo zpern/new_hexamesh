@@ -20,6 +20,7 @@ namespace boundary_mesh
         {
             FaceLayerState layers;
             std::vector<Neighbor> neighbors;
+            std::optional<VertexId> third_continuing_vertex_id;
         };
 
         WorkingFace *findFace(
@@ -152,7 +153,7 @@ namespace boundary_mesh
                 { return left.source_face_id < right.source_face_id; });
         }
 
-        for (const WorkingFace &face : faces)
+        for (WorkingFace &face : faces)
         {
             std::size_t high_count = 0;
             SurfaceFaceId high_neighbor_id{};
@@ -223,6 +224,8 @@ namespace boundary_mesh
                     }
                 }
 
+                std::vector<std::pair<VertexId, SurfaceFaceId>>
+                    corner_violations;
                 for (const VertexId vertex : non_contact_vertices)
                 {
                     for (const SurfaceFaceId incident :
@@ -238,13 +241,28 @@ namespace boundary_mesh
                             incident_face->layers.trial_layers >
                                 face.layers.trial_layers)
                         {
-                            return CoordinationResult::failure(
-                                TransitionCornerLayerViolation{
-                                    face.layers.source_face_id,
-                                    high_edges[0],
-                                    vertex,
-                                    incident});
+                            corner_violations.push_back(
+                                {vertex, incident});
+                            break;
                         }
+                    }
+                }
+                if (!corner_violations.empty())
+                {
+                    if (local_edges.size() == 4 &&
+                        corner_violations.size() == 1)
+                    {
+                        face.third_continuing_vertex_id =
+                            corner_violations[0].first;
+                    }
+                    else
+                    {
+                        return CoordinationResult::failure(
+                            TransitionCornerLayerViolation{
+                                face.layers.source_face_id,
+                                high_edges[0],
+                                corner_violations[0].first,
+                                corner_violations[0].second});
                     }
                 }
             }
@@ -256,6 +274,8 @@ namespace boundary_mesh
         {
             CoordinatedTransitionFace output;
             output.layers = face.layers;
+            output.third_continuing_vertex_id =
+                face.third_continuing_vertex_id;
             std::vector<std::size_t> high_edges;
             for (const Neighbor &neighbor_entry : face.neighbors)
             {

@@ -236,7 +236,11 @@ namespace boundary_mesh
              *input.high_edge_local_index >= 4) ||
             (input.second_high_edge_local_index.has_value() &&
              (!input.high_edge_local_index.has_value() ||
-              *input.second_high_edge_local_index >= 4)))
+              *input.second_high_edge_local_index >= 4)) ||
+            (input.third_continuing_vertex_local_index.has_value() &&
+             (!input.high_edge_local_index.has_value() ||
+              input.second_high_edge_local_index.has_value() ||
+              *input.third_continuing_vertex_local_index >= 4)))
         {
             return TransitionTemplateResult::failure(
                 TransitionTemplateError{
@@ -273,6 +277,26 @@ namespace boundary_mesh
                         InvalidTransitionTemplateInput{
                             input.source_face_id}});
         }
+        std::optional<std::size_t> three_continuing_common;
+        if (input.third_continuing_vertex_local_index.has_value())
+        {
+            const std::size_t edge = *input.high_edge_local_index;
+            const std::size_t third =
+                *input.third_continuing_vertex_local_index;
+            if (third == (edge + 2) % 4)
+                three_continuing_common = (edge + 1) % 4;
+            else if (third == (edge + 3) % 4)
+                three_continuing_common = edge;
+            else
+                return TransitionTemplateResult::failure(
+                    TransitionTemplateError{
+                        InvalidTransitionTemplateInput{
+                            input.source_face_id}});
+        }
+        const std::optional<std::size_t> four_cell_common =
+            double_high_common.has_value()
+                ? double_high_common
+                : three_continuing_common;
         if (input.trial_layers < 2)
         {
             if (input.trial_layers == 0 &&
@@ -281,10 +305,10 @@ namespace boundary_mesh
                     TransitionTemplateError{
                         InvalidTransitionTemplateInput{
                             input.source_face_id}});
-            if (double_high_common.has_value())
+            if (four_cell_common.has_value())
             {
                 const auto appended = appendDoubleSideTransition(
-                    result, input, *double_high_common, 0);
+                    result, input, *four_cell_common, 0);
                 if (!appended.hasValue())
                     return TransitionTemplateResult::failure(
                         TransitionTemplateError{appended.error()});
@@ -354,9 +378,9 @@ namespace boundary_mesh
         }
 
         QuadDiagonal selected_diagonal{};
-        if (double_high_common.has_value())
+        if (four_cell_common.has_value())
         {
-            selected_diagonal = *double_high_common % 2 == 0
+            selected_diagonal = *four_cell_common % 2 == 0
                 ? QuadDiagonal::ZeroTwo
                 : QuadDiagonal::OneThree;
         }
@@ -393,12 +417,12 @@ namespace boundary_mesh
             CellRole::ReservedLayerTransition,
             input.source_face_id,
             regular + 1});
-        if (double_high_common.has_value())
+        if (four_cell_common.has_value())
         {
             const auto appended = appendDoubleSideTransition(
                 result,
                 input,
-                *double_high_common,
+                *four_cell_common,
                 regular + 1);
             if (!appended.hasValue())
                 return TransitionTemplateResult::failure(
