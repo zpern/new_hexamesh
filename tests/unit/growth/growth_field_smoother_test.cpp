@@ -6,6 +6,8 @@
 
 #include <boundary_mesh/growth/front_adjacency.hpp>
 #include <boundary_mesh/growth/growth_field_smoother.hpp>
+#include <boundary_mesh/growth/sliding_constraint_builder.hpp>
+#include <boundary_mesh/growth/sliding_surface_builder.hpp>
 
 namespace
 {
@@ -310,6 +312,81 @@ int main()
     {
         return 15;
     }
+
+    GrowthFront sliding_front = front;
+    sliding_front.vertices[0].boundary.sliding_region_ids = {70};
+    SurfaceMesh sliding_mesh;
+    sliding_mesh.vertices = {
+        Point3{-2, 0, -2}, Point3{2, 0, -2},
+        Point3{2, 0, 2}, Point3{-2, 0, 2}};
+    sliding_mesh.faces = {
+        Triangle{{0, 1, 2}}, Triangle{{0, 2, 3}}};
+    sliding_mesh.face_tags = {
+        {SurfaceBoundaryKind::Internal, 70},
+        {SurfaceBoundaryKind::Internal, 70}};
+    const auto sliding_surfaces =
+        SlidingSurfaceBuilder{}.build(sliding_mesh);
+    if (!sliding_surfaces.hasValue()) return 17;
+    const auto sliding_constraints = SlidingConstraintBuilder{}.build(
+        sliding_surfaces.value(), sliding_front, evaluation);
+    if (!sliding_constraints.hasValue()) return 18;
+
+    GrowthDirections sliding_raw = raw;
+    sliding_raw.vertices[0].value = Vector3{0, 0.6, 0.8};
+    const auto iterative_sliding = GrowthFieldSmoother{}.smooth(
+        sliding_front,
+        evaluation,
+        adjacency.value(),
+        sliding_raw,
+        reference_heights,
+        provisional_heights,
+        {},
+        &sliding_constraints.value());
+    if (!iterative_sliding.hasValue()) return 19;
+    const auto center_reconstrained =
+        sliding_constraints.value().constrainDirection(
+            0,
+            sliding_front.vertices[0].position,
+            iterative_sliding.value().directions[0]);
+    if (!center_reconstrained.hasValue() ||
+        (center_reconstrained.value() -
+         iterative_sliding.value().directions[0]).norm() > Scalar{1e-12})
+        return 20;
+
+    const auto post_only = GrowthFieldSmoother{}.smooth(
+        sliding_front,
+        evaluation,
+        adjacency.value(),
+        sliding_raw,
+        reference_heights,
+        provisional_heights);
+    if (!post_only.hasValue() ||
+        (post_only.value().directions[1] -
+         iterative_sliding.value().directions[1]).norm() <= Scalar{1e-6})
+        return 21;
+
+    GrowthDirections normal_only = raw;
+    normal_only.vertices[0].value = Vector3::UnitY();
+    const auto constraint_failure = GrowthFieldSmoother{}.smooth(
+        sliding_front,
+        evaluation,
+        adjacency.value(),
+        normal_only,
+        reference_heights,
+        provisional_heights,
+        {},
+        &sliding_constraints.value());
+    const auto *failure = constraint_failure.hasValue()
+        ? nullptr
+        : std::get_if<SlidingGrowthFieldConstraintFailure>(
+              &constraint_failure.error());
+    if (failure == nullptr ||
+        failure->front_vertex_index != 0 ||
+        failure->source_vertex_id != VertexId{100} ||
+        failure->layer != sliding_front.layer ||
+        std::get_if<UndefinedConstrainedDirection>(
+            &failure->cause) == nullptr)
+        return 22;
 
     GrowthFieldSmoothingOptions invalid = enabled;
     invalid.skewness.activation_skewness = Scalar{1.1};

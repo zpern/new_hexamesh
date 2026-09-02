@@ -14,6 +14,8 @@
 
 namespace boundary_mesh
 {
+    class SlidingConstraints;
+
     struct SmoothedGrowthFields
     {
         std::uint32_t layer{}; // 平滑结果所属的当前活动层
@@ -34,6 +36,7 @@ namespace boundary_mesh
             const GrowthDirections &raw_directions,
             const std::vector<Scalar> &reference_heights,
             const std::vector<Scalar> &provisional_heights,
-            const GrowthFieldSmoothingOptions &options = {}) const;
+            const GrowthFieldSmoothingOptions &options = {},
+            const SlidingConstraints *sliding_constraints = nullptr) const;
     };
 }

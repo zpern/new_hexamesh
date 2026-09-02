@@ -5,6 +5,7 @@
 #include <variant>
 
 #include <boundary_mesh/core/types.hpp>
+#include <boundary_mesh/growth/growth_direction_error.hpp>
 
 namespace boundary_mesh
 {
@@ -65,6 +66,14 @@ namespace boundary_mesh
         Scalar improvement_tolerance{};
     };
 
+    struct SlidingGrowthFieldConstraintFailure
+    {
+        std::size_t front_vertex_index{};
+        VertexId source_vertex_id{};
+        std::uint32_t layer{};
+        GrowthDirectionError cause;
+    };
+
     using GrowthFieldSmoothingError = std::variant<
         GrowthFieldInputMismatch,
         NonFiniteGrowthFieldInput,
@@ -72,5 +81,6 @@ namespace boundary_mesh
         InvalidGrowthFieldBaseHeight,
         UndefinedSmoothedDirection,
         NonFiniteSmoothedHeight,
-        InvalidSkewnessNormalOptimizationOptions>; // 活动前沿字段平滑错误
+        InvalidSkewnessNormalOptimizationOptions,
+        SlidingGrowthFieldConstraintFailure>; // 活动前沿字段平滑错误
 }

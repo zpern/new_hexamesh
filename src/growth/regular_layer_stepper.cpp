@@ -344,6 +344,12 @@ namespace boundary_mesh
             provisional_heights.push_back(provisional_height);
         }
 
+        const auto sliding = SlidingConstraintBuilder{}.build(
+            sliding_surfaces, eligible.front, front_evaluation.value());
+        if (!sliding.hasValue())
+            return StepResult::failure(GrowthDirectionFailure{
+                target_layer, sliding.error()});
+
         const auto field_result = GrowthFieldSmoother{}.smooth(
             eligible.front,
             front_evaluation.value(),
@@ -351,7 +357,8 @@ namespace boundary_mesh
             direction_result.value(),
             reference_heights,
             provisional_heights,
-            options.field_smoothing);
+            options.field_smoothing,
+            &sliding.value());
         if (!field_result.hasValue())
         {
             return StepResult::failure(
@@ -360,12 +367,6 @@ namespace boundary_mesh
                     field_result.error()});
         }
         output.smoothing_diagnostics = field_result.value().diagnostics;
-
-        const auto sliding = SlidingConstraintBuilder{}.build(
-            sliding_surfaces, eligible.front, front_evaluation.value());
-        if (!sliding.hasValue())
-            return StepResult::failure(GrowthDirectionFailure{
-                target_layer, sliding.error()});
 
         GrowthFront candidate_front = eligible.front;
         candidate_front.layer = target_layer;

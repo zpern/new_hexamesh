@@ -9,6 +9,7 @@
 
 #include <boundary_mesh/growth/growth_field_smoother.hpp>
 #include <boundary_mesh/growth/skewness_direction_refiner.hpp>
+#include <boundary_mesh/growth/sliding_constraints.hpp>
 
 namespace boundary_mesh
 {
@@ -233,6 +234,38 @@ namespace boundary_mesh
                 std::move(directions));
         }
 
+        Result<std::vector<Vector3>, GrowthFieldSmoothingError>
+        constrainDirections(
+            const GrowthFront &front,
+            const SlidingConstraints *constraints,
+            std::vector<Vector3> directions)
+        {
+            using DirectionResult =
+                Result<std::vector<Vector3>, GrowthFieldSmoothingError>;
+            if (constraints == nullptr)
+                return DirectionResult::success(std::move(directions));
+            if (directions.size() != front.vertices.size())
+                return DirectionResult::failure(GrowthFieldInputMismatch{
+                    front.layer, front.layer,
+                    front.vertices.size(), directions.size(), 0, 0});
+            for (std::size_t index = 0; index < directions.size(); ++index)
+            {
+                const auto constrained = constraints->constrainDirection(
+                    index,
+                    front.vertices[index].position,
+                    directions[index]);
+                if (!constrained.hasValue())
+                    return DirectionResult::failure(
+                        SlidingGrowthFieldConstraintFailure{
+                            index,
+                            front.vertices[index].source_vertex_id,
+                            front.layer,
+                            constrained.error()});
+                directions[index] = constrained.value();
+            }
+            return DirectionResult::success(std::move(directions));
+        }
+
         std::optional<Vector3> smoothOne(
             std::size_t vertex_index,
             const GrowthFront &front,
@@ -438,7 +471,8 @@ namespace boundary_mesh
         const GrowthDirections &raw_directions,
         const std::vector<Scalar> &reference_heights,
         const std::vector<Scalar> &provisional_heights,
-        const GrowthFieldSmoothingOptions &options) const
+        const GrowthFieldSmoothingOptions &options,
+        const SlidingConstraints *sliding_constraints) const
     {
         using SmoothingResult =
             Result<SmoothedGrowthFields, GrowthFieldSmoothingError>;
@@ -498,8 +532,15 @@ namespace boundary_mesh
             return SmoothingResult::failure(initialized.error());
         }
 
+        auto constrained_initial = constrainDirections(
+            front,
+            sliding_constraints,
+            std::move(initialized.value()));
+        if (!constrained_initial.hasValue())
+            return SmoothingResult::failure(
+                constrained_initial.error());
         std::vector<Vector3> current =
-            std::move(initialized.value());
+            std::move(constrained_initial.value());
         std::vector<std::size_t> active(current.size());
         for (std::size_t index = 0; index < active.size(); ++index)
         {
@@ -551,7 +592,14 @@ namespace boundary_mesh
                     }
                 }
             }
-            current.swap(next);
+            auto constrained_next = constrainDirections(
+                front,
+                sliding_constraints,
+                std::move(next));
+            if (!constrained_next.hasValue())
+                return SmoothingResult::failure(
+                    constrained_next.error());
+            current = std::move(constrained_next.value());
 
             if (round + 1 < full_rounds)
             {
@@ -656,10 +704,18 @@ namespace boundary_mesh
             actual_heights,
             options.skewness);
 
+        auto constrained_refined = constrainDirections(
+            front,
+            sliding_constraints,
+            std::move(refinement.directions));
+        if (!constrained_refined.hasValue())
+            return SmoothingResult::failure(
+                constrained_refined.error());
+
         return SmoothingResult::success(
             SmoothedGrowthFields{
                 front.layer,
-                std::move(refinement.directions),
+                std::move(constrained_refined.value()),
                 std::move(actual_heights),
                 refinement.diagnostics});
     }
