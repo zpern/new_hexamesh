@@ -60,5 +60,15 @@ int main()
     assert(side.value().volume_cells.size() == 2);
     assert(side.value().top_faces.size() == 4);
     assert(side.value().low_diagonal == QuadDiagonal::OneThree);
+
+    const auto adjacent = buildQuadAdjacentSideTransition({
+        7, 0, {0,1,2,3}, {4,5,6,7}, 0, 1,
+        QuadDiagonal::OneThree, &points, 1e-12});
+    assert(adjacent.hasValue());
+    assert(adjacent.value().volume_cells.size() == 4);
+    assert(countCells<Pyramid>(adjacent.value().volume_cells) == 2);
+    assert(countCells<Tetra>(adjacent.value().volume_cells) == 2);
+    assert(adjacent.value().top_faces.size() == 6);
+    assert(adjacent.value().low_diagonal == QuadDiagonal::OneThree);
     return 0;
 }

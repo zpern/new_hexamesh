@@ -135,4 +135,55 @@ namespace boundary_mesh
             result, result.volume_cells.size(), input.low_layer + 1);
         return BuildResult::success(std::move(result));
     }
+
+    Result<IncrementalTransitionResult, TransitionTemplateError>
+    buildQuadAdjacentSideTransition(
+        const QuadAdjacentSideTransitionInput &input)
+    {
+        using BuildResult = Result<
+            IncrementalTransitionResult, TransitionTemplateError>;
+        const std::size_t first = input.first_high_edge_local_index;
+        const std::size_t second = input.second_high_edge_local_index;
+        if (input.mesh_vertices == nullptr || first >= 4 || second >= 4 ||
+            !validIds(input.low, *input.mesh_vertices) ||
+            !validIds(input.high, *input.mesh_vertices) ||
+            ((first + 1) % 4 != second && (second + 1) % 4 != first))
+            return BuildResult::failure(
+                TransitionTemplateError{
+                    InvalidTransitionTemplateInput{
+                        input.source_face_id}});
+        const std::size_t common =
+            (first + 1) % 4 == second ? second : first;
+        const QuadDiagonal required = common % 2 == 0
+            ? QuadDiagonal::ZeroTwo
+            : QuadDiagonal::OneThree;
+        if (input.low_diagonal != required)
+            return BuildResult::failure(
+                TransitionTemplateError{
+                    InvalidTransitionTemplateInput{
+                        input.source_face_id}});
+
+        const VertexId a = input.low[common];
+        const VertexId b = input.low[(common + 1) % 4];
+        const VertexId d = input.low[(common + 2) % 4];
+        const VertexId c = input.low[(common + 3) % 4];
+        const VertexId e = input.high[common];
+        const VertexId f = input.high[(common + 1) % 4];
+        const VertexId h = input.high[(common + 2) % 4];
+        const VertexId g = input.high[(common + 3) % 4];
+
+        IncrementalTransitionResult result;
+        result.source_face_id = input.source_face_id;
+        result.low_diagonal = input.low_diagonal;
+        result.volume_cells = {
+            Pyramid{{a,b,f,e,d}}, Pyramid{{a,e,g,c,d}},
+            Tetra{{e,g,h,d}}, Tetra{{e,f,h,d}}};
+        result.top_faces = {
+            Triangle{{b,f,d}}, Triangle{{f,h,d}},
+            Triangle{{e,f,h}}, Triangle{{e,g,h}},
+            Triangle{{g,h,d}}, Triangle{{g,c,d}}};
+        addMetadata(result, result.volume_cells.size(),
+                    input.low_layer + 1);
+        return BuildResult::success(std::move(result));
+    }
 }

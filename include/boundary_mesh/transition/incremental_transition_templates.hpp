@@ -39,9 +39,26 @@ namespace boundary_mesh
         QuadDiagonal low_diagonal{};
     };
 
+    struct QuadAdjacentSideTransitionInput
+    {
+        SurfaceFaceId source_face_id{};
+        std::uint32_t low_layer{};
+        std::array<VertexId, 4> low{};
+        std::array<VertexId, 4> high{};
+        std::size_t first_high_edge_local_index{};
+        std::size_t second_high_edge_local_index{};
+        QuadDiagonal low_diagonal{};
+        const std::vector<Point3> *mesh_vertices{};
+        Scalar length_tolerance{1e-12};
+    };
+
     Result<IncrementalTransitionResult, TransitionTemplateError>
     buildQuadTopCap(const QuadTopCapInput &input);
 
     Result<IncrementalTransitionResult, TransitionTemplateError>
     buildQuadSideTransition(const QuadSideTransitionInput &input);
+
+    Result<IncrementalTransitionResult, TransitionTemplateError>
+    buildQuadAdjacentSideTransition(
+        const QuadAdjacentSideTransitionInput &input);
 }
