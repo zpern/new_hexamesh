@@ -1026,3 +1026,16 @@ add_test(
     NAME boundary_mesh_incremental_transition_types_test
     COMMAND boundary_mesh_incremental_transition_types_test
 )
+
+add_executable(
+    boundary_mesh_incremental_transition_templates_test
+    unit/transition/incremental_transition_templates_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_incremental_transition_templates_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_incremental_transition_templates_test
+    COMMAND boundary_mesh_incremental_transition_templates_test
+)
