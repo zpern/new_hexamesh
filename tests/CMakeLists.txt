@@ -1039,3 +1039,16 @@ add_test(
     NAME boundary_mesh_incremental_transition_templates_test
     COMMAND boundary_mesh_incremental_transition_templates_test
 )
+
+add_executable(
+    boundary_mesh_quad_high_neighbor_selector_test
+    unit/transition/quad_high_neighbor_selector_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_quad_high_neighbor_selector_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_quad_high_neighbor_selector_test
+    COMMAND boundary_mesh_quad_high_neighbor_selector_test
+)

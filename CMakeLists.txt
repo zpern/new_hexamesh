@@ -235,6 +235,7 @@ add_library(
         src/transition/quad_transition_template.cpp
         src/transition/layer_quad_diagonal_table.cpp
         src/transition/incremental_transition_templates.cpp
+        src/transition/quad_high_neighbor_selector.cpp
         src/transition/reserved_layer_transition.cpp
         src/transition/boundary_layer_generator.cpp
 )
