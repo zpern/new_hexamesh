@@ -1052,3 +1052,16 @@ add_test(
     NAME boundary_mesh_quad_high_neighbor_selector_test
     COMMAND boundary_mesh_quad_high_neighbor_selector_test
 )
+
+add_executable(
+    boundary_mesh_corner_suppression_test
+    unit/transition/corner_suppression_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_corner_suppression_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_corner_suppression_test
+    COMMAND boundary_mesh_corner_suppression_test
+)
