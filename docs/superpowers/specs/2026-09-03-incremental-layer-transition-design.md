@@ -86,10 +86,10 @@ struct LayerStopState
 2. 初始化非角点停止面，并同时写入 `corner_suppression_seeds` 和 `transition_low_faces`。
 3. 只遍历尚未处理的 `corner_suppression_seeds`，检查其当前高邻边并执行角点压制。
 4. 删除被角点压制的高单元，将其第 `n` 层低面只加入 `transition_low_faces`。
-5. 废弃旧的临时顶盖和侧向过渡，按完整 `transition_low_faces` 及当前高单元集合重新生成。
-6. 对规则高单元、顶盖和侧向过渡形成的完整联合暴露面做相交检测。
+5. 废弃旧的临时顶盖和侧向过渡，按完整 `transition_low_faces` 及当前高单元集合重新生成临时拓扑和几何，但不修改正式 `VolumeMesh`。
+6. 在同一个固定点循环中，对规则高单元、临时顶盖和临时侧向过渡形成的完整联合暴露面做一次统一相交检测，不把规则碰撞和过渡碰撞拆成两个阶段。
 7. 若发生相交，删除相交过渡区依赖的全部第 `n+1` 层高单元，将其低面同时加入 `corner_suppression_seeds` 和 `transition_low_faces`，返回步骤 3。
-8. 若本轮没有新增高单元删除，固定点达到稳定，原子提交事务结果。
+8. 若本轮没有新增高单元删除，固定点达到稳定，保存本轮已解析的模板种类、规范对角线和高单元依赖关系，再原子提交事务结果；提交阶段不得重新选择拓扑。
 
 每轮收集全部冲突高面后批量删除，不能遇到第一个冲突就提交局部修改。高单元在同一事务中只允许从保留集合删除、不能恢复，因此固定点循环单调终止，迭代轮数不超过本层初始高候选面数量。
 
@@ -203,6 +203,7 @@ struct LayerBoundaryOwner
 struct StableLayerTransition
 {
     LayerStepResult retained_regular_step;
+    std::vector<ResolvedTransitionTopology> resolved_topology;
     VolumeMesh top_cap_mesh;
     VolumeMesh side_transition_mesh;
     ExposedBoundaryUpdate boundary_update;
@@ -227,6 +228,8 @@ struct StableLayerTransition
 - 单元元数据；
 - 正式 `ExposedBoundaryTracker`；
 - 下一层 `GrowthFront`。
+
+其中 `ResolvedTransitionTopology` 至少保存 `source_face_id`、层号、模板种类、规范低面对角线和依赖的高面 ID。临时检测和正式提交必须使用同一份连接决策，不能在提交时再次调用质量选择器。
 
 ## 11. 不变量和错误处理
 

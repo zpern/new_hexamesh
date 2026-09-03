@@ -19,6 +19,7 @@
 - Every Quad layer face, including layer 0, has one canonical diagonal shared by its exposed triangulation, top-Hexa cap, and side-transition template; forced transition topology takes priority over local quality.
 - The complete final boundary-layer top is triangular.
 - A layer transaction commits only after the retained regular cells, top caps, and side transitions have no illegal contact with the original surface, historical exposed boundary, or one another.
+- Regular candidates, provisional caps, and provisional side transitions participate in one joint fixed-point collision loop; only the stable resolved topology is committed.
 - Preserve `source_face_id`, `layer`, and `cell_role` for every committed cell, and preserve `mesh.cells.size() == mesh.metadata.size()`.
 
 ---
@@ -483,7 +484,22 @@ while (true)
 }
 ```
 
-`rebuildAllTopCapsAndTransitions` must clear every provisional cap/side cell and rebuild them from the full `transition_low_faces`. Resolve one canonical diagonal for every Quad layer face before building either its cap/source triangulation or side transition, then pass that stored value to every consumer. Reject a final direct-neighbor layer difference above one, conflicting forced diagonals, a low face without a legal template, non-triangular top output, or mismatched cell metadata.
+`rebuildAllTopCapsAndTransitions` must clear every provisional cap/side cell and the provisional diagonal table, then rebuild them from the full `transition_low_faces`. Resolve one canonical diagonal for every Quad layer face before building either its cap/source triangulation or side transition, then pass that stored value to every consumer. Run one joint collision query over retained regular candidates, provisional caps, and provisional side transitions. Reject a final direct-neighbor layer difference above one, conflicting forced diagonals, a low face without a legal template, non-triangular top output, or mismatched cell metadata.
+
+When rollback is empty, copy the exact per-face decision into:
+
+```cpp
+struct ResolvedTransitionTopology
+{
+    SurfaceFaceId source_face_id{};
+    std::uint32_t layer{};
+    TransitionTemplateKind template_kind{};
+    std::optional<QuadDiagonal> low_diagonal;
+    std::vector<SurfaceFaceId> dependent_high_faces;
+};
+```
+
+Return this vector in `StableLayerTransition`; do not resolve diagonals or choose templates again after leaving the fixed-point loop.
 
 - [ ] **Step 4: Run resolver and template suites**
 
@@ -556,7 +572,7 @@ commitStableLayer(committed_state, stable.value());
 current_front = buildContinuingFront(stable.value());
 ```
 
-Store each Quad column's cap as replaceable committed state. When the column advances, remove its seven old cap cells and center vertex from the logical cap store, append one complete Hexa for the previous layer, and install the new seven-cell cap. Flatten logical regular cells plus current caps into `RegularLayerGrowthResult::mesh` only after generation finishes, so no in-place cell-index deletion is required.
+Store each Quad column's cap as replaceable committed state. When the column advances, remove its seven old cap cells and center vertex from the logical cap store, append one complete Hexa for the previous layer, and install the new seven-cell cap. Build the committed cap and side cells directly from `StableLayerTransition::resolved_topology`; the commit path must not call `chooseQuadDiagonal()` or the high-neighbor selector. Flatten logical regular cells plus current caps into `RegularLayerGrowthResult::mesh` only after generation finishes, so no in-place cell-index deletion is required.
 
 - [ ] **Step 4: Run focused integration and regular-growth regression tests**
 
