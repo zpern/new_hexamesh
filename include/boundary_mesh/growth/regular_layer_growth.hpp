@@ -14,6 +14,8 @@
 
 namespace boundary_mesh
 {
+    class CollisionIndex;
+    class ExposedBoundaryTracker;
     enum class FaceGrowthStatus
     {
         Active,    // 仍可尝试生成下一层
@@ -90,7 +92,10 @@ namespace boundary_mesh
         // 在规则质量与碰撞过滤完成后、提交本层单元前，返回还需回退的源面。
         // 过渡模块用它执行逐层角点压制/固定点协调；空回调保持规则生成行为不变。
         std::function<std::vector<SurfaceFaceId>(
-            const GrowthFront &, const LayerStepResult &)>
+            const GrowthFront &, const LayerStepResult &,
+            const std::vector<VertexId> &,
+            const CollisionIndex &,
+            const ExposedBoundaryTracker &)>
             candidate_rejections;
     };
 

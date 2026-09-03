@@ -6,6 +6,7 @@
 #include <boundary_mesh/transition/incremental_transition_templates.hpp>
 #include <boundary_mesh/transition/layer_quad_diagonal_table.hpp>
 #include <boundary_mesh/transition/transition_coordination.hpp>
+#include <boundary_mesh/transition/transition_boundary_checker.hpp>
 
 namespace boundary_mesh
 {
@@ -14,6 +15,7 @@ namespace boundary_mesh
         TransitionTemplateError,
         LayerQuadDiagonalError,
         TransitionCoordinationError,
+        TransitionBoundaryError,
         VolumeVertexIdOverflow>;
 
     Result<RegularLayerGrowthResult, IncrementalLayerGrowthError>

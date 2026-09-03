@@ -259,4 +259,102 @@ int main()
         { return std::holds_alternative<Triangle>(face); }));
     assert(count(staircase.value().mesh, CellType::Pyramid) > 20);
     assert(count(staircase.value().mesh, CellType::Tetra) > 8);
+
+    SurfaceMesh rollback_surface;
+    rollback_surface.vertices = {
+        {0,0,0}, {0,1,0}, {1,0,0}, {1,1,0}, {2,0,0}, {2,1,0},
+        {0,0,1}, {0,1,1}, {1,0,1}, {1,1,1}, {2,0,1}, {2,1,1},
+        {0.2,0.2,0.05}, {0.8,0.2,0.05}, {0.5,0.8,0.05},
+        {0.5,0.5,0.08}};
+    rollback_surface.faces = {
+        Quad{{0,2,3,1}}, Quad{{2,4,5,3}},
+        Quad{{6,7,9,8}}, Quad{{8,9,11,10}},
+        Quad{{0,6,8,2}}, Quad{{2,8,10,4}},
+        Quad{{1,3,9,7}}, Quad{{3,5,11,9}},
+        Quad{{0,1,7,6}}, Quad{{4,10,11,5}},
+        Triangle{{12,14,13}}, Triangle{{12,13,15}},
+        Triangle{{13,14,15}}, Triangle{{14,12,15}}};
+    rollback_surface.face_tags = {
+        {SurfaceBoundaryKind::Wall,20},
+        {SurfaceBoundaryKind::Wall,20},
+        {SurfaceBoundaryKind::Farfield,30},
+        {SurfaceBoundaryKind::Farfield,30},
+        {SurfaceBoundaryKind::Farfield,30},
+        {SurfaceBoundaryKind::Farfield,30},
+        {SurfaceBoundaryKind::Farfield,30},
+        {SurfaceBoundaryKind::Farfield,30},
+        {SurfaceBoundaryKind::Farfield,30},
+        {SurfaceBoundaryKind::Farfield,30},
+        {SurfaceBoundaryKind::Farfield,31},
+        {SurfaceBoundaryKind::Farfield,31},
+        {SurfaceBoundaryKind::Farfield,31},
+        {SurfaceBoundaryKind::Farfield,31}};
+    const auto rollback_topology =
+        SurfaceTopologyBuilder{}.build(rollback_surface);
+    assert(rollback_topology.hasValue());
+    const auto rollback_patch = GrowthPatchBuilder{}.build(
+        rollback_surface, rollback_topology.value());
+    assert(rollback_patch.hasValue());
+    const auto rollback_front = GrowthFrontBuilder{}.buildInitial(
+        rollback_surface, rollback_patch.value());
+    assert(rollback_front.hasValue());
+    std::vector<SourceVertexGrowthProfile> rollback_profiles;
+    for (const auto &vertex : rollback_patch.value().vertices())
+        rollback_profiles.push_back({
+            vertex.source_vertex_id, {0.1,1.0,1}});
+    RegularLayerGrowthOptions rollback_options;
+    rollback_options.isotropic_height = 100;
+    rollback_options.cell_quality.maximum_skewness = 1;
+    const auto rollback = generateIncrementalBoundaryLayers(
+        rollback_surface, rollback_topology.value(),
+        rollback_patch.value(), rollback_front.value(),
+        rollback_profiles, rollback_options);
+    assert(rollback.hasValue());
+    assert(rollback.value().faces.size() == 2);
+    assert(rollback.value().faces[0].accepted_layer_count == 0);
+    assert(rollback.value().faces[1].accepted_layer_count == 0);
+    assert(rollback.value().mesh.cells.empty());
+
+    SurfaceMesh triangle_step_surface;
+    triangle_step_surface.vertices = {
+        {0,0,0}, {1,0,0}, {0,1,0}, {1,1,0}};
+    triangle_step_surface.faces = {
+        Triangle{{0,1,2}}, Triangle{{1,3,2}}};
+    triangle_step_surface.face_tags.resize(
+        2, {SurfaceBoundaryKind::Wall,40});
+    GrowthFront triangle_step_front;
+    triangle_step_front.layer = 0;
+    triangle_step_front.faces = triangle_step_surface.faces;
+    triangle_step_front.source_face_ids = {0,1};
+    for (VertexId id = 0; id < 4; ++id)
+        triangle_step_front.vertices.push_back(
+            {triangle_step_surface.vertices[id],id});
+    RegularLayerGrowthResult triangle_step_regular;
+    triangle_step_regular.mesh.vertices = {
+        {0,0,0}, {1,0,0}, {0,1,0}, {1,1,0},
+        {1,0,1}, {1,1,1}, {0,1,1}};
+    triangle_step_regular.mesh.cells = {
+        Prism{{1,3,2,4,5,6}}};
+    triangle_step_regular.mesh.metadata = {
+        {CellRole::RegularLayer,1,1}};
+    triangle_step_regular.faces = {
+        {0,0,FaceGrowthStatus::Stopped,
+         FaceStopReason::Collision,1},
+        {1,1,FaceGrowthStatus::Completed,
+         FaceStopReason::VertexLayerLimit,2}};
+    triangle_step_regular.layer_vertices = {
+        {0,{0},0}, {1,{1,4},0},
+        {2,{2,6},0}, {3,{3,5},0}};
+    const auto triangle_step = finalizeIncrementalLayerTopology(
+        triangle_step_surface, triangle_step_front,
+        std::move(triangle_step_regular));
+    assert(triangle_step.hasValue());
+    assert(count(triangle_step.value().mesh, CellType::Prism) == 1);
+    assert(count(triangle_step.value().mesh, CellType::Pyramid) == 1);
+    assert(triangle_step.value().top_surface.faces.size() == 4);
+    assert(std::all_of(
+        triangle_step.value().top_surface.faces.begin(),
+        triangle_step.value().top_surface.faces.end(),
+        [](const SurfaceFace &face)
+        { return std::holds_alternative<Triangle>(face); }));
 }

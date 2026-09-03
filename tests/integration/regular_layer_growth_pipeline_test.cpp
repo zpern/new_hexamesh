@@ -273,7 +273,9 @@ int main()
 
     RegularLayerGrowthOptions coordinated_options;
     coordinated_options.candidate_rejections = [](
-        const GrowthFront &, const LayerStepResult &step)
+        const GrowthFront &, const LayerStepResult &step,
+        const std::vector<VertexId> &, const CollisionIndex &,
+        const ExposedBoundaryTracker &)
     {
         return step.layer == 2
             ? std::vector<SurfaceFaceId>{1}
