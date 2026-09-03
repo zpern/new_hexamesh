@@ -2,6 +2,7 @@
 #include <limits>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include <boundary_mesh/transition/incremental_boundary_layer_generator.hpp>
@@ -464,15 +465,16 @@ namespace boundary_mesh
                 ? upstream_rejections(current, candidate)
                 : std::vector<SurfaceFaceId>{};
             LayerFaceSets face_sets;
+            const std::unordered_set<SurfaceFaceId> continuing(
+                candidate.next_front.source_face_ids.begin(),
+                candidate.next_front.source_face_ids.end());
+            const std::unordered_set<SurfaceFaceId> upstream_rejected_ids(
+                rejected.begin(), rejected.end());
             for (const SurfaceFaceId id : current.source_face_ids)
             {
-                const bool continues = std::find(
-                    candidate.next_front.source_face_ids.begin(),
-                    candidate.next_front.source_face_ids.end(), id) !=
-                    candidate.next_front.source_face_ids.end();
-                const bool upstream_rejected = std::find(
-                    rejected.begin(), rejected.end(), id) != rejected.end();
-                if (!continues || upstream_rejected)
+                if (continuing.find(id) == continuing.end() ||
+                    upstream_rejected_ids.find(id) !=
+                        upstream_rejected_ids.end())
                     addInitialStop(face_sets, {
                         id, current.layer, StopOrigin::Quality});
             }

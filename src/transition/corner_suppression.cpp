@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <boundary_mesh/transition/corner_suppression.hpp>
@@ -10,11 +12,11 @@ namespace boundary_mesh
 {
     namespace
     {
-        struct FaceRecord
+        std::uint64_t edgeKey(VertexId first, VertexId second)
         {
-            SurfaceFaceId id{};
-            const SurfaceFace *face{};
-        };
+            if (second < first) std::swap(first, second);
+            return (static_cast<std::uint64_t>(first) << 32) | second;
+        }
 
         std::vector<VertexId> vertices(const SurfaceFace &face)
         {
@@ -30,61 +32,6 @@ namespace boundary_mesh
             SurfaceFaceId id)
         {
             return std::binary_search(ids.begin(), ids.end(), id);
-        }
-
-        std::optional<std::size_t> sharedLocalEdge(
-            const SurfaceFace &low,
-            const SurfaceFace &other)
-        {
-            const auto low_vertices = vertices(low);
-            const auto other_vertices = vertices(other);
-            for (std::size_t edge = 0; edge < low_vertices.size(); ++edge)
-            {
-                const VertexId first = low_vertices[edge];
-                const VertexId second =
-                    low_vertices[(edge + 1) % low_vertices.size()];
-                if (std::find(other_vertices.begin(), other_vertices.end(),
-                              first) != other_vertices.end() &&
-                    std::find(other_vertices.begin(), other_vertices.end(),
-                              second) != other_vertices.end())
-                    return edge;
-            }
-            return std::nullopt;
-        }
-
-        bool incidentToAny(
-            const SurfaceFace &face,
-            const std::vector<VertexId> &selected)
-        {
-            const auto face_vertices = vertices(face);
-            for (const VertexId vertex : selected)
-                if (std::find(face_vertices.begin(), face_vertices.end(),
-                              vertex) != face_vertices.end())
-                    return true;
-            return false;
-        }
-
-        const SurfaceFace *findFace(
-            const GrowthFront &front,
-            SurfaceFaceId id)
-        {
-            const auto found = std::find(
-                front.source_face_ids.begin(),
-                front.source_face_ids.end(), id);
-            if (found == front.source_face_ids.end()) return nullptr;
-            return &front.faces[static_cast<std::size_t>(
-                found - front.source_face_ids.begin())];
-        }
-
-        Point3 candidatePoint(
-            const GrowthFront &candidate,
-            VertexId source_vertex,
-            const Point3 &fallback)
-        {
-            for (const auto &vertex : candidate.vertices)
-                if (vertex.source_vertex_id == source_vertex)
-                    return vertex.position;
-            return fallback;
         }
 
         void removeHigh(
@@ -130,29 +77,51 @@ namespace boundary_mesh
 
         const std::vector<SurfaceFaceId> seeds =
             input.face_sets.corner_suppression_seeds;
+        std::unordered_map<SurfaceFaceId, std::size_t> face_indices;
+        std::unordered_map<std::uint64_t, std::vector<SurfaceFaceId>>
+            edge_faces;
+        std::unordered_map<VertexId, std::vector<SurfaceFaceId>>
+            vertex_faces;
+        for (std::size_t index = 0;
+             index < input.current_front.faces.size(); ++index)
+        {
+            const SurfaceFaceId id =
+                input.current_front.source_face_ids[index];
+            face_indices[id] = index;
+            const auto ids = vertices(input.current_front.faces[index]);
+            for (std::size_t edge = 0; edge < ids.size(); ++edge)
+                edge_faces[edgeKey(ids[edge], ids[(edge + 1) % ids.size()])]
+                    .push_back(id);
+            for (const VertexId vertex : ids)
+                vertex_faces[vertex].push_back(id);
+        }
+        std::unordered_map<VertexId, Point3> candidate_points;
+        for (const auto &vertex : input.candidate_front.vertices)
+            candidate_points.emplace(
+                vertex.source_vertex_id, vertex.position);
         for (const SurfaceFaceId seed_id : seeds)
         {
-            const SurfaceFace *seed = findFace(
-                input.current_front, seed_id);
-            if (seed == nullptr)
+            const auto seed_position = face_indices.find(seed_id);
+            if (seed_position == face_indices.end())
                 return SuppressionResult::failure(
                     TransitionCoordinationError{
                         MissingTransitionFaceState{seed_id}});
+            const SurfaceFace *seed = &input.current_front.faces[
+                seed_position->second];
 
             std::vector<QuadHighNeighbor> quad_highs;
             std::vector<std::pair<std::size_t, SurfaceFaceId>> highs;
-            for (std::size_t index = 0;
-                 index < input.current_front.faces.size(); ++index)
+            const auto seed_ids = vertices(*seed);
+            for (std::size_t edge = 0; edge < seed_ids.size(); ++edge)
             {
-                const SurfaceFaceId other_id =
-                    input.current_front.source_face_ids[index];
-                if (other_id == seed_id ||
-                    !retained(result.retained_high_faces, other_id))
-                    continue;
-                const auto edge = sharedLocalEdge(
-                    *seed, input.current_front.faces[index]);
-                if (edge.has_value())
-                    highs.push_back({*edge, other_id});
+                const auto uses = edge_faces.find(edgeKey(
+                    seed_ids[edge],
+                    seed_ids[(edge + 1) % seed_ids.size()]));
+                if (uses == edge_faces.end()) continue;
+                for (const SurfaceFaceId other_id : uses->second)
+                    if (other_id != seed_id &&
+                        retained(result.retained_high_faces, other_id))
+                        highs.push_back({edge, other_id});
             }
             if (highs.empty()) continue;
 
@@ -177,10 +146,10 @@ namespace boundary_mesh
                     high[index] = static_cast<VertexId>(points.size());
                     const auto &low_vertex = input.current_front.vertices[
                         seed_vertices[index]];
-                    points.push_back(candidatePoint(
-                        input.candidate_front,
-                        low_vertex.source_vertex_id,
-                        low_vertex.position));
+                    const auto candidate = candidate_points.find(
+                        low_vertex.source_vertex_id);
+                    points.push_back(candidate == candidate_points.end()
+                        ? low_vertex.position : candidate->second);
                 }
                 for (const auto &[edge, id] : highs)
                     quad_highs.push_back({edge, id});
@@ -218,11 +187,23 @@ namespace boundary_mesh
                     covered.end())
                     non_contact.push_back(vertex);
 
-            const std::vector<SurfaceFaceId> retained_snapshot =
-                result.retained_high_faces;
-            for (const SurfaceFaceId high_id : retained_snapshot)
+            std::vector<SurfaceFaceId> incident_highs;
+            for (const VertexId vertex : non_contact)
+            {
+                const auto incident = vertex_faces.find(vertex);
+                if (incident != vertex_faces.end())
+                    incident_highs.insert(
+                        incident_highs.end(), incident->second.begin(),
+                        incident->second.end());
+            }
+            std::sort(incident_highs.begin(), incident_highs.end());
+            incident_highs.erase(std::unique(
+                incident_highs.begin(), incident_highs.end()),
+                incident_highs.end());
+            for (const SurfaceFaceId high_id : incident_highs)
             {
                 if (high_id == seed_id ||
+                    !retained(result.retained_high_faces, high_id) ||
                     std::find_if(highs.begin(), highs.end(),
                         [high_id, &selected_edges](const auto &high)
                         {
@@ -232,10 +213,7 @@ namespace boundary_mesh
                                           high.first) != selected_edges.end();
                         }) != highs.end())
                     continue;
-                const SurfaceFace *high = findFace(
-                    input.current_front, high_id);
-                if (high != nullptr && incidentToAny(*high, non_contact))
-                    removeHigh(result, high_id, input.completed_layer);
+                removeHigh(result, high_id, input.completed_layer);
             }
         }
 
