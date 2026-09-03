@@ -1065,3 +1065,16 @@ add_test(
     NAME boundary_mesh_corner_suppression_test
     COMMAND boundary_mesh_corner_suppression_test
 )
+
+add_executable(
+    boundary_mesh_transition_boundary_checker_test
+    unit/transition/transition_boundary_checker_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_transition_boundary_checker_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_transition_boundary_checker_test
+    COMMAND boundary_mesh_transition_boundary_checker_test
+)
