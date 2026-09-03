@@ -1013,3 +1013,16 @@ add_test(
         -DPROJECT_ROOT=${PROJECT_SOURCE_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/reserved_transition_single_entry_test.cmake
 )
+
+add_executable(
+    boundary_mesh_incremental_transition_types_test
+    unit/transition/incremental_transition_types_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_incremental_transition_types_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_incremental_transition_types_test
+    COMMAND boundary_mesh_incremental_transition_types_test
+)
