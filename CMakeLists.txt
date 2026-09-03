@@ -238,6 +238,7 @@ add_library(
         src/transition/quad_high_neighbor_selector.cpp
         src/transition/corner_suppression.cpp
         src/transition/transition_boundary_checker.cpp
+        src/transition/layer_transition_resolver.cpp
         src/transition/reserved_layer_transition.cpp
         src/transition/boundary_layer_generator.cpp
 )
