@@ -239,6 +239,7 @@ add_library(
         src/transition/corner_suppression.cpp
         src/transition/transition_boundary_checker.cpp
         src/transition/layer_transition_resolver.cpp
+        src/transition/incremental_boundary_layer_generator.cpp
         src/transition/reserved_layer_transition.cpp
         src/transition/boundary_layer_generator.cpp
 )

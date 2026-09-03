@@ -1091,3 +1091,16 @@ add_test(
     NAME boundary_mesh_layer_transition_resolver_test
     COMMAND boundary_mesh_layer_transition_resolver_test
 )
+
+add_executable(
+    boundary_mesh_incremental_layer_transition_pipeline_test
+    integration/incremental_layer_transition_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_incremental_layer_transition_pipeline_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_incremental_layer_transition_pipeline_test
+    COMMAND boundary_mesh_incremental_layer_transition_pipeline_test
+)
