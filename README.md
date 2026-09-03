@@ -225,7 +225,7 @@ main -> runBoundaryMeshCommand
     -> generateMultiNormalTransition（可选）
     -> makeReservedTrialProfiles
     -> generateRegularLayers
-    -> coordinateFront / TransitionLayerCoordinator
+    -> coordinateFront
     -> buildTriangleTransition / buildQuadTransition
     -> mergeMultiNormalAndRegularMeshes
     -> combineFarfieldAndTop
@@ -308,7 +308,7 @@ main -> runBoundaryMeshCommand
 
 ## 7.8 transition
 
-`makeReservedTrialProfiles()` 预留额外试层并查溢出。`TransitionLayerCoordinator` 根据逐面接受层数协调共享边邻居、识别高边，保证模板可处理。
+`makeReservedTrialProfiles()` 预留额外试层并查溢出。`coordinateFront()` 根据逐面接受层数协调 front 共享边、识别高边，保证模板可处理。
 
 `buildTriangleTransition/buildQuadTransition` 根据试层数、高边局部下标和逐层顶点 ID 生成最终单元/顶面；Quad 可创建中心点。
 
@@ -405,7 +405,7 @@ readCgnsSurface
 | 碰撞语义 | `src/spatial/*`、`layer_collision_checker.cpp` |
 | 相邻停止传播 | `face_layer_constraint.cpp`、`termination_propagator.cpp` |
 | 多法向拆点 | `multi_normal_*`、`third/blmesh_mnormal` |
-| 层协调/高边 | `transition_layer_coordinator.cpp` |
+| 层协调/高边 | `reserved_layer_transition.cpp::coordinateFront()` |
 | 过渡单元 | triangle/quad transition template |
 | 最高层流水线 | `reserved_layer_transition.cpp` |
 | targets/依赖 | 顶层 CMake、`cmake/Dependencies.cmake` |

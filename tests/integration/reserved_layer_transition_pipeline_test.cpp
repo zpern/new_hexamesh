@@ -11,8 +11,66 @@
 
 using namespace boundary_mesh;
 
+namespace
+{
+    RegularLayerGrowthResult trialWithLayers(
+        const std::vector<std::uint32_t> &layers)
+    {
+        RegularLayerGrowthResult trial;
+        for (std::size_t index = 0; index < layers.size(); ++index)
+            trial.faces.push_back(FaceGrowthRecord{
+                static_cast<SurfaceFaceId>(index), layers[index]});
+        return trial;
+    }
+}
+
 int main()
 {
+    GrowthFront coordinated_front;
+    coordinated_front.vertices.resize(18);
+    coordinated_front.faces = {
+        Quad{{0,1,2,3}},
+        Triangle{{0,4,5}},
+        Triangle{{1,6,7}},
+        Triangle{{8,9,10}},
+        Triangle{{8,11,12}},
+        Triangle{{9,13,14}},
+        Quad{{0,8,15,16}},
+        Triangle{{15,5,17}}};
+    coordinated_front.source_face_ids = {0,1,2,3,4,5,6,7};
+    const auto coordinated = coordinateTransitionFront(
+        coordinated_front,
+        trialWithLayers({1,2,2,1,2,2,0,2}));
+    assert(coordinated.hasValue());
+    assert(!coordinated.value()[0].high_edge_local_index.has_value());
+    assert(coordinated.value()[0].continuing_edge_local_index == 0);
+    assert(!coordinated.value()[3].high_edge_local_index.has_value());
+    assert(coordinated.value()[3].continuing_edge_local_index == 0);
+    assert(!coordinated.value()[6].continuing_edge_local_index.has_value());
+
+    GrowthFront opposite_front;
+    opposite_front.vertices.resize(8);
+    opposite_front.faces = {
+        Quad{{0,1,2,3}},
+        Triangle{{0,4,5}},
+        Triangle{{2,6,7}}};
+    opposite_front.source_face_ids = {0,1,2};
+    const auto opposite = coordinateTransitionFront(
+        opposite_front, trialWithLayers({1,2,2}));
+    assert(opposite.hasValue());
+    assert(!opposite.value()[0].continuing_edge_local_index.has_value());
+
+    GrowthFront zero_difference_front;
+    zero_difference_front.vertices.resize(4);
+    zero_difference_front.faces = {
+        Triangle{{0,1,2}}, Triangle{{1,0,3}}};
+    zero_difference_front.source_face_ids = {0,1};
+    const auto zero_difference = coordinateTransitionFront(
+        zero_difference_front, trialWithLayers({0,3}));
+    assert(!zero_difference.hasValue());
+    assert(std::holds_alternative<UncoordinatedTransitionLayerDifference>(
+        zero_difference.error()));
+
     const std::vector<Triangle> candidates{
         Triangle{{0, 1, 2}}, Triangle{{2, 1, 0}},
         Triangle{{0, 1, 3}},
@@ -43,9 +101,11 @@ int main()
 
     RegularLayerGrowthOptions options;
     options.isotropic_height = 100.0;
+    MultiNormalOptions disabled_multi_normal;
+    disabled_multi_normal.enabled = false;
     const auto result = generateReservedLayerTransition(
         mesh, topology.value(), patch.value(), front.value(),
-        profiles, options);
+        profiles, disabled_multi_normal, options);
     assert(result.hasValue());
     assert(result.value().trial_growth.faces[0].accepted_layer_count == 3);
     assert(result.value().mesh.cells.size() == 8);

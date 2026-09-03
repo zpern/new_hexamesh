@@ -934,19 +934,6 @@ add_test(
 )
 
 add_executable(
-    boundary_mesh_transition_layer_coordinator_test
-    unit/transition/transition_layer_coordinator_test.cpp
-)
-target_link_libraries(
-    boundary_mesh_transition_layer_coordinator_test
-    PRIVATE BoundaryMesh::Transition
-)
-add_test(
-    NAME boundary_mesh_transition_layer_coordinator_test
-    COMMAND boundary_mesh_transition_layer_coordinator_test
-)
-
-add_executable(
     boundary_mesh_quad_diagonal_test
     unit/transition/quad_diagonal_test.cpp
 )
@@ -1017,4 +1004,12 @@ add_test(
         ${CMAKE_COMMAND}
         -DPROJECT_ROOT=${PROJECT_SOURCE_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/multi_normal_module_boundary_test.cmake
+)
+
+add_test(
+    NAME boundary_mesh_reserved_transition_single_entry_test
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DPROJECT_ROOT=${PROJECT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/reserved_transition_single_entry_test.cmake
 )

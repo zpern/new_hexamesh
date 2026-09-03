@@ -14,7 +14,11 @@ namespace boundary_mesh
                 static_cast<std::size_t>(input.trial_layers) + 1 ||
             (input.high_edge_local_index.has_value() &&
              (*input.high_edge_local_index >= 3 ||
-              input.trial_layers == 0)))
+              input.trial_layers == 0)) ||
+            (input.continuing_edge_local_index.has_value() &&
+             (*input.continuing_edge_local_index >= 3 ||
+              input.trial_layers == 0 ||
+              input.high_edge_local_index.has_value())))
         {
             return TransitionTemplateResult::failure(
                 InvalidTransitionTemplateInput{input.source_face_id});
@@ -36,6 +40,29 @@ namespace boundary_mesh
                 CellRole::RegularLayer,
                 input.source_face_id,
                 layer});
+        }
+
+        if (input.continuing_edge_local_index.has_value())
+        {
+            const std::size_t first =
+                *input.continuing_edge_local_index;
+            const std::size_t second = (first + 1) % 3;
+            const std::size_t apex = (first + 2) % 3;
+            const auto &low = input.layer_vertex_ids[occupied];
+            const auto &high = input.layer_vertex_ids[occupied + 1];
+
+            result.volume_cells.push_back(Pyramid{{
+                low[first], high[first], high[second],
+                low[second], low[apex]}});
+            result.metadata.push_back(CellMetadata{
+                CellRole::ReservedLayerTransition,
+                input.source_face_id,
+                occupied + 1});
+            result.top_faces = {
+                Triangle{{high[first], high[second], low[apex]}},
+                Triangle{{low[first], high[first], low[apex]}},
+                Triangle{{high[second], low[second], low[apex]}}};
+            return TransitionTemplateResult::success(std::move(result));
         }
 
         if (!input.high_edge_local_index.has_value())

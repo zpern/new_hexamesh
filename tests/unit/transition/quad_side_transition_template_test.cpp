@@ -60,6 +60,140 @@ int main()
         assert(value.value().top_faces.size() == 4);
     }
 
+    auto continuing_zero_two = input;
+    continuing_zero_two.trial_layers = 1;
+    continuing_zero_two.layer_vertex_ids.resize(2);
+    continuing_zero_two.high_edge_local_index.reset();
+    continuing_zero_two.continuing_edge_local_index = 0;
+    const auto continuing_zero_two_result = buildQuadTransition(
+        continuing_zero_two);
+    assert(continuing_zero_two_result.hasValue());
+    assert(continuing_zero_two_result.value().volume_cells.size() == 4);
+    assert((std::get<Pyramid>(
+                continuing_zero_two_result.value().volume_cells[0])
+                .vertex_ids ==
+            std::array<VertexId,5>{1,5,4,0,2}));
+    assert((std::get<Tetra>(
+                continuing_zero_two_result.value().volume_cells[1])
+                .vertex_ids ==
+            std::array<VertexId,4>{0,2,4,3}));
+    assert(continuing_zero_two_result.value().top_faces.size() == 8);
+    assert(continuing_zero_two_result.value().metadata.size() == 4);
+
+    auto continuing_with_base = input;
+    continuing_with_base.high_edge_local_index.reset();
+    continuing_with_base.continuing_edge_local_index = 0;
+    const auto continuing_with_base_result = buildQuadTransition(
+        continuing_with_base);
+    assert(continuing_with_base_result.hasValue());
+    assert(continuing_with_base_result.value().volume_cells.size() == 11);
+    assert(continuing_with_base_result.value().side_cells.size() == 4);
+    assert((std::get<Pyramid>(
+                continuing_with_base_result.value().side_cells[0])
+                .vertex_ids ==
+            std::array<VertexId,5>{5,9,8,4,6}));
+    assert((std::get<Tetra>(
+                continuing_with_base_result.value().side_cells[1])
+                .vertex_ids ==
+            std::array<VertexId,4>{4,6,8,7}));
+    assert(continuing_with_base_result.value().top_faces.size() == 8);
+
+    const std::vector<Point3> continuing_base_one_three_points{
+        {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0},
+        {0,0,2}, {1,0,1}, {0,1,1}, {1,1,1},
+        {0,0,1}, {1,0,2}, {1,1,2}, {0,1,2}};
+    auto continuing_base_one_three = continuing_with_base;
+    continuing_base_one_three.mesh_vertices =
+        &continuing_base_one_three_points;
+    continuing_base_one_three.layer_vertex_ids = {
+        std::array<VertexId,4>{0,1,2,3},
+        std::array<VertexId,4>{8,5,7,6},
+        std::array<VertexId,4>{4,9,10,11}};
+    const auto continuing_base_one_three_result = buildQuadTransition(
+        continuing_base_one_three);
+    assert(continuing_base_one_three_result.hasValue());
+    assert((std::get<Pyramid>(
+                continuing_base_one_three_result.value().side_cells[0])
+                .vertex_ids ==
+            std::array<VertexId,5>{8,4,9,5,6}));
+    assert((std::get<Tetra>(
+                continuing_base_one_three_result.value().side_cells[1])
+                .vertex_ids ==
+            std::array<VertexId,4>{5,6,9,7}));
+    assert(continuing_base_one_three_result.value().top_faces.size() == 8);
+
+    const std::vector<Point3> one_three_points{
+        {0,0,0}, {1,0,0}, {0,1,0}, {1,1,0}, {0,0,0},
+        {1,0,1}, {0,1,1}, {1,1,1}, {0,0,1}};
+    auto continuing_one_three = continuing_zero_two;
+    continuing_one_three.mesh_vertices = &one_three_points;
+    continuing_one_three.layer_vertex_ids = {
+        std::array<VertexId,4>{4,1,3,2},
+        std::array<VertexId,4>{8,5,7,6}};
+    const auto continuing_one_three_result = buildQuadTransition(
+        continuing_one_three);
+    assert(continuing_one_three_result.hasValue());
+    assert((std::get<Pyramid>(
+                continuing_one_three_result.value().volume_cells[0])
+                .vertex_ids ==
+            std::array<VertexId,5>{4,8,5,1,2}));
+    assert((std::get<Tetra>(
+                continuing_one_three_result.value().volume_cells[1])
+                .vertex_ids ==
+            std::array<VertexId,4>{1,2,5,3}));
+
+    const std::vector<Point3> continuing_method_one_points{
+        {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0},
+        {0,0,1.5883449370972813},
+        {1,0,0.939703419432044},
+        {1,1,0.5175116905011237},
+        {0,1,0.6299129502847791}};
+    auto continuing_method_one = continuing_zero_two;
+    continuing_method_one.continuing_edge_local_index = 1;
+    continuing_method_one.mesh_vertices = &continuing_method_one_points;
+    const auto continuing_method_one_result = buildQuadTransition(
+        continuing_method_one);
+    assert(continuing_method_one_result.hasValue());
+    assert((std::get<Tetra>(
+            continuing_method_one_result.value().volume_cells[2])
+                .vertex_ids ==
+            std::array<VertexId,4>{5,6,7,0}));
+    assert((std::get<Tetra>(
+            continuing_method_one_result.value().volume_cells[3])
+                .vertex_ids ==
+            std::array<VertexId,4>{5,7,4,0}));
+
+    const std::vector<Point3> continuing_method_two_points{
+        {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0},
+        {0,0,1.182006699871272},
+        {1,0,1.5853847961872818},
+        {1,1,0.911155202332884},
+        {0,1,1.2964447112753987}};
+    auto continuing_method_two = continuing_method_one;
+    continuing_method_two.mesh_vertices = &continuing_method_two_points;
+    const auto continuing_method_two_result = buildQuadTransition(
+        continuing_method_two);
+    assert(continuing_method_two_result.hasValue());
+    assert((std::get<Tetra>(
+            continuing_method_two_result.value().volume_cells[2])
+                .vertex_ids ==
+            std::array<VertexId,4>{5,6,4,0}));
+    assert((std::get<Tetra>(
+            continuing_method_two_result.value().volume_cells[3])
+                .vertex_ids ==
+            std::array<VertexId,4>{6,7,4,0}));
+
+    auto conflicting_continuing = continuing_zero_two;
+    conflicting_continuing.high_edge_local_index = 0;
+    assert(!buildQuadTransition(conflicting_continuing).hasValue());
+    auto invalid_continuing = continuing_zero_two;
+    invalid_continuing.continuing_edge_local_index = 4;
+    assert(!buildQuadTransition(invalid_continuing).hasValue());
+    auto zero_continuing = continuing_zero_two;
+    zero_continuing.trial_layers = 0;
+    zero_continuing.layer_vertex_ids.resize(1);
+    assert(!buildQuadTransition(zero_continuing).hasValue());
+
     auto single_high_three_continuing = input;
     single_high_three_continuing.trial_layers = 1;
     single_high_three_continuing.layer_vertex_ids.resize(2);

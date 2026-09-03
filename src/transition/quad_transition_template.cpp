@@ -141,6 +141,122 @@ namespace boundary_mesh
                 occupied + 1});
         }
 
+        Result<bool, FaceEvaluationError> appendContinuingEdgeTransition(
+            SourceTransitionResult &result,
+            const QuadTransitionInput &input,
+            QuadDiagonal diagonal,
+            std::uint32_t occupied)
+        {
+            const std::size_t edge =
+                *input.continuing_edge_local_index;
+            const auto &low = input.layer_vertex_ids[occupied];
+            const auto &high = input.layer_vertex_ids[occupied + 1];
+            const VertexId a = low[edge];
+            const VertexId b = low[(edge + 1) % 4];
+            const VertexId d = low[(edge + 2) % 4];
+            const VertexId c = low[(edge + 3) % 4];
+            const VertexId e = high[edge];
+            const VertexId f = high[(edge + 1) % 4];
+            const VertexId h = high[(edge + 2) % 4];
+            const VertexId g = high[(edge + 3) % 4];
+            const bool diagonal_ad =
+                (edge % 2 == 0 && diagonal == QuadDiagonal::ZeroTwo) ||
+                (edge % 2 == 1 && diagonal == QuadDiagonal::OneThree);
+
+            const VertexId apex = diagonal_ad ? d : c;
+            const std::array<Tetra, 2> method_one{{
+                Tetra{{e, f, h, apex}},
+                Tetra{{e, h, g, apex}}}};
+            const std::array<Tetra, 2> method_two{{
+                Tetra{{e, f, g, apex}},
+                Tetra{{f, h, g, apex}}}};
+            const auto score_one = tetraPairSkewness(
+                method_one, *input.mesh_vertices,
+                input.length_tolerance);
+            const auto score_two = tetraPairSkewness(
+                method_two, *input.mesh_vertices,
+                input.length_tolerance);
+            if (!score_one.hasValue() && !score_two.hasValue())
+                return Result<bool, FaceEvaluationError>::failure(
+                    score_two.error());
+            const bool use_method_one =
+                score_one.hasValue() &&
+                (!score_two.hasValue() ||
+                 score_one.value() < score_two.value());
+            const auto &selected = use_method_one
+                ? method_one
+                : method_two;
+
+            const Pyramid pyramid = diagonal_ad
+                ? Pyramid{{b, f, e, a, d}}
+                : Pyramid{{a, e, f, b, c}};
+            const Tetra first_tetra = diagonal_ad
+                ? Tetra{{a, d, e, c}}
+                : Tetra{{b, c, f, d}};
+            result.side_cells.push_back(pyramid);
+            result.side_cells.push_back(first_tetra);
+            result.volume_cells.push_back(pyramid);
+            result.volume_cells.push_back(first_tetra);
+            for (const Tetra &cell : selected)
+            {
+                result.side_cells.push_back(cell);
+                result.volume_cells.push_back(cell);
+            }
+            for (std::size_t index = 0; index < 4; ++index)
+                result.metadata.push_back(CellMetadata{
+                    CellRole::ReservedLayerTransition,
+                    input.source_face_id,
+                    occupied + 1});
+
+            if (diagonal_ad)
+            {
+                if (use_method_one)
+                    result.top_faces = {
+                        Triangle{{b, f, d}},
+                        Triangle{{d, c, e}},
+                        Triangle{{e, c, a}},
+                        Triangle{{e, f, h}},
+                        Triangle{{f, d, h}},
+                        Triangle{{e, h, g}},
+                        Triangle{{h, d, g}},
+                        Triangle{{g, d, e}}};
+                else
+                    result.top_faces = {
+                        Triangle{{b, f, d}},
+                        Triangle{{d, c, e}},
+                        Triangle{{e, c, a}},
+                        Triangle{{e, f, g}},
+                        Triangle{{g, d, e}},
+                        Triangle{{f, h, g}},
+                        Triangle{{f, d, h}},
+                        Triangle{{h, d, g}}};
+            }
+            else
+            {
+                if (use_method_one)
+                    result.top_faces = {
+                        Triangle{{a, e, c}},
+                        Triangle{{c, d, f}},
+                        Triangle{{f, d, b}},
+                        Triangle{{e, f, h}},
+                        Triangle{{f, c, h}},
+                        Triangle{{e, h, g}},
+                        Triangle{{h, c, g}},
+                        Triangle{{g, c, e}}};
+                else
+                    result.top_faces = {
+                        Triangle{{a, e, c}},
+                        Triangle{{c, d, f}},
+                        Triangle{{f, d, b}},
+                        Triangle{{e, f, g}},
+                        Triangle{{g, c, e}},
+                        Triangle{{f, h, g}},
+                        Triangle{{f, c, h}},
+                        Triangle{{h, c, g}}};
+            }
+            return Result<bool, FaceEvaluationError>::success(true);
+        }
+
         Result<bool, FaceEvaluationError> appendDoubleSideTransition(
             SourceTransitionResult &result,
             const QuadTransitionInput &input,
@@ -240,7 +356,13 @@ namespace boundary_mesh
             (input.third_continuing_vertex_local_index.has_value() &&
              (!input.high_edge_local_index.has_value() ||
               input.second_high_edge_local_index.has_value() ||
-              *input.third_continuing_vertex_local_index >= 4)))
+              *input.third_continuing_vertex_local_index >= 4)) ||
+            (input.continuing_edge_local_index.has_value() &&
+             (*input.continuing_edge_local_index >= 4 ||
+              input.trial_layers == 0 ||
+              input.high_edge_local_index.has_value() ||
+              input.second_high_edge_local_index.has_value() ||
+              input.third_continuing_vertex_local_index.has_value())))
         {
             return TransitionTemplateResult::failure(
                 TransitionTemplateError{
@@ -324,7 +446,15 @@ namespace boundary_mesh
                 return TransitionTemplateResult::failure(
                     TransitionTemplateError{diagonal.error()});
             }
-            if (input.high_edge_local_index.has_value())
+            if (input.continuing_edge_local_index.has_value())
+            {
+                const auto appended = appendContinuingEdgeTransition(
+                    result, input, diagonal.value().diagonal, 0);
+                if (!appended.hasValue())
+                    return TransitionTemplateResult::failure(
+                        TransitionTemplateError{appended.error()});
+            }
+            else if (input.high_edge_local_index.has_value())
             {
                 appendSideTransition(
                     result, input, diagonal.value().diagonal, 0);
@@ -417,7 +547,18 @@ namespace boundary_mesh
             CellRole::ReservedLayerTransition,
             input.source_face_id,
             regular + 1});
-        if (four_cell_common.has_value())
+        if (input.continuing_edge_local_index.has_value())
+        {
+            const auto appended = appendContinuingEdgeTransition(
+                result,
+                input,
+                selected_diagonal,
+                regular + 1);
+            if (!appended.hasValue())
+                return TransitionTemplateResult::failure(
+                    TransitionTemplateError{appended.error()});
+        }
+        else if (four_cell_common.has_value())
         {
             const auto appended = appendDoubleSideTransition(
                 result,

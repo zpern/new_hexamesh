@@ -230,7 +230,6 @@ add_library(
     boundary_mesh_transition
     STATIC
         src/transition/reserved_layer_growth.cpp
-        src/transition/transition_layer_coordinator.cpp
         src/transition/quad_diagonal.cpp
         src/transition/triangle_transition_template.cpp
         src/transition/quad_transition_template.cpp

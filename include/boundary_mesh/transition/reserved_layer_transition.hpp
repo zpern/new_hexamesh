@@ -8,7 +8,7 @@
 #include <boundary_mesh/multi_normal/multi_normal_mesh_merge.hpp>
 #include <boundary_mesh/multi_normal/multi_normal_transition_generator.hpp>
 #include <boundary_mesh/transition/reserved_layer_growth.hpp>
-#include <boundary_mesh/transition/transition_layer_coordinator.hpp>
+#include <boundary_mesh/transition/transition_coordination.hpp>
 #include <boundary_mesh/transition/transition_templates.hpp>
 
 namespace boundary_mesh
@@ -28,13 +28,6 @@ namespace boundary_mesh
         std::size_t regular_cell_count{};
     };
 
-    using ReservedLayerTransitionError = std::variant<
-        ReservedLayerCountOverflow,
-        RegularLayerGrowthError,
-        TransitionCoordinationError,
-        TransitionTemplateError,
-        VolumeVertexIdOverflow>;
-
     struct ReservedMultiNormalFailure { MultiNormalError cause; };
     struct ReservedMultiNormalMergeFailure { MultiNormalMergeError cause; };
 
@@ -46,15 +39,6 @@ namespace boundary_mesh
         VolumeVertexIdOverflow,
         ReservedMultiNormalFailure,
         ReservedMultiNormalMergeFailure>;
-
-    Result<ReservedLayerTransitionResult, ReservedLayerTransitionError>
-    generateReservedLayerTransition(
-        const SurfaceMesh &surface_mesh,
-        const SurfaceTopology &topology,
-        const GrowthPatch &patch,
-        const GrowthFront &initial_front,
-        const std::vector<SourceVertexGrowthProfile> &profiles,
-        const RegularLayerGrowthOptions &options = {});
 
     Result<ReservedLayerTransitionResult,
            CombinedReservedLayerTransitionError>

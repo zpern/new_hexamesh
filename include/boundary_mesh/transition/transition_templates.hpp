@@ -30,6 +30,7 @@ namespace boundary_mesh
         SurfaceFaceId source_face_id{};
         std::uint32_t trial_layers{};
         std::optional<std::size_t> high_edge_local_index;
+        std::optional<std::size_t> continuing_edge_local_index;
         std::vector<std::array<VertexId, 3>> layer_vertex_ids;
     };
 
@@ -40,6 +41,7 @@ namespace boundary_mesh
         std::optional<std::size_t> high_edge_local_index;
         std::optional<std::size_t> second_high_edge_local_index;
         std::optional<std::size_t> third_continuing_vertex_local_index;
+        std::optional<std::size_t> continuing_edge_local_index;
         std::vector<std::array<VertexId, 4>> layer_vertex_ids;
         const std::vector<Point3> *mesh_vertices{};
         VertexId center_vertex_id{};

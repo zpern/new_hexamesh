@@ -1,15 +1,12 @@
 #pragma once
 
 #include <cstddef>
-#include <cstdint>
 #include <optional>
-#include <utility>
 #include <variant>
 #include <vector>
 
-#include <boundary_mesh/core/result.hpp>
-#include <boundary_mesh/growth/growth_patch.hpp>
-#include <boundary_mesh/mesh/mesh_surface_topology.hpp>
+#include <boundary_mesh/growth/growth_front.hpp>
+#include <boundary_mesh/growth/regular_layer_growth.hpp>
 #include <boundary_mesh/transition/reserved_layer_growth.hpp>
 
 namespace boundary_mesh
@@ -20,14 +17,10 @@ namespace boundary_mesh
         std::optional<std::size_t> high_edge_local_index;
         std::optional<std::size_t> second_high_edge_local_index;
         std::optional<VertexId> third_continuing_vertex_id;
+        std::optional<std::size_t> continuing_edge_local_index;
     };
 
     struct MissingTransitionFaceState
-    {
-        SurfaceFaceId source_face_id{};
-    };
-
-    struct DuplicateTransitionFaceState
     {
         SurfaceFaceId source_face_id{};
     };
@@ -54,21 +47,13 @@ namespace boundary_mesh
 
     using TransitionCoordinationError = std::variant<
         MissingTransitionFaceState,
-        DuplicateTransitionFaceState,
         UncoordinatedTransitionLayerDifference,
         MultipleTransitionHighEdges,
         TransitionCornerLayerViolation>;
 
-    class TransitionLayerCoordinator
-    {
-    public:
-        Result<std::vector<CoordinatedTransitionFace>,
-               TransitionCoordinationError>
-        coordinate(
-            const GrowthPatch &patch,
-            const SurfaceTopology &topology,
-            const std::vector<
-                std::pair<SurfaceFaceId, std::uint32_t>>
-                &trial_layers) const;
-    };
+    Result<std::vector<CoordinatedTransitionFace>,
+           TransitionCoordinationError>
+    coordinateTransitionFront(
+        const GrowthFront &front,
+        const RegularLayerGrowthResult &trial);
 }

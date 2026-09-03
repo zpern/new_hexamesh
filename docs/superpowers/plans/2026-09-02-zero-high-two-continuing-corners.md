@@ -32,7 +32,7 @@
 
 - [ ] **Step 1: Write failing Triangle template tests**
 
-Add cases for `trial_layers == 1`, continuing edge 0, and all three rotations. Assert edge 0 produces `Pyramid{{0,3,4,1,2}}`, four exposed top faces, one transition metadata record, and no Prism. Add invalid-input assertions for continuing edge plus high edge, local edge 3, and trial 0.
+Add cases for `trial_layers == 1`, continuing edge 0, and all three rotations. Assert edge 0 produces `Pyramid{{0,3,4,1,2}}`, three exposed top faces, one transition metadata record, and no Prism. Add invalid-input assertions for continuing edge plus high edge, local edge 3, and trial 0.
 
 - [ ] **Step 2: Run the focused test and verify RED**
 
@@ -42,7 +42,7 @@ Expected: compile failure because `continuing_edge_local_index` does not exist.
 
 - [ ] **Step 3: Implement the minimal Triangle branch**
 
-Add the optional input field and validation. After regular Prism generation, branch on the continuing edge before the ordinary no-high return, append `Pyramid{{low[first], high[first], high[second], low[second], low[apex]}}`, metadata at `occupied + 1`, and its four exposed triangular faces.
+Add the optional input field and validation. After regular Prism generation, branch on the continuing edge before the ordinary no-high return, append `Pyramid{{low[first], high[first], high[second], low[second], low[apex]}}`, metadata at `occupied + 1`, and the three exposed triangular faces excluding `[low[first], low[second], low[apex]]`.
 
 - [ ] **Step 4: Run the focused test and verify GREEN**
 
@@ -61,7 +61,7 @@ Run the command from Step 2; expect exit code 0.
 
 - [ ] **Step 1: Write failing Quad connectivity tests**
 
-Add a `trial_layers == 1`, edge-0 case. For the bottom `b-c` direction assert the first two cells are `Pyramid{{a,e,f,b,c}}` and `Tetra{{b,c,f,d}}`; assert the selected remaining pair is exactly one of the two approved `e-g`/`f-h` candidates and all four cells carry transition metadata. Add a rotated/mirrored case that asserts `Pyramid{{b,f,e,a,d}}` and `Tetra{{a,d,e,c}}`.
+Add a `trial_layers == 1`, edge-0 case. For the bottom `b-c` direction assert the first two cells are `Pyramid{{a,e,f,b,c}}` and `Tetra{{b,c,f,d}}`; assert the selected remaining pair is exactly one of the two approved `e-h`/`f-g` candidates and all four cells carry transition metadata. Add a rotated/mirrored case that asserts `Pyramid{{b,f,e,a,d}}` and `Tetra{{a,d,e,c}}`.
 
 - [ ] **Step 2: Run the focused test and verify RED**
 

@@ -69,8 +69,10 @@ Pyramid [a,e,f,b,c]
 ```
 
 在该 Pyramid 之前仍生成现有的 `occupied` 个规则 Prism。Pyramid 标记为
-`ReservedLayerTransition`，层号为 `occupied + 1`。外露顶面是 Pyramid 除底面
-`[a,e,f,b]` 以外的四个三角侧面；与邻近模板重合的三角面由全局顶面去重消除。
+`ReservedLayerTransition`，层号为 `occupied + 1`。四边形面 `[a,e,f,b]` 是模板
+接口，三角面 `[a,b,c]` 是与下方规则 Prism（短层数时为源底面）相接的界面；
+两者都不输出。其余三个三角侧面作为 `top_faces`，与邻近模板重合的三角面由
+全局顶面去重消除。
 
 ## Quad 模板
 
@@ -85,7 +87,8 @@ Quad 输入同样增加 `continuing_edge_local_index`，并要求它与全部高
   公共基础块；新侧向模板使用公共基础块选定的顶面（即侧向模板底面）对角线，
   不得重新选择。
 
-把继续边旋转为 `a-b`，循环低层点为 `a,b,c,d`，下一层点为 `e,f,g,h`。
+把继续边旋转为 `a-b`。按图示位置，低层为 `a-b/c-d`、下一层为
+`e-f/g-h`；数组循环顺序分别是 `a,b,d,c` 和 `e,f,h,g`。
 
 公共基础块沿 `b-c` 方向切割时固定生成：
 
@@ -107,17 +110,17 @@ Tetra   [a,d,e,c]
 对于 `b-c` 底面方向，剩余两个 Tetra 的公共低层顶点（`apex`）为 `c`：
 
 ```text
-顶面对角线 e-g：
-Tetra [e,g,h,c]
-Tetra [e,g,f,c]
+顶面对角线 e-h：
+Tetra [e,f,h,c]
+Tetra [e,h,g,c]
 
-顶面对角线 f-h：
-Tetra [f,h,e,c]
+顶面对角线 f-g：
+Tetra [e,f,g,c]
 Tetra [f,h,g,c]
 ```
 
 对于镜像的 `a-d` 底面方向，采用同样的循环旋转规则，`apex` 为 `d`；两套候选
-仍分别沿对应旋转后的 `e-g` 与 `f-h` 顶面对角线构造。
+仍分别沿对应旋转后的 `e-h` 与 `f-g` 顶面对角线构造。
 
 每种候选的分数是两个 Tetra 全部八个三角面的最大等角 skewness：
 
