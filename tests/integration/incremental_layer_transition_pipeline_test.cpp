@@ -73,6 +73,12 @@ int main()
     assert(one.top_surface.faces.size() == 2);
     for (const auto &face : one.top_surface.faces)
         assert(std::holds_alternative<Triangle>(face));
+    for (std::size_t index = 0;
+         index < one.farfield_boundary.faces.size(); ++index)
+        if (one.farfield_boundary.face_tags[index].kind ==
+            SurfaceBoundaryKind::BoundaryLayerInterface)
+            assert(std::holds_alternative<Triangle>(
+                one.farfield_boundary.faces[index]));
 
     const auto two = generate(2);
     assert(count(two.mesh, CellType::Hexa) == 1);

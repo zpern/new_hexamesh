@@ -115,6 +115,34 @@ namespace boundary_mesh
                     return edge;
             return std::nullopt;
         }
+
+        bool appendRemappedFace(
+            SurfaceMesh &output,
+            const SurfaceFace &input,
+            const SurfaceBoundaryTag &tag,
+            const std::vector<Point3> &points)
+        {
+            SurfaceFace remapped = input;
+            bool valid = true;
+            std::visit([&](auto &face)
+            {
+                for (VertexId &id : face.vertex_ids)
+                {
+                    if (static_cast<std::size_t>(id) >= points.size())
+                    {
+                        valid = false;
+                        return;
+                    }
+                    const Point3 point = points[id];
+                    id = static_cast<VertexId>(output.vertices.size());
+                    output.vertices.push_back(point);
+                }
+            }, remapped);
+            if (!valid) return false;
+            output.faces.push_back(std::move(remapped));
+            output.face_tags.push_back(tag);
+            return true;
+        }
     }
 
     Result<RegularLayerGrowthResult, IncrementalLayerGrowthError>
@@ -305,6 +333,40 @@ namespace boundary_mesh
                 triangular_top, low.top_faces, low.region);
         }
         triangular_top.vertices = result.mesh.vertices;
+        SurfaceMesh triangular_farfield;
+        for (std::size_t index = 0;
+             index < result.farfield_boundary.faces.size(); ++index)
+        {
+            if (index >= result.farfield_boundary.face_tags.size())
+                return GrowthResult::failure(
+                    IncrementalLayerGrowthError{
+                        TransitionTemplateError{
+                            InvalidTransitionTemplateInput{}}});
+            if (result.farfield_boundary.face_tags[index].kind ==
+                SurfaceBoundaryKind::BoundaryLayerInterface)
+                continue;
+            if (!appendRemappedFace(
+                    triangular_farfield,
+                    result.farfield_boundary.faces[index],
+                    result.farfield_boundary.face_tags[index],
+                    result.farfield_boundary.vertices))
+                return GrowthResult::failure(
+                    IncrementalLayerGrowthError{
+                        TransitionTemplateError{
+                            InvalidTransitionTemplateInput{}}});
+        }
+        for (std::size_t index = 0;
+             index < triangular_top.faces.size(); ++index)
+            if (!appendRemappedFace(
+                    triangular_farfield,
+                    triangular_top.faces[index],
+                    triangular_top.face_tags[index],
+                    result.mesh.vertices))
+                return GrowthResult::failure(
+                    IncrementalLayerGrowthError{
+                        TransitionTemplateError{
+                            InvalidTransitionTemplateInput{}}});
+        result.farfield_boundary = std::move(triangular_farfield);
         result.top_surface = std::move(triangular_top);
         return GrowthResult::success(std::move(result));
     }
