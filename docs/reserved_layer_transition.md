@@ -1,5 +1,9 @@
 # 保留两层附面层过渡算法
 
+> 本文描述旧版一次性保留层算法。生产生成现已使用
+> `generateBoundaryLayers()` 的逐层增量过渡路径，旧 API 仅保留用于兼容测试。
+> 新设计见 `docs/superpowers/specs/2026-09-03-incremental-layer-transition-design.md`。
+
 ## 1. 文档范围
 
 本文只描述当前代码已经实现并可执行的保留层过渡规则。Pointwise 等商业软件的

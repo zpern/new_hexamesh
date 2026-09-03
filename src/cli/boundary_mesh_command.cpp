@@ -1,5 +1,6 @@
 #include <cli/boundary_mesh_command.hpp>
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -16,7 +17,7 @@
 #include <boundary_mesh/io/cgns_surface_reader.hpp>
 #include <boundary_mesh/io/legacy_vtk_writer.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
-#include <boundary_mesh/transition/reserved_layer_transition.hpp>
+#include <boundary_mesh/transition/boundary_layer_generator.hpp>
 
 namespace boundary_mesh
 {
@@ -302,7 +303,7 @@ namespace boundary_mesh
         multi_normal_options.enabled = command_options.multi_normal_enabled;
         multi_normal_options.transition_height = command_options.first_height;
 
-        const auto growth = generateReservedLayerTransition(
+        const auto growth = generateBoundaryLayers(
             surface.value(),
             topology.value(),
             patch.value(),
@@ -349,7 +350,7 @@ namespace boundary_mesh
             growth.value().farfield_boundary);
         const auto top_status = writeLegacyVtk(
             top_path,
-            growth.value().boundary_layer_top);
+            growth.value().top_surface);
         if (!volume_status.hasValue() ||
             !farfield_status.hasValue() ||
             !top_status.hasValue())
@@ -365,13 +366,26 @@ namespace boundary_mesh
                << "volume_cells=" << growth.value().mesh.cells.size()
                << '\n'
                << "transition_cells="
-               << growth.value().multi_normal_transition.transition_cells.cells.size()
+               << growth.value().transition.transition_cells.cells.size()
                << '\n'
                << "reserved_transition_cells="
-               << growth.value().reserved_transition_cell_count
+               << std::count_if(
+                      growth.value().mesh.metadata.begin(),
+                      growth.value().mesh.metadata.end(),
+                      [](const CellMetadata &metadata)
+                      {
+                          return metadata.role ==
+                              CellRole::ReservedLayerTransition;
+                      })
                << '\n'
                << "regular_cells="
-               << growth.value().regular_cell_count
+               << std::count_if(
+                      growth.value().mesh.metadata.begin(),
+                      growth.value().mesh.metadata.end(),
+                      [](const CellMetadata &metadata)
+                      {
+                          return metadata.role == CellRole::RegularLayer;
+                      })
                << '\n'
                << "farfield_faces="
                << growth.value().farfield_boundary.faces.size()
@@ -385,7 +399,7 @@ namespace boundary_mesh
                << "isotropic_height="
                << command_options.isotropic_height
                << '\n';
-        printStopReasonCounts(output, growth.value().trial_growth);
+        printStopReasonCounts(output, growth.value().regular);
         return 0;
     }
 }
