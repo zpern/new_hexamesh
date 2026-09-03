@@ -116,6 +116,8 @@ score = max(候选模板全部三角面的 skewness)
 
 所有角点压制删除的高单元只加入 `transition_low_faces`，不能产生新的 `corner_suppression_seeds`。
 
+每个被选中的高邻方案还必须输出该模板要求的低面规范对角线。相邻双高边等具有强制底层拓扑的模板，其强制对角线优先于单个 Quad 的局部质量选择。
+
 ## 7. 顶层 Quad 剖分和全三角形外表面
 
 每个 Quad 柱只有当前最顶层 Hexa需要剖分。取该 Hexa 的底层 Quad `bottom`、顶层 Quad `top` 和八点几何中心 `c`，复用现有公共基础块：
@@ -138,7 +140,27 @@ score = max(候选模板全部三角面的 skewness)
 
 顶盖必须视为每层事务中的可替换派生结果，不能过早永久写入正式网格。
 
-## 8. 联合暴露面检测与回退归属
+## 8. 低面规范对角线
+
+每个 Quad 层面 `(source_face_id, layer)` 在一次事务中只能有一个规范对角线。该对角线必须由以下消费者共同使用：
+
+- 第 `layer` 层 Quad 外露面的两个 Triangle；
+- 以该 Quad 为顶面的最顶层 Hexa剖分；
+- 从该 Quad 低面出发的一级侧向 Pyramid/Tetra 过渡模板；
+- 与上述模板共享该 Quad 接口的其他局部单元。
+
+对角线按以下优先级解析：
+
+1. 高邻拓扑要求的强制对角线；
+2. 已为同一 `(source_face_id, layer)` 注册的规范对角线；
+3. `chooseQuadDiagonal()` 的质量结果；
+4. 质量平分时沿用现有顶点 ID 字典序规则。
+
+若同一层面收到两个互相冲突的强制对角线，当前高邻保留方案无效，必须尝试下一质量候选；所有候选均冲突时回退其依赖的第 `n+1` 层高单元，不能生成不共形接口。
+
+第 0 层没有规则 Hexa顶盖，但源 Quad 的三角化仍须先注册规范对角线，`0→1` 侧向过渡必须消费同一选择。第 `n` 层旧顶盖恢复为完整 Hexa、第 `n+1` 层成为新顶盖时，分别保留各自层面的规范对角线，不能把新顶面对角线误用于旧低面。
+
+## 9. 联合暴露面检测与回退归属
 
 每轮检测对象是以下内容形成的完整联合暴露面：
 
@@ -173,7 +195,7 @@ struct LayerBoundaryOwner
 
 相交回退产生的新低面同时加入 `corner_suppression_seeds` 和 `transition_low_faces`，因此必须重新执行角点压制并按完整 `transition_low_faces` 重建全部临时过渡单元。
 
-## 9. 事务边界与组件职责
+## 10. 事务边界与组件职责
 
 新增逐层协调组件，例如 `LayerTransitionResolver`：
 
@@ -206,7 +228,7 @@ struct StableLayerTransition
 - 正式 `ExposedBoundaryTracker`；
 - 下一层 `GrowthFront`。
 
-## 10. 不变量和错误处理
+## 11. 不变量和错误处理
 
 提交前必须同时满足：
 
@@ -215,10 +237,11 @@ struct StableLayerTransition
 3. 完整 `transition_low_faces` 中每个低面都能由现有模板表达。
 4. 联合暴露边界与原始表面、历史边界和自身均无非法相交。
 5. 所有最终外露面均为 Triangle。
-6. 内部 Triangle 恰有两个体单元拥有者，外露 Triangle 恰有一个拥有者。
-7. 所有体单元不反转、不退化，不产生正体积交叉。
-8. `mesh.cells.size() == mesh.metadata.size()`。
-9. 每个单元保持可追踪的 `source_face_id`、`layer` 和 `cell_role`。
+6. 每个 Quad 低面、对应顶盖和侧向过渡使用同一个规范对角线。
+7. 内部 Triangle 恰有两个体单元拥有者，外露 Triangle 恰有一个拥有者。
+8. 所有体单元不反转、不退化，不产生正体积交叉。
+9. `mesh.cells.size() == mesh.metadata.size()`。
+10. 每个单元保持可追踪的 `source_face_id`、`layer` 和 `cell_role`。
 
 无法生成某个临时模板时，若可通过删除其依赖的本层高单元隔离，则按相交回退处理。以下情况返回硬错误：
 
@@ -228,7 +251,7 @@ struct StableLayerTransition
 - 固定点结束后仍存在层差违规、模板缺口或非法相交；
 - 网格和元数据数量不一致。
 
-## 11. 测试策略
+## 12. 测试策略
 
 采用测试驱动方式实现，至少覆盖：
 
@@ -246,5 +269,8 @@ struct StableLayerTransition
 - 本层多个冲突批量回退，结果不依赖面遍历顺序；
 - Triangle/Quad 混合 front；
 - 第 0 层 Quad 无高邻时直接输出两个 Triangle；
+- 第 0 层源 Quad 与 `0→1` 侧向模板使用同一规范对角线；
+- 第 n 层顶盖 Quad 与 `n→n+1` 侧向模板使用同一规范对角线；
+- 双高边强制对角线覆盖局部质量选择，冲突候选被拒绝或回退；
 - 最终顶面全为 Triangle，内部面和外露面拥有者计数正确；
 - 无反转、退化、非法相交，网格与元数据数量一致。

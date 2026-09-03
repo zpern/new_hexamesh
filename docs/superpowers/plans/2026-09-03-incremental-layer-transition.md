@@ -16,6 +16,7 @@
 - `corner_suppression_seeds` drive corner suppression; `transition_low_faces` contain every low face that requires transition construction.
 - Initial non-corner stops and collision rollbacks enter both sets; corner-suppressed faces enter only `transition_low_faces`.
 - A Quad column has exactly one replaceable outer cap: its current top Hexa is decomposed into `5 Pyramid + 2 Tetra`; when the column advances, the previous cap becomes a complete Hexa and the new top Hexa becomes the cap.
+- Every Quad layer face, including layer 0, has one canonical diagonal shared by its exposed triangulation, top-Hexa cap, and side-transition template; forced transition topology takes priority over local quality.
 - The complete final boundary-layer top is triangular.
 - A layer transaction commits only after the retained regular cells, top caps, and side transitions have no illegal contact with the original surface, historical exposed boundary, or one another.
 - Preserve `source_face_id`, `layer`, and `cell_role` for every committed cell, and preserve `mesh.cells.size() == mesh.metadata.size()`.
@@ -25,6 +26,7 @@
 ## File Structure
 
 - Create `include/boundary_mesh/transition/incremental_transition_types.hpp`: stop origins, the two named face sets, ownership records, provisional cap records, and stable-layer result types.
+- Create `include/boundary_mesh/transition/layer_quad_diagonal_table.hpp` and `src/transition/layer_quad_diagonal_table.cpp`: one canonical diagonal per `(source_face_id, layer)` shared by source/top faces, caps, and side transitions.
 - Create `include/boundary_mesh/transition/quad_high_neighbor_selector.hpp` and `src/transition/quad_high_neighbor_selector.cpp`: deterministic Quad high-edge option enumeration and quality selection.
 - Create `include/boundary_mesh/transition/incremental_transition_templates.hpp` and `src/transition/incremental_transition_templates.cpp`: one-layer Triangle side templates, Quad top-cap decomposition, and Quad side templates without reserved-layer arithmetic.
 - Create `include/boundary_mesh/transition/transition_boundary_checker.hpp` and `src/transition/transition_boundary_checker.cpp`: joint exposed-surface construction, collision ownership, and rollback-face extraction.
@@ -135,11 +137,13 @@ git commit -m "feat: add incremental transition face sets"
 
 ---
 
-### Task 2: One-Layer Quad Cap and `0→1` Templates
+### Task 2: Canonical Layer Diagonals, One-Layer Quad Cap, and `0→1` Templates
 
 **Files:**
 - Create: `include/boundary_mesh/transition/incremental_transition_templates.hpp`
 - Create: `src/transition/incremental_transition_templates.cpp`
+- Create: `include/boundary_mesh/transition/layer_quad_diagonal_table.hpp`
+- Create: `src/transition/layer_quad_diagonal_table.cpp`
 - Create: `tests/unit/transition/incremental_transition_templates_test.cpp`
 - Modify: `CMakeLists.txt`
 - Modify: `tests/CMakeLists.txt`
@@ -147,7 +151,7 @@ git commit -m "feat: add incremental transition face sets"
 - Reference: `src/transition/triangle_transition_template.cpp`
 
 **Interfaces:**
-- Produces: `buildQuadTopCap(const QuadTopCapInput&)`, `buildQuadSideTransition(const QuadSideTransitionInput&)`, and `buildTriangleSideTransition(const TriangleSideTransitionInput&)`.
+- Produces: `LayerQuadFaceKey`, `LayerQuadDiagonalTable::resolve(...)`, `buildQuadTopCap(const QuadTopCapInput&)`, `buildQuadSideTransition(const QuadSideTransitionInput&)`, and `buildTriangleSideTransition(const TriangleSideTransitionInput&)`.
 - Consumes: existing `QuadDiagonalSelection`, `SourceTransitionResult`, `VolumeCell`, `CellMetadata`, and mesh points.
 
 - [ ] **Step 1: Write failing tests for a one-layer cap and a zero-to-one side transition**
@@ -165,13 +169,17 @@ assert(countCells<Tetra>(cap.value().volume_cells) == 2);
 assert(cap.value().top_faces.size() == 2);
 
 const auto side = buildQuadSideTransition({
-    7, 0, {0,1,2,3}, {4,5,6,7}, {0}, &points, 1e-12});
+    7, 0, {0,1,2,3}, {4,5,6,7}, {0},
+    cap.value().diagonal, &points, 1e-12});
 assert(side.hasValue());
 assert(!side.value().volume_cells.empty());
 assert(!side.value().top_faces.empty());
+assert(side.value().low_diagonal == cap.value().diagonal);
 ```
 
 Also assert every cap metadata entry has `source_face_id == 7`, `layer == 1`, and `cell_role == CellRole::ReservedLayerTransition` until a dedicated incremental role is introduced.
+
+Add a layer-0 case that resolves `(source_face_id=7, layer=0)`, triangulates the source Quad, then passes the returned canonical diagonal to `buildQuadSideTransition`; assert both use identical diagonal endpoints. Registering the opposite forced diagonal for the same key must return `ConflictingLayerQuadDiagonal`.
 
 - [ ] **Step 2: Run the test and verify RED**
 
@@ -181,9 +189,11 @@ Expected: compilation fails because the new one-layer template API does not exis
 
 - [ ] **Step 3: Extract the current cap decomposition without reserved-layer counts**
 
-Implement `QuadTopCapInput` with explicit `bottom`, `top`, and `layer`; copy the existing eight-point center, five-Pyramid, two-Tetra, and `chooseQuadDiagonal()` logic. Do not call `regularLayerCount()` and do not accept `trial_layers`.
+Implement `LayerQuadDiagonalTable` as a sorted table keyed by `{source_face_id, layer}`. Its `resolve(key, quad, optional_forced_diagonal)` returns the existing value when compatible, stores a forced value before considering quality, otherwise stores `chooseQuadDiagonal(quad, tolerance)`, and rejects an opposite forced value for an existing key.
 
-Implement side-template inputs using explicit low/high vertex arrays and selected high-edge indices. Reuse the existing connectivity for single high edge, adjacent double high edge, and Triangle single-high-edge cases. A zero-layer low face is valid whenever the required high vertices exist.
+Implement `QuadTopCapInput` with explicit `bottom`, `top`, `layer`, and resolved `QuadDiagonal`; copy the existing eight-point center, five-Pyramid, and two-Tetra logic. Do not call `regularLayerCount()`, do not accept `trial_layers`, and do not select a second diagonal inside the builder.
+
+Implement side-template inputs using explicit low/high vertex arrays, selected high-edge indices, and the already resolved low-face `QuadDiagonal`. Reuse the existing connectivity for single high edge, adjacent double high edge, and Triangle single-high-edge cases. A zero-layer low face is valid whenever the required high vertices exist. The side builder must never call `chooseQuadDiagonal()` independently.
 
 - [ ] **Step 4: Run new and legacy template tests**
 
@@ -199,7 +209,7 @@ Expected: all selected tests pass.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add include/boundary_mesh/transition/incremental_transition_templates.hpp src/transition/incremental_transition_templates.cpp tests/unit/transition/incremental_transition_templates_test.cpp CMakeLists.txt tests/CMakeLists.txt
+git add include/boundary_mesh/transition/incremental_transition_templates.hpp src/transition/incremental_transition_templates.cpp include/boundary_mesh/transition/layer_quad_diagonal_table.hpp src/transition/layer_quad_diagonal_table.cpp tests/unit/transition/incremental_transition_templates_test.cpp CMakeLists.txt tests/CMakeLists.txt
 git commit -m "feat: add one-layer transition templates"
 ```
 
@@ -215,7 +225,7 @@ git commit -m "feat: add one-layer transition templates"
 - Modify: `tests/CMakeLists.txt`
 
 **Interfaces:**
-- Produces: `selectQuadHighNeighbors(const QuadHighNeighborSelectionInput&) -> Result<QuadHighNeighborSelection, TransitionTemplateError>`.
+- Produces: `selectQuadHighNeighbors(const QuadHighNeighborSelectionInput&) -> Result<QuadHighNeighborSelection, TransitionTemplateError>`, including `required_low_diagonal`.
 - Consumes: one Quad's local edge-to-neighbor mapping, current retained-high set, vertex IDs/points, and the one-layer template builder from Task 2.
 
 - [ ] **Step 1: Write a table-driven failing test for 0–4 high edges**
@@ -232,6 +242,8 @@ check({edge(0, 20), edge(1, 21), edge(2, 22), edge(3, 23)}, {0, 1});
 ```
 
 Use symmetric geometry so ties occur and assert that sorted neighbor IDs, then local edge indices, select `{0}` or `{0,1}`. Repeat with reversed input order and assert identical output.
+
+For adjacent double-high input, assert `required_low_diagonal` matches the existing four-cell topology. Supply a pre-registered opposite low diagonal and assert that candidate is rejected rather than emitting mismatched triangles.
 
 - [ ] **Step 2: Run the test and verify RED**
 
@@ -252,7 +264,7 @@ Implement the candidate rules exactly:
 4 highs -> {0,1}, {1,2}, {2,3}, {3,0}
 ```
 
-For each candidate, build the corresponding local side template and score the maximum equiangle skewness of every triangular face of every candidate cell. Compare successful scores first, then sorted retained neighbor IDs, then sorted local edge indices. Return `FaceEvaluationError` only if every legal candidate fails evaluation.
+For each candidate, derive its optional forced low-face diagonal, resolve it through `LayerQuadDiagonalTable`, build the corresponding local side template with that exact diagonal, and score the maximum equiangle skewness of every triangular face of every candidate cell. Compare successful scores first, then sorted retained neighbor IDs, then sorted local edge indices. Reject candidates conflicting with an existing canonical diagonal; return `FaceEvaluationError` only if every remaining legal candidate fails geometric evaluation.
 
 - [ ] **Step 4: Run focused and diagonal tests**
 
@@ -369,6 +381,8 @@ assert((rollback.value() == std::vector<SurfaceFaceId>{21,22}));
 
 Add a retained-high/top-cap collision returning its single high owner, and a self-collision returning the sorted union of both candidate owners. Add a legal shared-edge contact and assert it does not request rollback.
 
+Add a low Quad whose cap and side transition share a face. Assert the boundary assembler cancels the two matching triangles as internal faces; construct a deliberately opposite side diagonal and assert `ConflictingLayerQuadDiagonal` is returned before collision indexing.
+
 - [ ] **Step 2: Run the test and verify RED**
 
 Run `cmake --build build --target boundary_mesh_transition_boundary_checker_test`.
@@ -422,7 +436,7 @@ git commit -m "feat: detect collisions across complete transition boundary"
 
 **Interfaces:**
 - Produces: `LayerTransitionResolver::resolve(const LayerTransitionInput&) -> Result<StableLayerTransition, LayerTransitionError>`.
-- Consumes: Tasks 1–5, the current front, provisional `LayerStepResult`, global vertex IDs, and historical collision state.
+- Consumes: Tasks 1–5, the current front, provisional `LayerStepResult`, global vertex IDs, the transaction's `LayerQuadDiagonalTable`, and historical collision state.
 
 - [ ] **Step 1: Write a failing two-set fixed-point test**
 
@@ -469,7 +483,7 @@ while (true)
 }
 ```
 
-`rebuildAllTopCapsAndTransitions` must clear every provisional cap/side cell and rebuild them from the full `transition_low_faces`. Reject a final direct-neighbor layer difference above one, a low face without a legal template, non-triangular top output, or mismatched cell metadata.
+`rebuildAllTopCapsAndTransitions` must clear every provisional cap/side cell and rebuild them from the full `transition_low_faces`. Resolve one canonical diagonal for every Quad layer face before building either its cap/source triangulation or side transition, then pass that stored value to every consumer. Reject a final direct-neighbor layer difference above one, conflicting forced diagonals, a low face without a legal template, non-triangular top output, or mismatched cell metadata.
 
 - [ ] **Step 4: Run resolver and template suites**
 
@@ -519,6 +533,8 @@ assert(allTriangles(result.top_surface.faces));
 ```
 
 The single Hexa is layer 1 restored from the old cap; only layer 2 remains decomposed.
+
+Add a two-Quad `0→1` step and a `1→2` step where a low Quad also owns a side transition. For both layers, extract the low-interface diagonal from cap/source triangles and from side-template triangles and assert the endpoint pairs are identical.
 
 - [ ] **Step 2: Run the test and verify RED**
 
@@ -576,6 +592,8 @@ git commit -m "feat: generate incremental layer transitions"
 - [ ] **Step 1: Add failing multi-step and rollback integration cases**
 
 Build a four-region Quad strip whose requested counts are `{1,2,3,4}`. Assert every shared edge has accepted-layer difference at most one, while the first and last region differ by three. Assert all top faces are Triangle and every interior Triangle has two owners.
+
+For every transition-low Quad in the strip, assert its registered `(source_face_id, layer)` diagonal equals the diagonal recovered from both the low cap/source triangulation and the attached side-transition interface.
 
 Add geometry that makes the first chosen side transition collide with the historical exposed boundary. Assert the dependent high cell is absent, its low face appears in both named sets in resolver diagnostics, the second iteration is collision-free, and unrelated high cells remain.
 
