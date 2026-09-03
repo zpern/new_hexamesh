@@ -271,6 +271,23 @@ int main()
         }
     }
 
+    RegularLayerGrowthOptions coordinated_options;
+    coordinated_options.candidate_rejections = [](
+        const GrowthFront &, const LayerStepResult &step)
+    {
+        return step.layer == 2
+            ? std::vector<SurfaceFaceId>{1}
+            : std::vector<SurfaceFaceId>{};
+    };
+    const auto coordinated = generateRegularLayers(
+        surface, topology.value(), patch.value(), front.value(),
+        profiles, coordinated_options);
+    if (!coordinated.hasValue() ||
+        coordinated.value().mesh.cells.size() != 3 ||
+        coordinated.value().faces[0].accepted_layer_count != 1 ||
+        coordinated.value().faces[1].accepted_layer_count != 2)
+        return 33;
+
     std::vector<SourceVertexGrowthProfile> isotropic_profiles;
     for (const PatchVertex &vertex : patch.value().vertices())
     {

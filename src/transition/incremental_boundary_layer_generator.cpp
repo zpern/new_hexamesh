@@ -5,6 +5,7 @@
 #include <utility>
 
 #include <boundary_mesh/transition/incremental_boundary_layer_generator.hpp>
+#include <boundary_mesh/transition/corner_suppression.hpp>
 #include <boundary_mesh/transition/layer_quad_diagonal_table.hpp>
 #include <boundary_mesh/transition/quad_high_neighbor_selector.hpp>
 
@@ -451,9 +452,54 @@ namespace boundary_mesh
     {
         using GrowthResult = Result<
             RegularLayerGrowthResult, IncrementalLayerGrowthError>;
+        RegularLayerGrowthOptions coordinated_options = options;
+        std::optional<TransitionCoordinationError> coordination_error;
+        const auto upstream_rejections = options.candidate_rejections;
+        coordinated_options.candidate_rejections =
+            [upstream_rejections, &coordination_error](
+                const GrowthFront &current,
+                const LayerStepResult &candidate)
+        {
+            std::vector<SurfaceFaceId> rejected = upstream_rejections
+                ? upstream_rejections(current, candidate)
+                : std::vector<SurfaceFaceId>{};
+            LayerFaceSets face_sets;
+            for (const SurfaceFaceId id : current.source_face_ids)
+            {
+                const bool continues = std::find(
+                    candidate.next_front.source_face_ids.begin(),
+                    candidate.next_front.source_face_ids.end(), id) !=
+                    candidate.next_front.source_face_ids.end();
+                const bool upstream_rejected = std::find(
+                    rejected.begin(), rejected.end(), id) != rejected.end();
+                if (!continues || upstream_rejected)
+                    addInitialStop(face_sets, {
+                        id, current.layer, StopOrigin::Quality});
+            }
+            const auto suppression = applyCornerSuppression({
+                current, candidate.next_front, face_sets,
+                current.layer, 1e-12});
+            if (!suppression.hasValue())
+            {
+                coordination_error = suppression.error();
+                return rejected;
+            }
+            rejected.insert(
+                rejected.end(),
+                suppression.value().removed_high_faces.begin(),
+                suppression.value().removed_high_faces.end());
+            std::sort(rejected.begin(), rejected.end());
+            rejected.erase(
+                std::unique(rejected.begin(), rejected.end()),
+                rejected.end());
+            return rejected;
+        };
         auto regular = generateRegularLayers(
             surface_mesh, topology, patch, initial_front,
-            profiles, options);
+            profiles, coordinated_options);
+        if (coordination_error.has_value())
+            return GrowthResult::failure(
+                IncrementalLayerGrowthError{*coordination_error});
         if (!regular.hasValue())
             return GrowthResult::failure(
                 IncrementalLayerGrowthError{regular.error()});
