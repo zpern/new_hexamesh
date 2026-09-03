@@ -6,6 +6,7 @@
 
 #include <boundary_mesh/transition/incremental_boundary_layer_generator.hpp>
 #include <boundary_mesh/transition/layer_quad_diagonal_table.hpp>
+#include <boundary_mesh/transition/quad_high_neighbor_selector.hpp>
 
 namespace boundary_mesh
 {
@@ -71,6 +72,7 @@ namespace boundary_mesh
             std::array<VertexId, 4> source_ids{};
             std::array<VertexId, 4> top_ids{};
             QuadDiagonal diagonal{};
+            std::vector<std::size_t> high_edges;
             std::vector<Triangle> top_faces;
         };
 
@@ -140,12 +142,18 @@ namespace boundary_mesh
             }, initial_front.faces[index]);
         }
         std::unordered_map<std::uint64_t, std::size_t> top_hexa;
+        std::unordered_map<std::uint64_t, std::size_t> top_prism;
         for (std::size_t index = 0; index < result.mesh.cells.size(); ++index)
-            if (index < result.mesh.metadata.size() &&
-                std::holds_alternative<Hexa>(result.mesh.cells[index]))
-                top_hexa[cellKey(
+            if (index < result.mesh.metadata.size())
+            {
+                const std::uint64_t key = cellKey(
                     result.mesh.metadata[index].source_face_id,
-                    result.mesh.metadata[index].layer)] = index;
+                    result.mesh.metadata[index].layer);
+                if (std::holds_alternative<Hexa>(result.mesh.cells[index]))
+                    top_hexa[key] = index;
+                else if (std::holds_alternative<Prism>(result.mesh.cells[index]))
+                    top_prism[key] = index;
+            }
 
         for (const SurfaceFaceId id : initial_front.source_face_ids)
         {
@@ -167,6 +175,23 @@ namespace boundary_mesh
             {
                 std::array<VertexId, 4> top_ids = quad->vertex_ids;
                 std::array<VertexId, 4> bottom_ids = quad->vertex_ids;
+                std::vector<QuadHighNeighbor> high_neighbors;
+                for (std::size_t edge = 0; edge < 4; ++edge)
+                {
+                    const auto uses = edge_faces.find(edgeKey(
+                        quad->vertex_ids[edge],
+                        quad->vertex_ids[(edge + 1) % 4]));
+                    if (uses == edge_faces.end()) continue;
+                    for (const SurfaceFaceId other_id : uses->second)
+                    {
+                        if (other_id == id) continue;
+                        const auto other = growth_faces.find(other_id);
+                        if (other != growth_faces.end() &&
+                            other->second->accepted_layer_count ==
+                                growth->accepted_layer_count + 1)
+                            high_neighbors.push_back({edge, other_id});
+                    }
+                }
                 if (growth->accepted_layer_count > 0)
                 {
                     const auto cell = top_hexa.find(cellKey(
@@ -182,10 +207,35 @@ namespace boundary_mesh
                                 bottom_ids.begin());
                     std::copy_n(hexa.vertex_ids.begin() + 4, 4,
                                 top_ids.begin());
+                    std::array<VertexId, 4> selector_high = top_ids;
+                    for (const auto &neighbor : high_neighbors)
+                        for (const std::size_t local : {
+                                 neighbor.local_edge,
+                                 (neighbor.local_edge + 1) % 4})
+                        {
+                            const auto &vertex = initial_front.vertices[
+                                quad->vertex_ids[local]];
+                            const auto *record = layerRecord(
+                                result.layer_vertices,
+                                vertex.source_vertex_id,
+                                vertex.branch_id);
+                            if (record != nullptr &&
+                                record->layer_vertex_ids.size() >
+                                    growth->accepted_layer_count + 1)
+                                selector_high[local] = record->layer_vertex_ids[
+                                    growth->accepted_layer_count + 1];
+                        }
+                    const auto selection = selectQuadHighNeighbors({
+                        id, growth->accepted_layer_count, high_neighbors,
+                        top_ids, selector_high, &result.mesh.vertices, 1e-12});
+                    if (!selection.hasValue())
+                        return GrowthResult::failure(
+                            IncrementalLayerGrowthError{
+                                selection.error()});
                     const auto diagonal = diagonals.resolve(
                         {id, growth->accepted_layer_count},
                         oriented(top_ids, result.mesh.vertices),
-                        std::nullopt, 1e-12);
+                        selection.value().required_low_diagonal, 1e-12);
                     if (!diagonal.hasValue())
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{
@@ -225,13 +275,38 @@ namespace boundary_mesh
                     final_quads.push_back({
                         id, growth->accepted_layer_count, region,
                         quad->vertex_ids, top_ids, diagonal.value(),
+                        selection.value().retained_local_edges,
                         cap.value().top_faces});
                 }
                 else
                 {
+                    std::array<VertexId, 4> selector_high = top_ids;
+                    for (const auto &neighbor : high_neighbors)
+                        for (const std::size_t local : {
+                                 neighbor.local_edge,
+                                 (neighbor.local_edge + 1) % 4})
+                        {
+                            const auto &vertex = initial_front.vertices[
+                                quad->vertex_ids[local]];
+                            const auto *record = layerRecord(
+                                result.layer_vertices,
+                                vertex.source_vertex_id,
+                                vertex.branch_id);
+                            if (record != nullptr &&
+                                record->layer_vertex_ids.size() > 1)
+                                selector_high[local] =
+                                    record->layer_vertex_ids[1];
+                        }
+                    const auto selection = selectQuadHighNeighbors({
+                        id, 0, high_neighbors, top_ids, selector_high,
+                        &result.mesh.vertices, 1e-12});
+                    if (!selection.hasValue())
+                        return GrowthResult::failure(
+                            IncrementalLayerGrowthError{
+                                selection.error()});
                     const auto diagonal = diagonals.resolve(
                         {id, 0}, oriented(top_ids, result.mesh.vertices),
-                        std::nullopt, 1e-12);
+                        selection.value().required_low_diagonal, 1e-12);
                     if (!diagonal.hasValue())
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{diagonal.error()});
@@ -250,13 +325,28 @@ namespace boundary_mesh
                     final_quads.push_back({
                         id, 0, region, quad->vertex_ids, top_ids,
                         diagonal.value(),
+                        selection.value().retained_local_edges,
                         {split.triangles.begin(), split.triangles.end()}});
                 }
             }
             else
             {
-                const Triangle &triangle = std::get<Triangle>(*face);
-                triangular_top.faces.push_back(triangle);
+                Triangle triangle = std::get<Triangle>(*face);
+                if (growth->accepted_layer_count > 0)
+                {
+                    const auto cell = top_prism.find(cellKey(
+                        id, growth->accepted_layer_count));
+                    if (cell == top_prism.end())
+                        return GrowthResult::failure(
+                            IncrementalLayerGrowthError{
+                                TransitionTemplateError{
+                                    InvalidTransitionTemplateInput{id}}});
+                    const Prism &prism = std::get<Prism>(
+                        result.mesh.cells[cell->second]);
+                    std::copy_n(prism.vertex_ids.begin() + 3, 3,
+                                triangle.vertex_ids.begin());
+                }
+                triangular_top.faces.push_back(std::move(triangle));
                 triangular_top.face_tags.push_back({
                     SurfaceBoundaryKind::BoundaryLayerInterface, region});
             }
@@ -264,30 +354,12 @@ namespace boundary_mesh
 
         for (FinalQuad &low : final_quads)
         {
-            std::optional<std::size_t> high_edge;
-            for (std::size_t edge = 0; edge < 4 && !high_edge; ++edge)
-            {
-                const auto uses = edge_faces.find(edgeKey(
-                    low.source_ids[edge],
-                    low.source_ids[(edge + 1) % 4]));
-                if (uses == edge_faces.end()) continue;
-                for (const SurfaceFaceId other_id : uses->second)
-                {
-                    if (other_id == low.id) continue;
-                    const auto other = growth_faces.find(other_id);
-                    if (other != growth_faces.end() &&
-                        other->second->accepted_layer_count == low.layer + 1)
-                    {
-                        high_edge = edge;
-                        break;
-                    }
-                }
-            }
-            if (high_edge.has_value())
+            if (!low.high_edges.empty())
             {
                 std::array<VertexId, 4> high_ids = low.top_ids;
-                for (const std::size_t local : {
-                         *high_edge, (*high_edge + 1) % 4})
+                for (const std::size_t edge : low.high_edges)
+                    for (const std::size_t local : {
+                             edge, (edge + 1) % 4})
                 {
                     const GrowthFrontVertex &vertex =
                         initial_front.vertices[low.source_ids[local]];
@@ -305,9 +377,14 @@ namespace boundary_mesh
                     high_ids[local] =
                         record->layer_vertex_ids[low.layer + 1];
                 }
-                const auto side = buildQuadSideTransition({
-                    low.id, low.layer, low.top_ids, high_ids,
-                    *high_edge, low.diagonal});
+                const auto side = low.high_edges.size() == 1
+                    ? buildQuadSideTransition({
+                        low.id, low.layer, low.top_ids, high_ids,
+                        low.high_edges[0], low.diagonal})
+                    : buildQuadAdjacentSideTransition({
+                        low.id, low.layer, low.top_ids, high_ids,
+                        low.high_edges[0], low.high_edges[1],
+                        low.diagonal, &result.mesh.vertices, 1e-12});
                 if (!side.hasValue())
                     return GrowthResult::failure(
                         IncrementalLayerGrowthError{side.error()});

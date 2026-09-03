@@ -137,4 +137,39 @@ int main()
                       strip.value().top_surface.faces.end(),
         [](const SurfaceFace &face)
         { return std::holds_alternative<Triangle>(face); }));
+
+    SurfaceMesh triangle_surface;
+    triangle_surface.vertices = {
+        {0,0,0}, {1,0,0}, {0,1,0}};
+    triangle_surface.faces = {Triangle{{0,1,2}}};
+    triangle_surface.face_tags = {
+        {SurfaceBoundaryKind::Wall, 9}};
+    GrowthFront triangle_front;
+    triangle_front.layer = 0;
+    triangle_front.vertices = {
+        {{0,0,0},0}, {{1,0,0},1}, {{0,1,0},2}};
+    triangle_front.faces = triangle_surface.faces;
+    triangle_front.source_face_ids = {0};
+
+    RegularLayerGrowthResult triangle_regular;
+    triangle_regular.mesh.vertices = {
+        {0,0,0}, {1,0,0}, {0,1,0},
+        {0,0,1}, {1,0,1}, {0,1,1},
+        {0,0,2}, {1,0,2}, {0,1,2}};
+    triangle_regular.mesh.cells = {
+        Prism{{0,1,2,3,4,5}}, Prism{{3,4,5,6,7,8}}};
+    triangle_regular.mesh.metadata = {
+        {CellRole::RegularLayer, 0, 1},
+        {CellRole::RegularLayer, 0, 2}};
+    triangle_regular.faces = {
+        {0,2,FaceGrowthStatus::Completed,
+         FaceStopReason::VertexLayerLimit,3}};
+
+    const auto triangle = finalizeIncrementalLayerTopology(
+        triangle_surface, triangle_front, std::move(triangle_regular));
+    assert(triangle.hasValue());
+    assert(triangle.value().top_surface.faces.size() == 1);
+    const std::array<VertexId,3> expected_triangle_top{6,7,8};
+    assert(std::get<Triangle>(triangle.value().top_surface.faces.front())
+               .vertex_ids == expected_triangle_top);
 }
