@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <limits>
 #include <optional>
+#include <unordered_map>
 #include <utility>
 
 #include <boundary_mesh/transition/incremental_boundary_layer_generator.hpp>
@@ -10,41 +11,17 @@ namespace boundary_mesh
 {
     namespace
     {
-        const SurfaceFace *sourceFace(
-            const GrowthFront &front,
-            SurfaceFaceId id)
-        {
-            const auto found = std::find(
-                front.source_face_ids.begin(),
-                front.source_face_ids.end(), id);
-            if (found == front.source_face_ids.end()) return nullptr;
-            return &front.faces[static_cast<std::size_t>(
-                found - front.source_face_ids.begin())];
-        }
-
-        const FaceGrowthRecord *growthFace(
-            const RegularLayerGrowthResult &result,
-            SurfaceFaceId id)
-        {
-            const auto found = std::find_if(
-                result.faces.begin(), result.faces.end(),
-                [id](const FaceGrowthRecord &face)
-                { return face.source_face_id == id; });
-            return found == result.faces.end() ? nullptr : &*found;
-        }
-
-        std::optional<std::size_t> topHexa(
-            const VolumeMesh &mesh,
+        std::uint64_t cellKey(
             SurfaceFaceId id,
             std::uint32_t layer)
         {
-            for (std::size_t index = 0; index < mesh.cells.size(); ++index)
-                if (index < mesh.metadata.size() &&
-                    mesh.metadata[index].source_face_id == id &&
-                    mesh.metadata[index].layer == layer &&
-                    std::holds_alternative<Hexa>(mesh.cells[index]))
-                    return index;
-            return std::nullopt;
+            return (static_cast<std::uint64_t>(id) << 32) | layer;
+        }
+
+        std::uint64_t edgeKey(VertexId first, VertexId second)
+        {
+            if (second < first) std::swap(first, second);
+            return (static_cast<std::uint64_t>(first) << 32) | second;
         }
 
         OrientedQuad oriented(
@@ -97,25 +74,6 @@ namespace boundary_mesh
             std::vector<Triangle> top_faces;
         };
 
-        std::optional<std::size_t> sharedEdge(
-            const FinalQuad &low,
-            const SurfaceFace &other)
-        {
-            const auto other_ids = std::visit([](const auto &face)
-            {
-                return std::vector<VertexId>(
-                    face.vertex_ids.begin(), face.vertex_ids.end());
-            }, other);
-            for (std::size_t edge = 0; edge < 4; ++edge)
-                if (std::find(other_ids.begin(), other_ids.end(),
-                              low.source_ids[edge]) != other_ids.end() &&
-                    std::find(other_ids.begin(), other_ids.end(),
-                              low.source_ids[(edge + 1) % 4]) !=
-                        other_ids.end())
-                    return edge;
-            return std::nullopt;
-        }
-
         bool appendRemappedFace(
             SurfaceMesh &output,
             const SurfaceFace &input,
@@ -157,11 +115,46 @@ namespace boundary_mesh
         SurfaceMesh triangular_top;
         triangular_top.vertices = result.mesh.vertices;
         std::vector<FinalQuad> final_quads;
+        std::unordered_map<SurfaceFaceId, const SurfaceFace *> source_faces;
+        for (std::size_t index = 0;
+             index < initial_front.source_face_ids.size(); ++index)
+            source_faces[initial_front.source_face_ids[index]] =
+                &initial_front.faces[index];
+        std::unordered_map<SurfaceFaceId, const FaceGrowthRecord *> growth_faces;
+        for (const FaceGrowthRecord &face : result.faces)
+            growth_faces[face.source_face_id] = &face;
+        std::unordered_map<std::uint64_t, std::vector<SurfaceFaceId>> edge_faces;
+        for (std::size_t index = 0;
+             index < initial_front.faces.size(); ++index)
+        {
+            const SurfaceFaceId id = initial_front.source_face_ids[index];
+            std::visit([&](const auto &face)
+            {
+                for (std::size_t edge = 0;
+                     edge < face.vertex_ids.size(); ++edge)
+                    edge_faces[edgeKey(
+                        face.vertex_ids[edge],
+                        face.vertex_ids[(edge + 1) %
+                                        face.vertex_ids.size()])]
+                        .push_back(id);
+            }, initial_front.faces[index]);
+        }
+        std::unordered_map<std::uint64_t, std::size_t> top_hexa;
+        for (std::size_t index = 0; index < result.mesh.cells.size(); ++index)
+            if (index < result.mesh.metadata.size() &&
+                std::holds_alternative<Hexa>(result.mesh.cells[index]))
+                top_hexa[cellKey(
+                    result.mesh.metadata[index].source_face_id,
+                    result.mesh.metadata[index].layer)] = index;
 
         for (const SurfaceFaceId id : initial_front.source_face_ids)
         {
-            const SurfaceFace *face = sourceFace(initial_front, id);
-            const FaceGrowthRecord *growth = growthFace(result, id);
+            const auto source_found = source_faces.find(id);
+            const auto growth_found = growth_faces.find(id);
+            const SurfaceFace *face = source_found == source_faces.end()
+                ? nullptr : source_found->second;
+            const FaceGrowthRecord *growth = growth_found == growth_faces.end()
+                ? nullptr : growth_found->second;
             if (face == nullptr || growth == nullptr ||
                 static_cast<std::size_t>(id) >= surface_mesh.face_tags.size())
                 return GrowthResult::failure(
@@ -176,15 +169,15 @@ namespace boundary_mesh
                 std::array<VertexId, 4> bottom_ids = quad->vertex_ids;
                 if (growth->accepted_layer_count > 0)
                 {
-                    const auto cell_index = topHexa(
-                        result.mesh, id, growth->accepted_layer_count);
-                    if (!cell_index.has_value())
+                    const auto cell = top_hexa.find(cellKey(
+                        id, growth->accepted_layer_count));
+                    if (cell == top_hexa.end())
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{
                                 TransitionTemplateError{
                                     InvalidTransitionTemplateInput{id}}});
                     const Hexa hexa = std::get<Hexa>(
-                        result.mesh.cells[*cell_index]);
+                        result.mesh.cells[cell->second]);
                     std::copy_n(hexa.vertex_ids.begin(), 4,
                                 bottom_ids.begin());
                     std::copy_n(hexa.vertex_ids.begin() + 4, 4,
@@ -213,21 +206,21 @@ namespace boundary_mesh
                     if (!cap.hasValue())
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{cap.error()});
-                    result.mesh.cells.erase(
-                        result.mesh.cells.begin() + *cell_index);
-                    result.mesh.metadata.erase(
-                        result.mesh.metadata.begin() + *cell_index);
                     result.mesh.vertices.insert(
                         result.mesh.vertices.end(),
                         cap.value().created_vertices.begin(),
                         cap.value().created_vertices.end());
+                    result.mesh.cells[cell->second] =
+                        cap.value().volume_cells.front();
+                    result.mesh.metadata[cell->second] =
+                        cap.value().metadata.front();
                     result.mesh.cells.insert(
                         result.mesh.cells.end(),
-                        cap.value().volume_cells.begin(),
+                        cap.value().volume_cells.begin() + 1,
                         cap.value().volume_cells.end());
                     result.mesh.metadata.insert(
                         result.mesh.metadata.end(),
-                        cap.value().metadata.begin(),
+                        cap.value().metadata.begin() + 1,
                         cap.value().metadata.end());
                     final_quads.push_back({
                         id, growth->accepted_layer_count, region,
@@ -272,23 +265,22 @@ namespace boundary_mesh
         for (FinalQuad &low : final_quads)
         {
             std::optional<std::size_t> high_edge;
-            for (std::size_t other_index = 0;
-                 other_index < initial_front.faces.size(); ++other_index)
+            for (std::size_t edge = 0; edge < 4 && !high_edge; ++edge)
             {
-                const SurfaceFaceId other_id =
-                    initial_front.source_face_ids[other_index];
-                if (other_id == low.id) continue;
-                const FaceGrowthRecord *other_growth =
-                    growthFace(result, other_id);
-                if (other_growth == nullptr ||
-                    other_growth->accepted_layer_count != low.layer + 1)
-                    continue;
-                const auto edge = sharedEdge(
-                    low, initial_front.faces[other_index]);
-                if (edge.has_value())
+                const auto uses = edge_faces.find(edgeKey(
+                    low.source_ids[edge],
+                    low.source_ids[(edge + 1) % 4]));
+                if (uses == edge_faces.end()) continue;
+                for (const SurfaceFaceId other_id : uses->second)
                 {
-                    high_edge = edge;
-                    break;
+                    if (other_id == low.id) continue;
+                    const auto other = growth_faces.find(other_id);
+                    if (other != growth_faces.end() &&
+                        other->second->accepted_layer_count == low.layer + 1)
+                    {
+                        high_edge = edge;
+                        break;
+                    }
                 }
             }
             if (high_edge.has_value())
