@@ -25,7 +25,7 @@
     ↓
 预生长第 n+1 层（n >= 0）
     ↓
-建立 stop1 与 stop2
+建立 corner_suppression_seeds 与 transition_low_faces
     ↓
 角点压制
     ↓
@@ -45,11 +45,11 @@
 每层维护两个语义不同的集合：
 
 ```text
-stop1：角点压制的驱动种子
-stop2：当前停留在第 n 层、必须参与过渡区生成的全部低面
+corner_suppression_seeds：角点压制的驱动种子
+transition_low_faces：当前停留在第 n 层、必须参与过渡区生成的全部低面
 ```
 
-完成第 `n+1` 层预生长后，所有非角点原因停止的第 `n` 层面同时加入 `stop1` 和 `stop2`。这些原因包括：
+完成第 `n+1` 层预生长后，所有非角点原因停止的第 `n` 层面同时加入 `corner_suppression_seeds` 和 `transition_low_faces`。这些原因包括：
 
 - 达到用户请求层数；
 - 候选退化、反转、局部反转或 skewness 超限；
@@ -59,13 +59,13 @@ stop2：当前停留在第 n 层、必须参与过渡区生成的全部低面
 
 集合更新规则为：
 
-| 低面来源 | 加入 `stop1` | 加入 `stop2` |
+| 低面来源 | 加入 `corner_suppression_seeds` | 加入 `transition_low_faces` |
 |---|---:|---:|
 | 初始非角点停止 | 是 | 是 |
 | 过渡区相交导致高单元回退 | 是 | 是 |
 | 角点压制导致高单元回退 | 否 | 是 |
 
-角点压制产生的低面不得加入 `stop1`，避免递归压制扩散到整层；但它们必须加入 `stop2`，以便重新生成完整、共形的过渡区。
+角点压制产生的低面不得加入 `corner_suppression_seeds`，避免递归压制扩散到整层；但它们必须加入 `transition_low_faces`，以便重新生成完整、共形的过渡区。
 
 新实现应使用显式层号和来源，而不是依赖当前 `pending_stop_cells` 的 `step.layer - 1` 隐式推导：
 
@@ -83,19 +83,19 @@ struct LayerStopState
 第 `n+1` 层作为尚未提交的事务处理：
 
 1. 以所有通过初始质量和碰撞检查的第 `n+1` 层候选作为高单元集合。
-2. 初始化非角点停止面，并同时写入 `stop1` 和 `stop2`。
-3. 只遍历尚未处理的 `stop1`，检查其当前高邻边并执行角点压制。
-4. 删除被角点压制的高单元，将其第 `n` 层低面只加入 `stop2`。
-5. 废弃旧的临时顶盖和侧向过渡，按完整 `stop2` 及当前高单元集合重新生成。
+2. 初始化非角点停止面，并同时写入 `corner_suppression_seeds` 和 `transition_low_faces`。
+3. 只遍历尚未处理的 `corner_suppression_seeds`，检查其当前高邻边并执行角点压制。
+4. 删除被角点压制的高单元，将其第 `n` 层低面只加入 `transition_low_faces`。
+5. 废弃旧的临时顶盖和侧向过渡，按完整 `transition_low_faces` 及当前高单元集合重新生成。
 6. 对规则高单元、顶盖和侧向过渡形成的完整联合暴露面做相交检测。
-7. 若发生相交，删除相交过渡区依赖的全部第 `n+1` 层高单元，将其低面同时加入 `stop1` 和 `stop2`，返回步骤 3。
+7. 若发生相交，删除相交过渡区依赖的全部第 `n+1` 层高单元，将其低面同时加入 `corner_suppression_seeds` 和 `transition_low_faces`，返回步骤 3。
 8. 若本轮没有新增高单元删除，固定点达到稳定，原子提交事务结果。
 
 每轮收集全部冲突高面后批量删除，不能遇到第一个冲突就提交局部修改。高单元在同一事务中只允许从保留集合删除、不能恢复，因此固定点循环单调终止，迭代轮数不超过本层初始高候选面数量。
 
 ## 6. Quad 角点压制规则
 
-对每个 `stop1` Quad，基于当前仍保留的第 `n+1` 层高单元收集高邻边：
+对每个 `corner_suppression_seeds` Quad，基于当前仍保留的第 `n+1` 层高单元收集高邻边：
 
 | 高邻边状态 | 保留方案 | 压制规则 |
 |---|---|---|
@@ -114,7 +114,7 @@ score = max(候选模板全部三角面的 skewness)
 
 选择分数最小的方案。分数相同时，先比较排序后的高邻源面 ID 序列，再比较 Quad 局部边编号，保证结果与遍历顺序无关。
 
-所有角点压制删除的高单元只产生 `stop2`，不能产生新的 `stop1`。
+所有角点压制删除的高单元只加入 `transition_low_faces`，不能产生新的 `corner_suppression_seeds`。
 
 ## 7. 顶层 Quad 剖分和全三角形外表面
 
@@ -144,7 +144,7 @@ score = max(候选模板全部三角面的 skewness)
 
 - 当前保留的第 `n+1` 层规则高单元；
 - 所有 Quad 最顶层剖分；
-- 由完整 `stop2` 生成的全部侧向过渡单元。
+- 由完整 `transition_low_faces` 生成的全部侧向过渡单元。
 
 联合暴露面同时检查：
 
@@ -171,7 +171,7 @@ struct LayerBoundaryOwner
 - 两个本层候选相交：删除双方涉及的高单元。
 - 原始表面、历史暴露边界和第 `n` 层及以下正式单元不可回退。
 
-相交回退产生的新低面同时加入 `stop1` 和 `stop2`，因此必须重新执行角点压制并按完整 `stop2` 重建全部临时过渡单元。
+相交回退产生的新低面同时加入 `corner_suppression_seeds` 和 `transition_low_faces`，因此必须重新执行角点压制并按完整 `transition_low_faces` 重建全部临时过渡单元。
 
 ## 9. 事务边界与组件职责
 
@@ -211,8 +211,8 @@ struct StableLayerTransition
 提交前必须同时满足：
 
 1. 任意直接共享边两侧的接受层数差不超过 1。
-2. `stop1` 已无未处理种子，本轮没有新增角点压制或相交回退。
-3. 完整 `stop2` 中每个低面都能由现有模板表达。
+2. `corner_suppression_seeds` 已无未处理种子，本轮没有新增角点压制或相交回退。
+3. 完整 `transition_low_faces` 中每个低面都能由现有模板表达。
 4. 联合暴露边界与原始表面、历史边界和自身均无非法相交。
 5. 所有最终外露面均为 Triangle。
 6. 内部 Triangle 恰有两个体单元拥有者，外露 Triangle 恰有一个拥有者。
@@ -236,9 +236,9 @@ struct StableLayerTransition
 - 一层 Quad 的唯一 Hexa被剖分为 `5 Pyramid + 2 Tetra`；
 - 无过渡 Quad 柱也只剖分当前最顶层 Hexa；
 - 柱继续生长时旧顶盖恢复为完整 Hexa，新顶层成为顶盖；
-- 初始非角点停止同时进入 `stop1` 和 `stop2`；
-- 角点压制产生的低面只进入 `stop2`，不会递归压制；
-- 相交回退产生的低面同时进入 `stop1` 和 `stop2`；
+- 初始非角点停止同时进入 `corner_suppression_seeds` 和 `transition_low_faces`；
+- 角点压制产生的低面只进入 `transition_low_faces`，不会递归压制；
+- 相交回退产生的低面同时进入 `corner_suppression_seeds` 和 `transition_low_faces`；
 - 回退后重新执行角点压制并重建完整过渡区；
 - Quad 具有 0、1、相邻 2、相对 2、3、4 条高邻边的全部分支；
 - 多方案以最差 skewness 选择，平分时结果确定；
