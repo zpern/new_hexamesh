@@ -62,6 +62,73 @@ namespace
         assert(result.hasValue());
         return result.value();
     }
+
+    RegularLayerGrowthResult staircaseRegular(
+        SurfaceMesh &surface, GrowthFront &front)
+    {
+        constexpr std::array<std::uint32_t,4> layers{1,2,3,4};
+        for (std::uint32_t x = 0; x <= 4; ++x)
+        {
+            surface.vertices.push_back({Scalar(x),0,0});
+            surface.vertices.push_back({Scalar(x),1,0});
+        }
+        for (std::uint32_t x = 0; x < 4; ++x)
+            surface.faces.push_back(Quad{{
+                VertexId(2*x), VertexId(2*x+2),
+                VertexId(2*x+3), VertexId(2*x+1)}});
+        surface.face_tags.resize(
+            4, {SurfaceBoundaryKind::Wall, 12});
+        front.layer = 0;
+        front.faces = surface.faces;
+        front.source_face_ids = {0,1,2,3};
+        for (VertexId id = 0; id < surface.vertices.size(); ++id)
+            front.vertices.push_back({surface.vertices[id], id});
+
+        RegularLayerGrowthResult regular;
+        regular.mesh.vertices = surface.vertices;
+        std::array<std::vector<VertexId>,10> columns;
+        for (VertexId id = 0; id < 10; ++id)
+            columns[id].push_back(id);
+        for (std::uint32_t x = 0; x <= 4; ++x)
+        {
+            const std::uint32_t height = x == 0 ? layers[0]
+                : x == 4 ? layers[3]
+                : std::max(layers[x-1], layers[x]);
+            for (std::uint32_t layer = 1; layer <= height; ++layer)
+                for (std::uint32_t y = 0; y < 2; ++y)
+                {
+                    const VertexId source = VertexId(2*x+y);
+                    columns[source].push_back(VertexId(
+                        regular.mesh.vertices.size()));
+                    regular.mesh.vertices.push_back(
+                        {Scalar(x),Scalar(y),Scalar(layer)});
+                }
+        }
+        for (SurfaceFaceId face = 0; face < 4; ++face)
+        {
+            for (std::uint32_t layer = 1;
+                 layer <= layers[face]; ++layer)
+            {
+                const VertexId a = VertexId(2*face);
+                const VertexId b = VertexId(2*face+2);
+                const VertexId c = VertexId(2*face+3);
+                const VertexId d = VertexId(2*face+1);
+                regular.mesh.cells.push_back(Hexa{{
+                    columns[a][layer-1], columns[b][layer-1],
+                    columns[c][layer-1], columns[d][layer-1],
+                    columns[a][layer], columns[b][layer],
+                    columns[c][layer], columns[d][layer]}});
+                regular.mesh.metadata.push_back(
+                    {CellRole::RegularLayer, face, layer});
+            }
+            regular.faces.push_back({
+                face, layers[face], FaceGrowthStatus::Completed,
+                FaceStopReason::VertexLayerLimit, layers[face]+1});
+        }
+        for (VertexId id = 0; id < 10; ++id)
+            regular.layer_vertices.push_back({id,columns[id],0});
+        return regular;
+    }
 }
 
 int main()
@@ -172,4 +239,24 @@ int main()
     const std::array<VertexId,3> expected_triangle_top{6,7,8};
     assert(std::get<Triangle>(triangle.value().top_surface.faces.front())
                .vertex_ids == expected_triangle_top);
+
+    SurfaceMesh staircase_surface;
+    GrowthFront staircase_front;
+    auto staircase_regular = staircaseRegular(
+        staircase_surface, staircase_front);
+    const auto staircase = finalizeIncrementalLayerTopology(
+        staircase_surface, staircase_front,
+        std::move(staircase_regular));
+    assert(staircase.hasValue());
+    const std::array<std::uint32_t,4> expected_layers{1,2,3,4};
+    for (std::size_t index = 1; index < expected_layers.size(); ++index)
+        assert(expected_layers[index] - expected_layers[index-1] == 1);
+    assert(expected_layers.back() - expected_layers.front() == 3);
+    assert(std::all_of(
+        staircase.value().top_surface.faces.begin(),
+        staircase.value().top_surface.faces.end(),
+        [](const SurfaceFace &face)
+        { return std::holds_alternative<Triangle>(face); }));
+    assert(count(staircase.value().mesh, CellType::Pyramid) > 20);
+    assert(count(staircase.value().mesh, CellType::Tetra) > 8);
 }
