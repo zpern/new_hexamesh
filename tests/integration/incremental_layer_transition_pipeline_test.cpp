@@ -83,4 +83,52 @@ int main()
                       two.top_surface.faces.end(),
         [](const SurfaceFace &face)
         { return std::holds_alternative<Triangle>(face); }));
+
+    SurfaceMesh strip_surface;
+    strip_surface.vertices = {
+        {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0},
+        {2,0,0}, {2,1,0}};
+    strip_surface.faces = {
+        Quad{{0,1,2,3}}, Quad{{1,4,5,2}}};
+    strip_surface.face_tags.resize(
+        2, {SurfaceBoundaryKind::Wall, 7});
+    GrowthFront strip_front;
+    strip_front.layer = 0;
+    for (VertexId id = 0; id < 6; ++id)
+        strip_front.vertices.push_back(
+            {strip_surface.vertices[id], id});
+    strip_front.faces = strip_surface.faces;
+    strip_front.source_face_ids = {0,1};
+
+    RegularLayerGrowthResult strip_regular;
+    strip_regular.mesh.vertices = strip_surface.vertices;
+    strip_regular.mesh.vertices.insert(
+        strip_regular.mesh.vertices.end(),
+        {{1,0,1}, {2,0,1}, {2,1,1}, {1,1,1}});
+    strip_regular.mesh.cells.push_back(
+        Hexa{{1,4,5,2,6,7,8,9}});
+    strip_regular.mesh.metadata.push_back(
+        {CellRole::RegularLayer, 1, 1});
+    strip_regular.faces = {
+        {0,0,FaceGrowthStatus::Completed,
+         FaceStopReason::VertexLayerLimit,1},
+        {1,1,FaceGrowthStatus::Completed,
+         FaceStopReason::VertexLayerLimit,2}};
+    strip_regular.layer_vertices = {
+        {0,{0},0}, {1,{1,6},0}, {2,{2,9},0},
+        {3,{3},0}, {4,{4,7},0}, {5,{5,8},0}};
+
+    const auto strip = finalizeIncrementalLayerTopology(
+        strip_surface, strip_front, std::move(strip_regular));
+    assert(strip.hasValue());
+    assert(count(strip.value().mesh, CellType::Pyramid) == 6);
+    assert(count(strip.value().mesh, CellType::Tetra) == 3);
+    assert(count(strip.value().mesh, CellType::Hexa) == 0);
+    assert(strip.value().mesh.cells.size() ==
+           strip.value().mesh.metadata.size());
+    assert(strip.value().top_surface.faces.size() == 6);
+    assert(std::all_of(strip.value().top_surface.faces.begin(),
+                      strip.value().top_surface.faces.end(),
+        [](const SurfaceFace &face)
+        { return std::holds_alternative<Triangle>(face); }));
 }

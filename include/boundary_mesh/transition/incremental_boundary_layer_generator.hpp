@@ -15,6 +15,12 @@ namespace boundary_mesh
         VolumeVertexIdOverflow>;
 
     Result<RegularLayerGrowthResult, IncrementalLayerGrowthError>
+    finalizeIncrementalLayerTopology(
+        const SurfaceMesh &surface_mesh,
+        const GrowthFront &initial_front,
+        RegularLayerGrowthResult regular);
+
+    Result<RegularLayerGrowthResult, IncrementalLayerGrowthError>
     generateIncrementalBoundaryLayers(
         const SurfaceMesh &surface_mesh,
         const SurfaceTopology &topology,
