@@ -63,6 +63,69 @@ int main()
     assert(cap.hasValue());
     assert((cap.value() == std::vector<SurfaceFaceId>{30}));
 
+    TransitionBoundaryInput zero_layer_own_face;
+    auto own_cap = triangle(
+        flat, candidate_keys, 7, {21}, BoundaryOwnerRole::TopCap);
+    own_cap.owner.layer = 0;
+    zero_layer_own_face.candidate_triangles.push_back(own_cap);
+    zero_layer_own_face.original_surface = &obstacle_index.value();
+    const auto own = checker.findRollbackFaces(zero_layer_own_face);
+    assert(own.hasValue());
+    assert(own.value().empty());
+
+    TransitionBoundaryInput regular_own_face;
+    regular_own_face.candidate_triangles.push_back(triangle(
+        flat, candidate_keys, 7, {7},
+        BoundaryOwnerRole::RegularCandidate));
+    regular_own_face.original_surface = &obstacle_index.value();
+    const auto own_regular = checker.findRollbackFaces(regular_own_face);
+    assert(own_regular.hasValue());
+    assert(own_regular.value().empty());
+
+    regular_own_face.candidate_triangles.front().owner.source_face_id = 8;
+    const auto other_regular = checker.findRollbackFaces(regular_own_face);
+    assert(other_regular.hasValue());
+    assert((other_regular.value() == std::vector<SurfaceFaceId>{7}));
+
+    TransitionBoundaryInput zero_layer_other_face = zero_layer_own_face;
+    zero_layer_other_face.candidate_triangles.front().owner.source_face_id = 8;
+    const auto other = checker.findRollbackFaces(zero_layer_other_face);
+    assert(other.hasValue());
+    assert((other.value() == std::vector<SurfaceFaceId>{21}));
+
+    ExposedBoundaryTracker history;
+    LayerBoundaryCandidate historical_candidate;
+    historical_candidate.bottom.points = {
+        {0,0,-1},{1,0,-1},{1,1,-1},{0,1,-1}};
+    historical_candidate.bottom.vertex_keys = {
+        {0,1,0},{1,1,0},{2,1,0},{3,1,0}};
+    historical_candidate.bottom.source_face_id = 7;
+    historical_candidate.top.points = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0}};
+    historical_candidate.top.vertex_keys = {
+        {0,2,0},{1,2,0},{2,2,0},{3,2,0}};
+    historical_candidate.top.source_face_id = 7;
+    historical_candidate.side_tags.resize(
+        4, {SurfaceBoundaryKind::Internal,0});
+    const auto history_update = history.prepare({historical_candidate});
+    assert(history_update.hasValue());
+    history.apply(history_update.value());
+
+    TransitionBoundaryInput historical_own;
+    historical_own.candidate_triangles.push_back(triangle(
+        {{{0,0,0},{1,0,0},{0,1,0}}},
+        {{{0,2,0},{1,2,0},{3,2,0}}},
+        7,{21},BoundaryOwnerRole::TopCap));
+    historical_own.historical_boundary = &history;
+    const auto own_history = checker.findRollbackFaces(historical_own);
+    assert(own_history.hasValue());
+    assert(own_history.value().empty());
+
+    historical_own.candidate_triangles.front().owner.source_face_id = 8;
+    const auto other_history = checker.findRollbackFaces(historical_own);
+    assert(other_history.hasValue());
+    assert((other_history.value() == std::vector<SurfaceFaceId>{21}));
+
     TransitionBoundaryInput self_input;
     self_input.candidate_triangles = {
         triangle(flat, candidate_keys, 40, {40}),

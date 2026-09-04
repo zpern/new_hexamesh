@@ -51,6 +51,7 @@ namespace boundary_mesh
     struct InvalidTransitionTemplateInput
     {
         SurfaceFaceId source_face_id{};
+        std::uint32_t stage{};
     };
 
     using TransitionTemplateError = std::variant<

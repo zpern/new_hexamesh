@@ -140,14 +140,11 @@ namespace boundary_mesh
             }
             else if (edges.size() == 2)
             {
-                const auto built = buildQuadTransition({
-                    input.source_face_id,
-                    1,
-                    edges[0], edges[1], std::nullopt, std::nullopt,
-                    {input.low, input.high},
-                    input.mesh_vertices,
-                    0,
-                    input.length_tolerance});
+                const auto built = buildQuadAdjacentSideTransition({
+                    input.source_face_id, input.low_layer,
+                    input.low, input.high, edges[0], edges[1],
+                    *selection.required_low_diagonal,
+                    input.mesh_vertices, input.length_tolerance});
                 if (!built.hasValue()) continue;
                 top_faces = built.value().top_faces;
             }

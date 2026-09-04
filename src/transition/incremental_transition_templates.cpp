@@ -169,19 +169,16 @@ namespace boundary_mesh
         const VertexId c = input.low[(common + 3) % 4];
         const VertexId e = input.high[common];
         const VertexId f = input.high[(common + 1) % 4];
-        const VertexId h = input.high[(common + 2) % 4];
         const VertexId g = input.high[(common + 3) % 4];
 
         IncrementalTransitionResult result;
         result.source_face_id = input.source_face_id;
         result.low_diagonal = input.low_diagonal;
         result.volume_cells = {
-            Pyramid{{a,b,f,e,d}}, Pyramid{{a,e,g,c,d}},
-            Tetra{{e,g,h,d}}, Tetra{{e,f,h,d}}};
+            Pyramid{{a,b,f,e,d}}, Pyramid{{a,e,g,c,d}}};
         result.top_faces = {
-            Triangle{{b,f,d}}, Triangle{{f,h,d}},
-            Triangle{{e,f,h}}, Triangle{{e,g,h}},
-            Triangle{{g,h,d}}, Triangle{{g,c,d}}};
+            Triangle{{b,f,d}}, Triangle{{e,f,d}},
+            Triangle{{e,g,d}}, Triangle{{g,c,d}}};
         addMetadata(result, result.volume_cells.size(),
                     input.low_layer + 1);
         return BuildResult::success(std::move(result));

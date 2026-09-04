@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <limits>
 #include <optional>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -50,6 +51,15 @@ namespace boundary_mesh
                 top.face_tags.push_back({
                     SurfaceBoundaryKind::BoundaryLayerInterface, region});
             }
+        }
+
+        TransitionTemplateError atStage(
+            TransitionTemplateError error, std::uint32_t stage)
+        {
+            if (auto *invalid =
+                    std::get_if<InvalidTransitionTemplateInput>(&error))
+                invalid->stage = stage;
+            return error;
         }
 
         const LayerVertexRecord *layerRecord(
@@ -118,6 +128,107 @@ namespace boundary_mesh
             return true;
         }
 
+        struct TriangleKey
+        {
+            std::array<VertexId,3> ids{};
+
+            bool operator==(const TriangleKey &other) const noexcept
+            {
+                return ids == other.ids;
+            }
+        };
+
+        struct TriangleKeyHash
+        {
+            std::size_t operator()(const TriangleKey &key) const noexcept
+            {
+                std::size_t hash = 1469598103934665603ull;
+                for (const VertexId id : key.ids)
+                {
+                    hash ^= static_cast<std::size_t>(id);
+                    hash *= 1099511628211ull;
+                }
+                return hash;
+            }
+        };
+
+        TriangleKey triangleKey(std::array<VertexId,3> ids)
+        {
+            std::sort(ids.begin(), ids.end());
+            return {ids};
+        }
+
+        void countCandidateTriangle(
+            std::unordered_map<TriangleKey,std::uint32_t,TriangleKeyHash>
+                &owners,
+            std::array<VertexId,3> ids)
+        {
+            const auto found = owners.find(triangleKey(ids));
+            if (found != owners.end()) ++found->second;
+        }
+
+        void retainVolumeBoundaryTopTriangles(
+            SurfaceMesh &top, const VolumeMesh &mesh)
+        {
+            // With a pure multi-normal transition there are no regular
+            // cells yet; ownership can only be checked after the meshes are
+            // merged, so the transformed-front candidates must survive.
+            if (mesh.cells.empty()) return;
+
+            std::unordered_map<TriangleKey,std::uint32_t,TriangleKeyHash>
+                owners;
+            owners.reserve(top.faces.size());
+            for (const SurfaceFace &face : top.faces)
+                if (const auto *triangle = std::get_if<Triangle>(&face))
+                    owners.try_emplace(
+                        triangleKey(triangle->vertex_ids),0);
+            for (const VolumeCell &cell : mesh.cells)
+                std::visit([&](const auto &value)
+                {
+                    using Cell = std::decay_t<decltype(value)>;
+                    const auto &v = value.vertex_ids;
+                    if constexpr (std::is_same_v<Cell,Tetra>)
+                    {
+                        countCandidateTriangle(owners,{v[0],v[1],v[2]});
+                        countCandidateTriangle(owners,{v[0],v[3],v[1]});
+                        countCandidateTriangle(owners,{v[1],v[3],v[2]});
+                        countCandidateTriangle(owners,{v[2],v[3],v[0]});
+                    }
+                    else if constexpr (std::is_same_v<Cell,Prism>)
+                    {
+                        countCandidateTriangle(owners,{v[0],v[1],v[2]});
+                        countCandidateTriangle(owners,{v[3],v[5],v[4]});
+                    }
+                    else if constexpr (std::is_same_v<Cell,Pyramid>)
+                    {
+                        countCandidateTriangle(owners,{v[0],v[4],v[1]});
+                        countCandidateTriangle(owners,{v[1],v[4],v[2]});
+                        countCandidateTriangle(owners,{v[2],v[4],v[3]});
+                        countCandidateTriangle(owners,{v[3],v[4],v[0]});
+                    }
+                },cell);
+
+            SurfaceMesh exposed;
+            exposed.vertices = top.vertices;
+            std::unordered_set<TriangleKey,TriangleKeyHash> emitted;
+            emitted.reserve(owners.size());
+            for (std::size_t index = 0; index < top.faces.size(); ++index)
+                if (const auto *triangle =
+                        std::get_if<Triangle>(&top.faces[index]))
+                {
+                    const TriangleKey key = triangleKey(
+                        triangle->vertex_ids);
+                    const auto found = owners.find(key);
+                    if (found != owners.end() && found->second == 1 &&
+                        emitted.insert(key).second)
+                    {
+                        exposed.faces.push_back(*triangle);
+                        exposed.face_tags.push_back(top.face_tags[index]);
+                    }
+                }
+            top = std::move(exposed);
+        }
+
         std::vector<VertexId> faceIds(const SurfaceFace &face)
         {
             return std::visit([](const auto &value)
@@ -173,6 +284,17 @@ namespace boundary_mesh
             if (ids.size() == 3)
                 appendOwnedTriangle(
                     boundary, Triangle{{0,1,2}}, points, keys, owner);
+            else if (owner.role == BoundaryOwnerRole::RegularCandidate)
+            {
+                // A retained high face is only a collision proxy for an
+                // unsplit regular cell. Match the regular-layer collision
+                // checker; canonical/quality diagonals are resolved only
+                // after the face becomes a transition low face or final cap.
+                appendOwnedTriangle(
+                    boundary, Triangle{{0,1,2}}, points, keys, owner);
+                appendOwnedTriangle(
+                    boundary, Triangle{{0,2,3}}, points, keys, owner);
+            }
             else
             {
                 const auto diagonal = chooseQuadDiagonal(
@@ -290,7 +412,7 @@ namespace boundary_mesh
                         low_id,1,high_edge,std::nullopt,{low,high}});
                     if (!side.hasValue())
                     {
-                        template_error = side.error();
+                        template_error = atStage(side.error(),11);
                         continue;
                     }
                     const LayerBoundaryOwner owner{
@@ -358,7 +480,7 @@ namespace boundary_mesh
                     &points, 1e-12});
                 if (!selection.hasValue())
                 {
-                    template_error = selection.error();
+                    template_error = atStage(selection.error(),12);
                     continue;
                 }
                 dependencies.clear();
@@ -417,7 +539,7 @@ namespace boundary_mesh
                         diagonal,&points,1e-12});
                 if (!side.hasValue())
                 {
-                    template_error = side.error();
+                    template_error = atStage(side.error(),13);
                     continue;
                 }
                 const LayerBoundaryOwner side_owner{
@@ -497,7 +619,7 @@ namespace boundary_mesh
                 return GrowthResult::failure(
                     IncrementalLayerGrowthError{
                         TransitionTemplateError{
-                            InvalidTransitionTemplateInput{id}}});
+                            InvalidTransitionTemplateInput{id,1}}});
             const std::uint32_t region =
                 surface_mesh.face_tags[id].region_id;
             if (const auto *quad = std::get_if<Quad>(face))
@@ -529,7 +651,7 @@ namespace boundary_mesh
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{
                                 TransitionTemplateError{
-                                    InvalidTransitionTemplateInput{id}}});
+                                    InvalidTransitionTemplateInput{id,2}}});
                     const Hexa hexa = std::get<Hexa>(
                         result.mesh.cells[cell->second]);
                     std::copy_n(hexa.vertex_ids.begin(), 4,
@@ -560,7 +682,7 @@ namespace boundary_mesh
                     if (!selection.hasValue())
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{
-                                selection.error()});
+                                atStage(selection.error(),6)});
                     const auto diagonal = diagonals.resolve(
                         {id, growth->accepted_layer_count},
                         oriented(top_ids, result.mesh.vertices),
@@ -584,7 +706,8 @@ namespace boundary_mesh
                         center, diagonal.value()});
                     if (!cap.hasValue())
                         return GrowthResult::failure(
-                            IncrementalLayerGrowthError{cap.error()});
+                            IncrementalLayerGrowthError{
+                                atStage(cap.error(),7)});
                     result.mesh.vertices.insert(
                         result.mesh.vertices.end(),
                         cap.value().created_vertices.begin(),
@@ -632,7 +755,7 @@ namespace boundary_mesh
                     if (!selection.hasValue())
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{
-                                selection.error()});
+                                atStage(selection.error(),8)});
                     const auto diagonal = diagonals.resolve(
                         {id, 0}, oriented(top_ids, result.mesh.vertices),
                         selection.value().required_low_diagonal, 1e-12);
@@ -669,7 +792,7 @@ namespace boundary_mesh
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{
                                 TransitionTemplateError{
-                                    InvalidTransitionTemplateInput{id}}});
+                                    InvalidTransitionTemplateInput{id,3}}});
                     const Prism &prism = std::get<Prism>(
                         result.mesh.cells[cell->second]);
                     std::copy_n(prism.vertex_ids.begin() + 3, 3,
@@ -723,7 +846,7 @@ namespace boundary_mesh
                             IncrementalLayerGrowthError{
                                 TransitionTemplateError{
                                     InvalidTransitionTemplateInput{
-                                        low.id}}});
+                                        low.id,4}}});
                     high_ids[local] =
                         record->layer_vertex_ids[low.layer + 1];
                 }
@@ -737,7 +860,8 @@ namespace boundary_mesh
                         low.diagonal, &result.mesh.vertices, 1e-12});
                 if (!side.hasValue())
                     return GrowthResult::failure(
-                        IncrementalLayerGrowthError{side.error()});
+                        IncrementalLayerGrowthError{
+                            atStage(side.error(),9)});
                 result.mesh.cells.insert(
                     result.mesh.cells.end(),
                     side.value().volume_cells.begin(),
@@ -770,7 +894,7 @@ namespace boundary_mesh
                             IncrementalLayerGrowthError{
                                 TransitionTemplateError{
                                     InvalidTransitionTemplateInput{
-                                        low.id}}});
+                                        low.id,5}}});
                     high[local] = record->layer_vertex_ids[low.layer+1];
                 }
                 const auto side = buildTriangleTransition({
@@ -778,7 +902,8 @@ namespace boundary_mesh
                     {low.top_ids,high}});
                 if (!side.hasValue())
                     return GrowthResult::failure(
-                        IncrementalLayerGrowthError{side.error()});
+                        IncrementalLayerGrowthError{
+                            atStage(side.error(),10)});
                 result.mesh.cells.insert(
                     result.mesh.cells.end(),
                     side.value().volume_cells.begin(),
@@ -794,6 +919,7 @@ namespace boundary_mesh
                 triangular_top, low.top_faces, low.region);
         }
         triangular_top.vertices = result.mesh.vertices;
+        retainVolumeBoundaryTopTriangles(triangular_top, result.mesh);
         SurfaceMesh triangular_farfield;
         for (std::size_t index = 0;
              index < result.farfield_boundary.faces.size(); ++index)

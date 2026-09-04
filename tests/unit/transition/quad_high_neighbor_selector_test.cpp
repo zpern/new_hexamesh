@@ -20,9 +20,16 @@ namespace
         const std::vector<Point3> points{
             {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0},
             {0,0,1}, {1,0,1}, {1,1,1}, {0,1,1}};
+        std::array<VertexId,4> high{0,1,2,3};
+        for (const auto &edge : highs)
+        {
+            high[edge.local_edge] = VertexId(4+edge.local_edge);
+            high[(edge.local_edge+1)%4] =
+                VertexId(4+(edge.local_edge+1)%4);
+        }
         const auto result = selectQuadHighNeighbors({
             7, 0, std::move(highs),
-            {0,1,2,3}, {4,5,6,7}, &points, 1e-12});
+            {0,1,2,3}, high, &points, 1e-12});
         assert(result.hasValue());
         return result.value();
     }

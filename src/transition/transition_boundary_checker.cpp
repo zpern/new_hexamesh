@@ -60,6 +60,33 @@ namespace boundary_mesh
             return left.source_face_id == right.source_face_id &&
                    left.layer == right.layer;
         }
+
+        bool sameVertexKey(
+            const CollisionVertexKey &left,
+            const CollisionVertexKey &right)
+        {
+            return left.source_vertex_id == right.source_vertex_id &&
+                   left.layer == right.layer &&
+                   left.branch_id == right.branch_id;
+        }
+
+        bool belongsToHistoricalTop(
+            const OwnedBoundaryTriangle &candidate,
+            const BoundaryFace &historical)
+        {
+            if (candidate.owner.role != BoundaryOwnerRole::TopCap ||
+                candidate.owner.source_face_id !=
+                    historical.source_face_id)
+                return false;
+            for (const CollisionVertexKey &key : candidate.vertex_keys)
+                if (std::none_of(
+                        historical.vertex_keys.begin(),
+                        historical.vertex_keys.end(),
+                        [&](const CollisionVertexKey &other)
+                        { return sameVertexKey(key, other); }))
+                    return false;
+            return true;
+        }
     }
 
     Result<std::vector<OwnedBoundaryTriangle>, TransitionBoundaryError>
@@ -143,12 +170,57 @@ namespace boundary_mesh
         std::vector<SurfaceFaceId> rollback;
         for (std::size_t index = 0; index < collisions.size(); ++index)
         {
-            bool hit = input.original_surface != nullptr &&
-                !input.original_surface->queryIllegalContacts(
-                    collisions[index]).empty();
+            bool hit = false;
+            if (input.original_surface != nullptr)
+                for (const std::size_t contact :
+                     input.original_surface->queryIllegalContacts(
+                         collisions[index]))
+                {
+                    const CollisionTriangle &obstacle =
+                        input.original_surface->primitive(contact);
+                    const bool own_zero_layer_cap =
+                        owned[index].owner.role ==
+                            BoundaryOwnerRole::TopCap &&
+                        owned[index].owner.layer == 0 &&
+                        obstacle.owner_kind ==
+                            CollisionOwnerKind::OriginalSurface &&
+                        obstacle.owner_id ==
+                            owned[index].owner.source_face_id;
+                    const bool own_regular_source =
+                        owned[index].owner.role ==
+                            BoundaryOwnerRole::RegularCandidate &&
+                        obstacle.owner_kind ==
+                            CollisionOwnerKind::OriginalSurface &&
+                        obstacle.owner_id ==
+                            owned[index].owner.source_face_id;
+                    if (!own_zero_layer_cap && !own_regular_source)
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
             if (historical_index.has_value())
-                hit = hit || !historical_index->queryIllegalContacts(
-                    collisions[index]).empty();
+                for (const std::size_t contact :
+                     historical_index->queryIllegalContacts(
+                         collisions[index]))
+                {
+                    const CollisionTriangle &obstacle =
+                        historical_index->primitive(contact);
+                    const auto &history_faces =
+                        input.historical_boundary->faces();
+                    const bool own_historical_top =
+                        obstacle.owner_kind ==
+                            CollisionOwnerKind::ExposedBoundary &&
+                        obstacle.owner_id < history_faces.size() &&
+                        belongsToHistoricalTop(
+                            owned[index],
+                            history_faces[obstacle.owner_id]);
+                    if (!own_historical_top)
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
             if (hit) appendOwner(rollback, owned[index].owner);
         }
 

@@ -314,7 +314,27 @@ namespace boundary_mesh
 
         if (!growth.hasValue())
         {
-            error << "failed to generate boundary layers\n";
+            error << "failed to generate boundary layers"
+                  << " (category=" << growth.error().index();
+            if (const auto *regular =
+                    std::get_if<RegularLayerGenerationFailure>(
+                        &growth.error()))
+            {
+                error << ", cause=" << regular->cause.index();
+                if (const auto *transition =
+                        std::get_if<TransitionTemplateError>(
+                            &regular->cause))
+                {
+                    error << ", transition=" << transition->index();
+                    if (const auto *invalid =
+                            std::get_if<InvalidTransitionTemplateInput>(
+                                transition))
+                        error << ", source_face="
+                              << invalid->source_face_id
+                              << ", stage=" << invalid->stage;
+                }
+            }
+            error << ")\n";
             return 6;
         }
 
