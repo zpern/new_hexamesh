@@ -169,7 +169,10 @@ namespace boundary_mesh
         }
 
         void retainVolumeBoundaryTopTriangles(
-            SurfaceMesh &top, const VolumeMesh &mesh)
+            SurfaceMesh &top,
+            const VolumeMesh &mesh,
+            const std::unordered_set<TriangleKey,TriangleKeyHash>
+                &ownerless_zero_layer_caps)
         {
             // With a pure multi-normal transition there are no regular
             // cells yet; ownership can only be checked after the meshes are
@@ -220,7 +223,11 @@ namespace boundary_mesh
                     const TriangleKey key = triangleKey(
                         triangle->vertex_ids);
                     const auto found = owners.find(key);
-                    if (found != owners.end() && found->second == 1 &&
+                    if (found != owners.end() &&
+                        (found->second == 1 ||
+                         (found->second == 0 &&
+                          ownerless_zero_layer_caps.find(key) !=
+                              ownerless_zero_layer_caps.end())) &&
                         emitted.insert(key).second)
                     {
                         exposed.faces.push_back(*triangle);
@@ -567,6 +574,8 @@ namespace boundary_mesh
         LayerQuadDiagonalTable diagonals;
         SurfaceMesh triangular_top;
         triangular_top.vertices = result.mesh.vertices;
+        std::unordered_set<TriangleKey,TriangleKeyHash>
+            ownerless_zero_layer_caps;
         std::vector<FinalQuad> final_quads;
         std::vector<FinalTriangle> final_triangles;
         std::unordered_map<SurfaceFaceId, const SurfaceFace *> source_faces;
@@ -873,6 +882,10 @@ namespace boundary_mesh
                     side.value().metadata.end());
                 low.top_faces = side.value().top_faces;
             }
+            if (low.layer == 0 && low.high_edges.empty())
+                for (const Triangle &triangle : low.top_faces)
+                    ownerless_zero_layer_caps.insert(
+                        triangleKey(triangle.vertex_ids));
             appendTriangles(
                 triangular_top, low.top_faces, low.region);
         }
@@ -916,11 +929,16 @@ namespace boundary_mesh
                 }
                 low.top_faces = side.value().top_faces;
             }
+            if (low.layer == 0 && !low.high_edge.has_value())
+                for (const Triangle &triangle : low.top_faces)
+                    ownerless_zero_layer_caps.insert(
+                        triangleKey(triangle.vertex_ids));
             appendTriangles(
                 triangular_top, low.top_faces, low.region);
         }
         triangular_top.vertices = result.mesh.vertices;
-        retainVolumeBoundaryTopTriangles(triangular_top, result.mesh);
+        retainVolumeBoundaryTopTriangles(
+            triangular_top, result.mesh, ownerless_zero_layer_caps);
         SurfaceMesh triangular_farfield;
         for (std::size_t index = 0;
              index < result.farfield_boundary.faces.size(); ++index)

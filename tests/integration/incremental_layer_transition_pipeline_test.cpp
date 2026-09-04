@@ -240,6 +240,38 @@ int main()
     assert(std::get<Triangle>(triangle.value().top_surface.faces.front())
                .vertex_ids == expected_triangle_top);
 
+    RegularLayerGrowthResult zero_triangle_regular;
+    zero_triangle_regular.mesh.vertices = triangle_surface.vertices;
+    zero_triangle_regular.mesh.vertices.insert(
+        zero_triangle_regular.mesh.vertices.end(),
+        {{10,0,0},{11,0,0},{10,1,0},{10,0,1}});
+    zero_triangle_regular.mesh.cells = {
+        Tetra{{3,4,5,6}}};
+    zero_triangle_regular.mesh.metadata = {
+        {CellRole::RegularLayer,99,1}};
+    zero_triangle_regular.faces = {
+        {0,0,FaceGrowthStatus::Stopped,
+         FaceStopReason::Collision,1}};
+    zero_triangle_regular.layer_vertices = {
+        {0,{0},0}, {1,{1},0}, {2,{2},0}};
+    zero_triangle_regular.farfield_boundary.vertices =
+        triangle_surface.vertices;
+    zero_triangle_regular.farfield_boundary.faces =
+        triangle_surface.faces;
+    zero_triangle_regular.farfield_boundary.face_tags = {{
+        SurfaceBoundaryKind::BoundaryLayerInterface,9}};
+    const auto zero_triangle = finalizeIncrementalLayerTopology(
+        triangle_surface, triangle_front,
+        std::move(zero_triangle_regular));
+    assert(zero_triangle.hasValue());
+    assert(zero_triangle.value().mesh.cells.size() == 1);
+    assert(zero_triangle.value().top_surface.faces.size() == 1);
+    assert(std::holds_alternative<Triangle>(
+        zero_triangle.value().top_surface.faces.front()));
+    assert(zero_triangle.value().farfield_boundary.faces.size() == 1);
+    assert(std::holds_alternative<Triangle>(
+        zero_triangle.value().farfield_boundary.faces.front()));
+
     SurfaceMesh staircase_surface;
     GrowthFront staircase_front;
     auto staircase_regular = staircaseRegular(
