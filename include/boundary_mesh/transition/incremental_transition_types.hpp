@@ -15,6 +15,7 @@ namespace boundary_mesh
         Collision,
         SlidingProjection,
         IsotropicStop,
+        AcceptedStop,
         CornerSuppression,
         TransitionCollision
     };

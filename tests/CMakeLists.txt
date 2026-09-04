@@ -1028,6 +1028,19 @@ add_test(
 )
 
 add_executable(
+    boundary_mesh_accepted_stopped_front_carry_test
+    unit/transition/accepted_stopped_front_carry_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_accepted_stopped_front_carry_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_accepted_stopped_front_carry_test
+    COMMAND boundary_mesh_accepted_stopped_front_carry_test
+)
+
+add_executable(
     boundary_mesh_incremental_transition_templates_test
     unit/transition/incremental_transition_templates_test.cpp
 )

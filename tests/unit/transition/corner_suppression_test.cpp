@@ -119,4 +119,40 @@ int main()
         assert(contains(
             four.value().face_sets.transition_low_faces, removed));
     }
+
+    GrowthFront triangle_fan;
+    triangle_fan.layer = 19;
+    triangle_fan.vertices = {
+        {{0,0,0},0}, {{1,0,0},1}, {{0,1,0},2},
+        {{0,-1,0},3}, {{-1,1,0},4}, {{-1,2,0},5}};
+    triangle_fan.faces = {
+        Triangle{{0,1,2}}, // 7473-like stopped triangle
+        Triangle{{1,0,3}}, // selected high-edge neighbour
+        Triangle{{2,4,5}}  // high face at the unrelated corner
+    };
+    triangle_fan.source_face_ids = {7473,7438,7472};
+    GrowthFront triangle_candidates = triangle_fan;
+    triangle_candidates.layer = 20;
+    for (auto &vertex : triangle_candidates.vertices)
+        vertex.position.z() += 1.0;
+    triangle_candidates.faces.erase(
+        triangle_candidates.faces.begin());
+    triangle_candidates.source_face_ids.erase(
+        triangle_candidates.source_face_ids.begin());
+    LayerFaceSets triangle_sets;
+    addInitialStop(
+        triangle_sets, {7473,19,StopOrigin::IsotropicStop});
+    const auto triangle_suppression = applyCornerSuppression({
+        triangle_fan, triangle_candidates, triangle_sets, 19, 1e-12});
+    assert(triangle_suppression.hasValue());
+    assert((triangle_suppression.value().removed_high_faces ==
+            std::vector<SurfaceFaceId>{7472}));
+    assert(contains(
+        triangle_suppression.value().retained_high_faces, 7438));
+    assert(!contains(
+        triangle_suppression.value().face_sets.corner_suppression_seeds,
+        7472));
+    assert(contains(
+        triangle_suppression.value().face_sets.transition_low_faces,
+        7472));
 }

@@ -7,6 +7,7 @@
 #include <utility>
 
 #include <boundary_mesh/transition/incremental_boundary_layer_generator.hpp>
+#include <boundary_mesh/transition/accepted_stopped_front_carry.hpp>
 #include <boundary_mesh/transition/corner_suppression.hpp>
 #include <boundary_mesh/transition/layer_quad_diagonal_table.hpp>
 #include <boundary_mesh/transition/layer_transition_resolver.hpp>
@@ -971,9 +972,10 @@ namespace boundary_mesh
             RegularLayerGrowthResult, IncrementalLayerGrowthError>;
         RegularLayerGrowthOptions coordinated_options = options;
         std::optional<IncrementalLayerGrowthError> incremental_error;
+        AcceptedStoppedFrontCarry previously_accepted;
         const auto upstream_rejections = options.candidate_rejections;
         coordinated_options.candidate_rejections =
-            [upstream_rejections, &incremental_error](
+            [upstream_rejections, &incremental_error, &previously_accepted](
                 const GrowthFront &current,
                 const LayerStepResult &candidate,
                 const std::vector<VertexId> &current_global_ids,
@@ -986,6 +988,11 @@ namespace boundary_mesh
                     original_surface, historical_boundary)
                 : std::vector<SurfaceFaceId>{};
             LayerFaceSets face_sets;
+            const AcceptedStoppedFrontCarry carried_stops =
+                carryFacesMissingFromActive(previously_accepted, current);
+            const GrowthFront effective_current =
+                mergeWithCarriedStoppedFaces(current, carried_stops);
+            addCarriedStops(face_sets, carried_stops);
             const std::unordered_set<SurfaceFaceId> continuing(
                 candidate.next_front.source_face_ids.begin(),
                 candidate.next_front.source_face_ids.end());
@@ -1013,23 +1020,37 @@ namespace boundary_mesh
                     addInitialStop(face_sets, {
                         id, current.layer, StopOrigin::Quality});
             }
+            const auto rememberAccepted = [&](
+                const std::vector<SurfaceFaceId> &retained)
+            {
+                previously_accepted = retainAcceptedFaces(
+                    candidate.next_front,
+                    candidate.accepted_stopped_faces,
+                    retained);
+            };
             if (face_sets.transition_low_faces.empty())
+            {
+                std::vector<SurfaceFaceId> retained =
+                    filtered_candidate.source_face_ids;
+                std::sort(retained.begin(), retained.end());
+                rememberAccepted(retained);
                 return rejected;
+            }
             std::optional<TransitionTemplateError> template_error;
             LayerTransitionInput input;
-            input.current_front = current;
+            input.current_front = effective_current;
             input.candidate_front = std::move(filtered_candidate);
             input.face_sets = std::move(face_sets);
             input.completed_layer = current.layer;
             input.original_surface = original_surface;
             input.historical_boundary = &historical_boundary;
             input.build_provisional =
-                [&current, &candidate, &template_error](
+                [&effective_current, &candidate, &template_error](
                     const std::vector<SurfaceFaceId> &retained,
                     const LayerFaceSets &sets)
             {
                 return buildProvisionalTransition(
-                    current, candidate.next_front,
+                    effective_current, candidate.next_front,
                     retained, sets, template_error);
             };
             const auto stable = LayerTransitionResolver{}.resolve(input);
@@ -1052,6 +1073,7 @@ namespace boundary_mesh
                 if (!retainedFace(
                         stable.value().retained_high_faces, id))
                     rejected.push_back(id);
+            rememberAccepted(stable.value().retained_high_faces);
             std::sort(rejected.begin(), rejected.end());
             rejected.erase(
                 std::unique(rejected.begin(), rejected.end()),
