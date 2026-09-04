@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <iostream>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -166,12 +167,12 @@ int main()
     }();
     if (!result.hasValue()) return 4;
 
-    const std::string expected_progress =
-        "generate 1 boundarylayer\n"
-        "finish 1 boundarylayer. add 2 cell\n"
-        "generate 2 boundarylayer\n"
-        "finish 2 boundarylayer. add 2 cell\n";
-    if (progress_output.str() != expected_progress)
+    const std::regex expected_progress{
+        "generate 1 boundarylayer\\n"
+        "finish 1 boundarylayer\\. add 2 cell\\. elapsed_ms=[0-9]+\\n"
+        "generate 2 boundarylayer\\n"
+        "finish 2 boundarylayer\\. add 2 cell\\. elapsed_ms=[0-9]+\\n"};
+    if (!std::regex_match(progress_output.str(), expected_progress))
     {
         std::cerr
             << "Unexpected progress output:\n"
@@ -330,12 +331,13 @@ int main()
         return 16;
     }
 
-    const std::string expected_isotropic_progress =
-        "generate 1 boundarylayer\n"
-        "finish 1 boundarylayer. add 2 cell\n"
-        "generate 2 boundarylayer\n"
-        "finish 2 boundarylayer. add 2 cell\n";
-    if (isotropic_progress.str() != expected_isotropic_progress)
+    const std::regex expected_isotropic_progress{
+        "generate 1 boundarylayer\\n"
+        "finish 1 boundarylayer\\. add 2 cell\\. elapsed_ms=[0-9]+\\n"
+        "generate 2 boundarylayer\\n"
+        "finish 2 boundarylayer\\. add 2 cell\\. elapsed_ms=[0-9]+\\n"};
+    if (!std::regex_match(
+            isotropic_progress.str(), expected_isotropic_progress))
     {
         return 17;
     }

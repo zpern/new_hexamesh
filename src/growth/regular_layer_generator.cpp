@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -462,6 +463,8 @@ namespace boundary_mesh
                 current_front.layer + 1;
             const bool report_layer =
                 hasLayerAttempt(current_front, constraints);
+            const auto layer_started =
+                std::chrono::steady_clock::now();
             if (report_layer)
             {
                 std::cout
@@ -747,7 +750,11 @@ namespace boundary_mesh
                     << step.layer
                     << " boundarylayer. add "
                     << new_cells.size()
-                    << " cell"
+                    << " cell. elapsed_ms="
+                    << std::chrono::duration_cast<
+                           std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() -
+                           layer_started).count()
                     << std::endl;
             }
 
