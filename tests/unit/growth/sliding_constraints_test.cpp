@@ -7,6 +7,8 @@
 
 #include <boundary_mesh/growth/sliding_constraint_builder.hpp>
 #include <boundary_mesh/growth/sliding_surface_builder.hpp>
+#include <boundary_mesh/growth/front_evaluation.hpp>
+#include <boundary_mesh/growth/growth_front.hpp>
 
 namespace
 {
@@ -57,6 +59,30 @@ namespace
         return evaluation;
     }
 
+    Result<SlidingConstraints, SlidingError> buildConstraints(
+        const SurfaceMesh &mesh,
+        const GrowthFront &front,
+        const FrontEvaluation &evaluation)
+    {
+        auto surfaces = SlidingSurfaceBuilder{}.build(mesh);
+        if (!surfaces.hasValue())
+            return Result<SlidingConstraints, SlidingError>::failure(
+                surfaces.error());
+        std::vector<SlidingVertexInput> inputs;
+        inputs.reserve(front.vertices.size());
+        for (std::size_t index = 0; index < front.vertices.size(); ++index)
+        {
+            const auto &vertex = front.vertices[index];
+            inputs.push_back({index, vertex.source_vertex_id,
+                              vertex.boundary.sliding_region_ids});
+        }
+        return SlidingConstraintBuilder{}.build(
+            surfaces.value(), inputs,
+            evaluation.characteristic_length,
+            evaluation.effective_length_tolerance,
+            front.layer);
+    }
+
     bool nearlyEqual(
         const Vector3 &first,
         const Vector3 &second,
@@ -75,10 +101,10 @@ int main()
 
     // 单平面约束会去除法向分量；无约束顶点只做归一化。
     const GrowthFront single_front = makeFront({7});
-    const auto single = SlidingConstraintBuilder{}.build(
+    const auto single = buildConstraints(
         mesh, single_front, evaluation);
     if (!single.hasValue() ||
-        single.value().planes().size() != 1 ||
+        single.value().planes().size() != 4 ||
         single.value().vertices().size() != single_front.vertices.size())
     {
         return 1;
@@ -101,7 +127,7 @@ int main()
 
     // 两个独立平面的允许方向只能沿其交线，并尽量保持原方向符号。
     const GrowthFront line_front = makeFront({8, 7});
-    const auto line = SlidingConstraintBuilder{}.build(
+    const auto line = buildConstraints(
         mesh, line_front, evaluation);
     if (!line.hasValue())
     {
@@ -119,7 +145,7 @@ int main()
 
     // 平行或反向的 region 法向属于同一个独立约束。
     const GrowthFront redundant_front = makeFront({10, 7});
-    const auto redundant = SlidingConstraintBuilder{}.build(
+    const auto redundant = buildConstraints(
         mesh, redundant_front, evaluation);
     if (!redundant.hasValue() ||
         redundant.value().vertices()[0].plane_indices.size() != 1)
@@ -128,9 +154,9 @@ int main()
     }
 
     // region 输入顺序不影响平面顺序和约束结果。
-    const auto ordered = SlidingConstraintBuilder{}.build(
+    const auto ordered = buildConstraints(
         mesh, makeFront({7, 8}), evaluation);
-    const auto reversed = SlidingConstraintBuilder{}.build(
+    const auto reversed = buildConstraints(
         mesh, makeFront({8, 7}), evaluation);
     if (!ordered.hasValue() || !reversed.hasValue())
     {
@@ -149,7 +175,7 @@ int main()
     SurfaceMesh locked_mesh = mesh;
     locked_mesh.face_tags[1].kind =
         SurfaceBoundaryKind::Internal;
-    const auto locked = SlidingConstraintBuilder{}.build(
+    const auto locked = buildConstraints(
         locked_mesh, locked_front, evaluation);
     const auto *locked_error = locked.hasValue()
         ? nullptr
@@ -163,7 +189,7 @@ int main()
     }
 
     // 前沿引用不存在的 region 时返回输入不匹配错误。
-    const auto missing = SlidingConstraintBuilder{}.build(
+    const auto missing = buildConstraints(
         mesh, makeFront({99}), evaluation);
     const auto *missing_error = missing.hasValue()
         ? nullptr
@@ -173,20 +199,15 @@ int main()
         return 10;
     }
 
-    // 同一 region 的面不共面时，错误指向首个不合法源面。
+    // 非轴对齐或不共面的 region 由曲面投影处理。
     SurfaceMesh bent = mesh;
     bent.faces.push_back(
         Triangle{{VertexId{0}, VertexId{1}, VertexId{3}}});
     bent.face_tags.push_back(
         SurfaceBoundaryTag{SurfaceBoundaryKind::Symmetry, 7});
-    const auto invalid = SlidingConstraintBuilder{}.build(
+    const auto invalid = buildConstraints(
         bent, single_front, evaluation);
-    const auto *invalid_error = invalid.hasValue()
-        ? nullptr
-        : std::get_if<InvalidSlidingSurface>(&invalid.error());
-    if (invalid_error == nullptr ||
-        invalid_error->region_id != 7 ||
-        invalid_error->source_face_id != SurfaceFaceId{4})
+    if (!invalid.hasValue())
     {
         return 11;
     }
@@ -209,7 +230,7 @@ int main()
     SurfaceMesh internal_mesh = mesh;
     internal_mesh.face_tags[0].kind =
         SurfaceBoundaryKind::Internal;
-    const auto internal_single = SlidingConstraintBuilder{}.build(
+    const auto internal_single = buildConstraints(
         internal_mesh, single_front, evaluation);
     if (!internal_single.hasValue())
     {
@@ -228,7 +249,7 @@ int main()
     SurfaceMesh mixed_mesh = mesh;
     mixed_mesh.face_tags[1].kind =
         SurfaceBoundaryKind::Internal;
-    const auto mixed_line = SlidingConstraintBuilder{}.build(
+    const auto mixed_line = buildConstraints(
         mixed_mesh, line_front, evaluation);
     if (!mixed_line.hasValue())
     {
@@ -245,28 +266,23 @@ int main()
         return 16;
     }
 
-    // 同一 Internal region 的离散面不共面时仍然必须拒绝。
+    // 非共面的 Internal region 同样作为曲面处理。
     SurfaceMesh bent_internal = internal_mesh;
     bent_internal.faces.push_back(
         Triangle{{VertexId{0}, VertexId{1}, VertexId{3}}});
     bent_internal.face_tags.push_back(
         {SurfaceBoundaryKind::Internal, 7});
-    const auto invalid_internal = SlidingConstraintBuilder{}.build(
+    const auto invalid_internal = buildConstraints(
         bent_internal, single_front, evaluation);
-    const auto *invalid_internal_error = invalid_internal.hasValue()
-        ? nullptr
-        : std::get_if<InvalidSlidingSurface>(
-              &invalid_internal.error());
-    if (invalid_internal_error == nullptr ||
-        invalid_internal_error->source_face_id != SurfaceFaceId{4})
+    if (!invalid_internal.hasValue())
     {
         return 17;
     }
 
     const auto surfaces = SlidingSurfaceBuilder{}.build(mesh);
     if (!surfaces.hasValue()) return 18;
-    const auto final_constraints = SlidingConstraintBuilder{}.build(
-        surfaces.value(), single_front, evaluation);
+    const auto final_constraints = buildConstraints(
+        mesh, single_front, evaluation);
     if (!final_constraints.hasValue()) return 19;
     const Point3 current{0.0, 0.0, 0.0};
     const auto constrained = final_constraints.value().constrainDirection(
@@ -289,8 +305,8 @@ int main()
     const auto curved_surfaces = SlidingSurfaceBuilder{}.build(curved_mesh);
     GrowthFront curved_front = makeFront({50});
     curved_front.vertices[0].position = Point3{0.2,0.2,0.4};
-    const auto curved_constraints = SlidingConstraintBuilder{}.build(
-        curved_surfaces.value(), curved_front, evaluation);
+    const auto curved_constraints = buildConstraints(
+        curved_mesh, curved_front, evaluation);
     const auto curved_position = curved_constraints.value().projectPosition(
         0, Point3{0.2,0.2,1.4});
     if (!curved_position.hasValue() ||

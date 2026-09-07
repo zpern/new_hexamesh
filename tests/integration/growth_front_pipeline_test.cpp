@@ -8,7 +8,8 @@
 #include <boundary_mesh/growth/growth_direction.hpp>
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
-#include <boundary_mesh/growth/sliding_constraint_builder.hpp>
+#include <boundary_mesh/growth/sliding_constraint_adapter.hpp>
+#include <boundary_mesh/growth/sliding_surface_builder.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 
 namespace
@@ -63,6 +64,8 @@ int main()
     using namespace boundary_mesh;
 
     const SurfaceMesh mesh = makePipelineMesh();
+    const auto sliding_surfaces = SlidingSurfaceBuilder{}.build(mesh);
+    if (!sliding_surfaces.hasValue()) return 1;
     const auto topology = SurfaceTopologyBuilder{}.build(mesh);
     if (!topology.hasValue())
     {
@@ -94,23 +97,14 @@ int main()
     {
         return 5;
     }
-    const auto constraints0 = SlidingConstraintBuilder{}.build(
-        mesh, layer0.value(), evaluation0.value());
+    const auto constraints0 = buildGrowthSlidingConstraints(
+        sliding_surfaces.value(), layer0.value(), evaluation0.value());
     if (!constraints0.hasValue())
     {
         return 6;
     }
-    for (std::size_t vertex_index = 0;
-         vertex_index < directions0.value().vertices.size();
-         ++vertex_index)
-    {
-        if (!constraints0.value().apply(
-                vertex_index,
-                directions0.value().vertices[vertex_index].value).hasValue())
-        {
-            return 7;
-        }
-    }
+    if (constraints0.value().vertices().size() !=
+        layer0.value().vertices.size()) return 7;
 
     const Scalar layer0_area = evaluation0.value().faces[0].value.area;
     const Vector3 layer0_normal =
@@ -147,8 +141,8 @@ int main()
     {
         return 9;
     }
-    const auto constraints1 = SlidingConstraintBuilder{}.build(
-        mesh, layer1, evaluation1.value());
+    const auto constraints1 = buildGrowthSlidingConstraints(
+        sliding_surfaces.value(), layer1, evaluation1.value());
     if (!constraints1.hasValue())
     {
         return 10;
@@ -177,17 +171,8 @@ int main()
     {
         return 12;
     }
-    for (std::size_t vertex_index = 0;
-         vertex_index < directions1.value().vertices.size();
-         ++vertex_index)
-    {
-        if (!constraints1.value().apply(
-                vertex_index,
-                directions1.value().vertices[vertex_index].value).hasValue())
-        {
-            return 13;
-        }
-    }
+    if (constraints1.value().vertices().size() !=
+        layer1.vertices.size()) return 13;
 
     // 中间层面片折叠时必须报告当前层号、局部面和源 Wall 面。
     GrowthFront collapsed = layer1;

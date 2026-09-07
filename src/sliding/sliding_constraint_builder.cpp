@@ -10,16 +10,16 @@
 
 #include <Eigen/Geometry>
 
-#include <boundary_mesh/growth/sliding_constraint_builder.hpp>
-#include <boundary_mesh/surface/face_evaluation.hpp>
+#include <boundary_mesh/sliding/sliding_constraint_builder.hpp>
 
 namespace boundary_mesh
 {
     namespace
     {
         using ConstraintResult =
-            Result<SlidingConstraints, GrowthDirectionError>;
+            Result<SlidingConstraints, SlidingError>;
 
+#if 0
         Result<FaceEvaluation, FaceEvaluationError>
         evaluateSurfaceFace(
             const SurfaceMesh &mesh,
@@ -87,6 +87,7 @@ namespace boundary_mesh
                 surface_face);
             return valid;
         }
+#endif
     }
 
     const std::vector<SlidingPlane> &
@@ -101,12 +102,12 @@ namespace boundary_mesh
         return vertices_;
     }
 
-    Result<Vector3, GrowthDirectionError>
+    Result<Vector3, SlidingError>
     SlidingConstraints::apply(
         std::size_t front_vertex_index,
         const Vector3 &raw_direction) const
     {
-        using ApplyResult = Result<Vector3, GrowthDirectionError>;
+        using ApplyResult = Result<Vector3, SlidingError>;
         if (front_vertex_index >= vertices_.size())
         {
             return ApplyResult::failure(SlidingInputMismatch{});
@@ -154,13 +155,13 @@ namespace boundary_mesh
 
     namespace
     {
-        Result<Point3, GrowthDirectionError> projectToSurface(
+        Result<Point3, SlidingError> projectToSurface(
             const SlidingSurface &surface,
             const Point3 &point)
         {
             Point3 projected = point;
             if (!point.allFinite())
-                return Result<Point3, GrowthDirectionError>::failure(
+                return Result<Point3, SlidingError>::failure(
                     SlidingInputMismatch{surface.region_id});
             switch (surface.kind)
             {
@@ -170,22 +171,22 @@ namespace boundary_mesh
             case SlidingSurfaceKind::Curved:
             {
                 if (!surface.curved_index)
-                    return Result<Point3, GrowthDirectionError>::failure(
+                    return Result<Point3, SlidingError>::failure(
                         SlidingInputMismatch{surface.region_id});
                 const auto closest = surface.curved_index->closestPoint(point);
                 if (!closest.hasValue())
-                    return Result<Point3, GrowthDirectionError>::failure(
+                    return Result<Point3, SlidingError>::failure(
                         InvalidSlidingSurface{
                             surface.region_id, SurfaceFaceId{0}});
                 projected = closest.value().point;
                 break;
             }
             }
-            return Result<Point3, GrowthDirectionError>::success(projected);
+            return Result<Point3, SlidingError>::success(projected);
         }
     }
 
-    Result<Vector3, GrowthDirectionError>
+    Result<Vector3, SlidingError>
     SlidingConstraints::constrainDirection(
         std::size_t front_vertex_index,
         const Point3 &current_position,
@@ -193,7 +194,7 @@ namespace boundary_mesh
     {
         if (front_vertex_index >= vertices_.size() ||
             !current_position.allFinite() || !raw_direction.allFinite())
-            return Result<Vector3, GrowthDirectionError>::failure(
+            return Result<Vector3, SlidingError>::failure(
                 SlidingInputMismatch{});
         const VertexSlidingConstraint &constraint = vertices_[front_vertex_index];
         Point3 endpoint = current_position + raw_direction;
@@ -203,7 +204,7 @@ namespace boundary_mesh
                 const auto projected = projectToSurface(
                     surfaces_.surfaces()[index], endpoint);
                 if (!projected.hasValue())
-                    return Result<Vector3, GrowthDirectionError>::failure(
+                    return Result<Vector3, SlidingError>::failure(
                         projected.error());
                 endpoint = projected.value();
             }
@@ -211,19 +212,19 @@ namespace boundary_mesh
         const Scalar length = direction.norm();
         if (!direction.allFinite() || !std::isfinite(length) ||
             length <= direction_tolerance_)
-            return Result<Vector3, GrowthDirectionError>::failure(
+            return Result<Vector3, SlidingError>::failure(
                 UndefinedConstrainedDirection{front_vertex_index,
                     constraint.source_vertex_id, layer_});
-        return Result<Vector3, GrowthDirectionError>::success(direction / length);
+        return Result<Vector3, SlidingError>::success(direction / length);
     }
 
-    Result<SlidingPositionProjection, GrowthDirectionError>
+    Result<SlidingPositionProjection, SlidingError>
     SlidingConstraints::projectPosition(
         std::size_t front_vertex_index,
         const Point3 &candidate) const
     {
         using ProjectionResult =
-            Result<SlidingPositionProjection, GrowthDirectionError>;
+            Result<SlidingPositionProjection, SlidingError>;
         if (front_vertex_index >= vertices_.size() || !candidate.allFinite())
             return ProjectionResult::failure(SlidingInputMismatch{});
         const VertexSlidingConstraint &constraint = vertices_[front_vertex_index];
@@ -276,6 +277,7 @@ namespace boundary_mesh
             result.position_change, result.max_surface_residual});
     }
 
+#if 0
     Result<SlidingConstraints, GrowthDirectionError>
     SlidingConstraintBuilder::build(
         const SurfaceMesh &mesh,
@@ -441,21 +443,25 @@ namespace boundary_mesh
         return ConstraintResult::success(std::move(output));
     }
 
-    Result<SlidingConstraints, GrowthDirectionError>
+#endif
+    Result<SlidingConstraints, SlidingError>
     SlidingConstraintBuilder::build(
         const SlidingSurfaceSet &surfaces,
-        const GrowthFront &front,
-        const FrontEvaluation &evaluation) const
+        const std::vector<SlidingVertexInput> &vertices,
+        Scalar characteristic_length,
+        Scalar effective_length_tolerance,
+        std::uint32_t layer) const
     {
-        if (front.layer != evaluation.layer ||
-            !std::isfinite(evaluation.characteristic_length) ||
-            evaluation.characteristic_length <= Scalar{0})
+        if (!std::isfinite(characteristic_length) ||
+            characteristic_length <= Scalar{0} ||
+            !std::isfinite(effective_length_tolerance) ||
+            effective_length_tolerance <= Scalar{0})
             return ConstraintResult::failure(SlidingInputMismatch{});
         SlidingConstraints output;
-        output.layer_ = front.layer;
+        output.layer_ = layer;
         output.angular_tolerance_ = std::max(
-            Scalar{1e-12}, evaluation.effective_length_tolerance /
-                evaluation.characteristic_length);
+            Scalar{1e-12}, effective_length_tolerance /
+                characteristic_length);
         output.direction_tolerance_ = output.angular_tolerance_;
         output.surfaces_ = surfaces;
         for (const SlidingSurface &surface : surfaces.surfaces())
@@ -466,16 +472,17 @@ namespace boundary_mesh
             if (surface.kind == SlidingSurfaceKind::AxisZ) normal.z() = 1;
             output.planes_.push_back({surface.region_id, Point3::Zero(), normal});
         }
-        output.vertices_.reserve(front.vertices.size());
+        output.vertices_.reserve(vertices.size());
         for (std::size_t vertex_index = 0;
-             vertex_index < front.vertices.size(); ++vertex_index)
+             vertex_index < vertices.size(); ++vertex_index)
         {
+            const SlidingVertexInput &vertex = vertices[vertex_index];
             VertexSlidingConstraint constraint;
-            constraint.front_vertex_index = vertex_index;
-            constraint.source_vertex_id = front.vertices[vertex_index].source_vertex_id;
+            constraint.front_vertex_index = vertex.vertex_index;
+            constraint.source_vertex_id = vertex.source_vertex_id;
             std::vector<Vector3> axis_basis;
             std::vector<std::uint32_t> regions =
-                front.vertices[vertex_index].boundary.sliding_region_ids;
+                vertex.region_ids;
             std::sort(regions.begin(), regions.end());
             regions.erase(std::unique(regions.begin(), regions.end()), regions.end());
             for (const std::uint32_t region_id : regions)
@@ -486,7 +493,6 @@ namespace boundary_mesh
                         SlidingInputMismatch{region_id});
                 const std::size_t index = static_cast<std::size_t>(
                     surface - surfaces.surfaces().data());
-                constraint.plane_indices.push_back(index);
                 Vector3 normal = output.planes_[index].unit_normal;
                 if (normal.squaredNorm() > Scalar{0})
                 {
@@ -495,12 +501,14 @@ namespace boundary_mesh
                         if (std::abs(normal.dot(basis)) >=
                             Scalar{1} - output.angular_tolerance_)
                             independent = false;
-                    if (independent) axis_basis.push_back(normal);
+                    if (!independent) continue;
+                    axis_basis.push_back(normal);
                 }
+                constraint.plane_indices.push_back(index);
             }
             if (axis_basis.size() == 3)
                 return ConstraintResult::failure(OverConstrainedGrowthVertex{
-                    vertex_index, constraint.source_vertex_id, front.layer});
+                    vertex.vertex_index, constraint.source_vertex_id, layer});
             output.vertices_.push_back(std::move(constraint));
         }
         return ConstraintResult::success(std::move(output));

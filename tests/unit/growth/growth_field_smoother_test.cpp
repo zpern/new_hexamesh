@@ -6,7 +6,7 @@
 
 #include <boundary_mesh/growth/front_adjacency.hpp>
 #include <boundary_mesh/growth/growth_field_smoother.hpp>
-#include <boundary_mesh/growth/sliding_constraint_builder.hpp>
+#include <boundary_mesh/growth/sliding_constraint_adapter.hpp>
 #include <boundary_mesh/growth/sliding_surface_builder.hpp>
 
 namespace
@@ -327,7 +327,7 @@ int main()
     const auto sliding_surfaces =
         SlidingSurfaceBuilder{}.build(sliding_mesh);
     if (!sliding_surfaces.hasValue()) return 17;
-    const auto sliding_constraints = SlidingConstraintBuilder{}.build(
+    const auto sliding_constraints = buildGrowthSlidingConstraints(
         sliding_surfaces.value(), sliding_front, evaluation);
     if (!sliding_constraints.hasValue()) return 18;
 

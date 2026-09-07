@@ -10,6 +10,7 @@
 #include <boundary_mesh/growth/growth_field_smoother.hpp>
 #include <boundary_mesh/growth/skewness_direction_refiner.hpp>
 #include <boundary_mesh/growth/sliding_constraints.hpp>
+#include <boundary_mesh/growth/sliding_constraint_adapter.hpp>
 
 namespace boundary_mesh
 {
@@ -260,7 +261,7 @@ namespace boundary_mesh
                             index,
                             front.vertices[index].source_vertex_id,
                             front.layer,
-                            constrained.error()});
+                            toGrowthDirectionError(constrained.error())});
                 directions[index] = constrained.value();
             }
             return DirectionResult::success(std::move(directions));

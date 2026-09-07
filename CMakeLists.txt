@@ -129,8 +129,8 @@ target_link_libraries(
 add_library(
     boundary_mesh_sliding_surface
     STATIC
-        src/growth/sliding_constraint_builder.cpp
-        src/growth/sliding_surface_builder.cpp
+        src/sliding/sliding_constraint_builder.cpp
+        src/sliding/sliding_surface_builder.cpp
 )
 add_library(
     BoundaryMesh::SlidingSurface
@@ -151,8 +151,6 @@ target_link_libraries(
     PUBLIC
         BoundaryMesh::Core
         BoundaryMesh::Spatial
-    PRIVATE
-        BoundaryMesh::Surface
 )
 
 add_library(
@@ -166,6 +164,7 @@ add_library(
         src/growth/growth_direction.cpp
         src/growth/growth_field_smoother.cpp
         src/growth/skewness_direction_refiner.cpp
+        src/growth/sliding_constraint_adapter.cpp
         src/growth/growth_profile_builder.cpp
         src/growth/regular_layer_stepper.cpp
         src/growth/regular_layer_generator.cpp

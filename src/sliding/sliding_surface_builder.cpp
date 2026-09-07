@@ -1,4 +1,4 @@
-#include <boundary_mesh/growth/sliding_surface_builder.hpp>
+#include <boundary_mesh/sliding/sliding_surface_builder.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -43,10 +43,10 @@ namespace boundary_mesh
     const std::vector<SlidingSurface> &
     SlidingSurfaceSet::surfaces() const noexcept { return surfaces_; }
 
-    Result<SlidingSurfaceSet, GrowthDirectionError>
+    Result<SlidingSurfaceSet, SlidingError>
     SlidingSurfaceBuilder::build(const SurfaceMesh &mesh) const
     {
-        using BuildResult = Result<SlidingSurfaceSet, GrowthDirectionError>;
+        using BuildResult = Result<SlidingSurfaceSet, SlidingError>;
         if (mesh.faces.size() != mesh.face_tags.size())
             return BuildResult::failure(SlidingInputMismatch{});
 

@@ -18,6 +18,7 @@
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
 #include <boundary_mesh/growth/sliding_surface_builder.hpp>
+#include <boundary_mesh/growth/sliding_constraint_adapter.hpp>
 #include <boundary_mesh/growth/termination_propagator.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
 
@@ -456,7 +457,8 @@ namespace boundary_mesh
         const auto sliding_surfaces = SlidingSurfaceBuilder{}.build(surface_mesh);
         if (!sliding_surfaces.hasValue())
             return GrowthResult::failure(GrowthDirectionFailure{
-                current_front.layer + 1, sliding_surfaces.error()});
+                current_front.layer + 1,
+                toGrowthDirectionError(sliding_surfaces.error())});
         while (!current_front.faces.empty())
         {
             const std::uint32_t target_layer =

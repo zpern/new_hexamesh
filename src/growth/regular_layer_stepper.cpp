@@ -12,7 +12,7 @@
 #include <boundary_mesh/growth/growth_direction.hpp>
 #include <boundary_mesh/growth/growth_field_smoother.hpp>
 #include <boundary_mesh/growth/isotropic_stop_evaluator.hpp>
-#include <boundary_mesh/growth/sliding_constraint_builder.hpp>
+#include <boundary_mesh/growth/sliding_constraint_adapter.hpp>
 #include <boundary_mesh/growth/regular_layer_stepper.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
@@ -344,7 +344,7 @@ namespace boundary_mesh
             provisional_heights.push_back(provisional_height);
         }
 
-        const auto sliding = SlidingConstraintBuilder{}.build(
+        const auto sliding = buildGrowthSlidingConstraints(
             sliding_surfaces, eligible.front, front_evaluation.value());
         if (!sliding.hasValue())
             return StepResult::failure(GrowthDirectionFailure{
