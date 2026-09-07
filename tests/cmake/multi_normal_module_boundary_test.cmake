@@ -10,8 +10,8 @@ set(required_paths
     "src/multi_normal/multi_normal_transition_generator.cpp"
     "src/multi_normal/incident_face_fan.cpp"
     "src/multi_normal/blmesh_geometry.cpp"
-    "include/boundary_mesh/transition/boundary_layer_generator.hpp"
-    "src/transition/boundary_layer_generator.cpp")
+    "include/boundary_mesh/boundary_layer/boundary_layer_generator.hpp"
+    "src/boundary_layer/boundary_layer_generator.cpp")
 
 foreach(relative_path IN LISTS required_paths)
     if(NOT EXISTS "${PROJECT_ROOT}/${relative_path}")

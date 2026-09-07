@@ -5,7 +5,8 @@
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
-#include <boundary_mesh/transition/incremental_boundary_layer_generator.hpp>
+#include <boundary_mesh/boundary_layer/incremental_boundary_layer_generator.hpp>
+#include <boundary_mesh/boundary_layer/incremental_topology_finalizer.hpp>
 
 using namespace boundary_mesh;
 

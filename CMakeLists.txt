@@ -155,7 +155,7 @@ target_link_libraries(
 )
 
 add_library(
-    boundary_mesh_boundary_layer
+    boundary_mesh_growth
     STATIC
         src/growth/growth_patch_builder.cpp
         src/growth/growth_front_builder.cpp
@@ -176,22 +176,22 @@ add_library(
         src/growth/termination_propagator.cpp
 )
 add_library(
-    BoundaryMesh::BoundaryLayer
-    ALIAS boundary_mesh_boundary_layer
+    BoundaryMesh::Growth
+    ALIAS boundary_mesh_growth
 )
 target_compile_features(
-    boundary_mesh_boundary_layer
+    boundary_mesh_growth
     PUBLIC
         cxx_std_17
 )
 target_include_directories(
-    boundary_mesh_boundary_layer
+    boundary_mesh_growth
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(
-    boundary_mesh_boundary_layer
+    boundary_mesh_growth
     PUBLIC
         BoundaryMesh::Core
         BoundaryMesh::Surface
@@ -247,7 +247,7 @@ target_include_directories(
 target_link_libraries(
     boundary_mesh_multi_normal
     PUBLIC
-        BoundaryMesh::BoundaryLayer
+        BoundaryMesh::Growth
         BoundaryMesh::Core
         BoundaryMesh::Surface
         BoundaryMesh::Quality
@@ -257,20 +257,16 @@ target_link_libraries(
 add_library(
     boundary_mesh_transition
     STATIC
-        src/transition/reserved_layer_growth.cpp
         src/transition/quad_diagonal.cpp
-        src/transition/triangle_transition_template.cpp
-        src/transition/quad_transition_template.cpp
+        src/transition/triangle_side_transition.cpp
         src/transition/layer_quad_diagonal_table.cpp
         src/transition/incremental_transition_templates.cpp
         src/transition/quad_high_neighbor_selector.cpp
         src/transition/corner_suppression.cpp
         src/transition/transition_boundary_checker.cpp
         src/transition/layer_transition_resolver.cpp
-        src/transition/incremental_boundary_layer_generator.cpp
+        src/transition/provisional_transition_builder.cpp
         src/transition/accepted_stopped_front_carry.cpp
-        src/transition/reserved_layer_transition.cpp
-        src/transition/boundary_layer_generator.cpp
 )
 add_library(BoundaryMesh::Transition ALIAS boundary_mesh_transition)
 target_compile_features(boundary_mesh_transition PUBLIC cxx_std_17)
@@ -283,10 +279,32 @@ target_include_directories(
 target_link_libraries(
     boundary_mesh_transition
     PUBLIC
-        BoundaryMesh::MultiNormal
-        BoundaryMesh::BoundaryLayer
+        BoundaryMesh::Growth
         BoundaryMesh::Surface
         BoundaryMesh::Core
+)
+
+add_library(
+    boundary_mesh_boundary_layer
+    STATIC
+        src/boundary_layer/incremental_boundary_layer_generator.cpp
+        src/boundary_layer/incremental_topology_finalizer.cpp
+        src/boundary_layer/boundary_layer_generator.cpp
+)
+add_library(BoundaryMesh::BoundaryLayer ALIAS boundary_mesh_boundary_layer)
+target_compile_features(boundary_mesh_boundary_layer PUBLIC cxx_std_17)
+target_include_directories(
+    boundary_mesh_boundary_layer
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(
+    boundary_mesh_boundary_layer
+    PUBLIC
+        BoundaryMesh::Growth
+        BoundaryMesh::Transition
+        BoundaryMesh::MultiNormal
 )
 
 add_library(

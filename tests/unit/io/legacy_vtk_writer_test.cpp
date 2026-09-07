@@ -54,7 +54,7 @@ int main()
         Hexa{{0, 1, 2, 3, 4, 5, 6, 7}}};
     volume.metadata = {
         {CellRole::RegularLayer, 11, 1},
-        {CellRole::ReservedLayerTransition, 12, 2},
+        {CellRole::LayerTransition, 12, 2},
         {CellRole::MultiNormalTransition, 13, 3},
         {CellRole::RegularLayer, 14, 4}};
 

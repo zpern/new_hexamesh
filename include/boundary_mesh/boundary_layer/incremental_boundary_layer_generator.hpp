@@ -5,7 +5,7 @@
 #include <boundary_mesh/growth/regular_layer_generator.hpp>
 #include <boundary_mesh/transition/incremental_transition_templates.hpp>
 #include <boundary_mesh/transition/layer_quad_diagonal_table.hpp>
-#include <boundary_mesh/transition/transition_coordination.hpp>
+#include <boundary_mesh/transition/incremental_transition_types.hpp>
 #include <boundary_mesh/transition/transition_boundary_checker.hpp>
 
 namespace boundary_mesh
@@ -17,12 +17,6 @@ namespace boundary_mesh
         TransitionCoordinationError,
         TransitionBoundaryError,
         VolumeVertexIdOverflow>;
-
-    Result<RegularLayerGrowthResult, IncrementalLayerGrowthError>
-    finalizeIncrementalLayerTopology(
-        const SurfaceMesh &surface_mesh,
-        const GrowthFront &initial_front,
-        RegularLayerGrowthResult regular);
 
     Result<RegularLayerGrowthResult, IncrementalLayerGrowthError>
     generateIncrementalBoundaryLayers(

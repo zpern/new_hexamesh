@@ -1,4 +1,4 @@
-#include <boundary_mesh/transition/boundary_layer_generator.hpp>
+#include <boundary_mesh/boundary_layer/boundary_layer_generator.hpp>
 
 #include <utility>
 

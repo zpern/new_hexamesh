@@ -66,8 +66,7 @@ namespace boundary_mesh
             auto provisional = input.build_provisional(
                 retained, face_sets);
             if (!provisional.hasValue())
-                return ResolveResult::failure(LayerTransitionError{
-                    provisional.error()});
+                return ResolveResult::failure(provisional.error());
             provisional.value().boundary.original_surface =
                 input.original_surface.has_value()
                     ? &*input.original_surface

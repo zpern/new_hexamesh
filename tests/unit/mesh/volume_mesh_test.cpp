@@ -46,7 +46,7 @@ int main()
             SurfaceFaceId{0},
             0},
         CellMetadata{
-            CellRole::ReservedLayerTransition,
+            CellRole::LayerTransition,
             SurfaceFaceId{1},
             0},
         CellMetadata{
@@ -94,7 +94,7 @@ int main()
     }
 
     if (mesh.metadata[0].role != CellRole::MultiNormalTransition ||
-        mesh.metadata[1].role != CellRole::ReservedLayerTransition)
+        mesh.metadata[1].role != CellRole::LayerTransition)
     {
         return 11;
     }

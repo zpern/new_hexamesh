@@ -17,7 +17,7 @@
 #include <boundary_mesh/io/cgns_surface_reader.hpp>
 #include <boundary_mesh/io/legacy_vtk_writer.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
-#include <boundary_mesh/transition/boundary_layer_generator.hpp>
+#include <boundary_mesh/boundary_layer/boundary_layer_generator.hpp>
 
 namespace boundary_mesh
 {
@@ -395,7 +395,7 @@ namespace boundary_mesh
                       [](const CellMetadata &metadata)
                       {
                           return metadata.role ==
-                              CellRole::ReservedLayerTransition;
+                              CellRole::LayerTransition;
                       })
                << '\n'
                << "regular_cells="

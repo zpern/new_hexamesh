@@ -65,12 +65,14 @@ new_boundaryMesh/
 │   ├── surface/                   # 表面几何/skewness
 │   ├── quality/                   # Prism/Hexa 质量
 │   ├── spatial/                   # AABB 和三角接触
-│   ├── growth/                    # 前沿、规则层、多法向、碰撞
+│   ├── growth/                    # 前沿、规则层和碰撞
+│   ├── boundary_layer/            # 完整附面层流程编排
+│   ├── multi_normal/              # 多法向起始区
 │   ├── transition/                # 层协调和过渡模板
 │   └── io/                        # CGNS 读取、VTK 写出
 ├── src/                           # 与 include 基本镜像的实现
-│   ├── cli/ mesh/ surface/ quality/ spatial/
-│   └── growth/ transition/ io/
+│   ├── cli/ mesh/ surface/ quality/ spatial/ growth/
+│   └── boundary_layer/ multi_normal/ transition/ io/
 ├── tests/
 │   ├── unit/                      # 按模块的单元测试
 │   ├── integration/               # 流水线测试
@@ -81,7 +83,7 @@ new_boundaryMesh/
 └── third/                         # Eigen/geom/HDF5/CGNS/BLMesh
 ```
 
-建议阅读顺序：本 README -> `src/cli/boundary_mesh_command.cpp` -> `reserved_layer_transition.*` -> 各阶段公开头文件 -> 实现与对应测试。历史计划可能落后于源码。
+建议阅读顺序：本 README -> `src/cli/boundary_mesh_command.cpp` -> `src/boundary_layer/boundary_layer_generator.cpp` -> 各阶段公开头文件 -> 实现与对应测试。历史计划可能落后于源码。
 
 # 4. 编译方法
 
@@ -205,15 +207,14 @@ Internal:
 # 6. 程序整体架构
 
 ```text
-Core <- Surface <- Quality
-  ^        ^          ^
-  +------ Spatial ----+
-             ^
-      BoundaryLayer <- IO
-             ^
-          Transition
-             ^
-            CLI
+CLI -> BoundaryLayer
+          ├── Growth
+          ├── Transition -> Growth
+          └── MultiNormal -> Growth
+
+Core / Surface / Quality / Spatial / SlidingSurface
+          ↑
+   Growth、Transition、MultiNormal
 ```
 
 ```text
@@ -222,14 +223,14 @@ main -> runBoundaryMeshCommand
  -> SurfaceTopologyBuilder::build
  -> GrowthPatchBuilder::build
  -> GrowthFrontBuilder::buildInitial
- -> generateReservedLayerTransition
+ -> generateBoundaryLayers
     -> generateMultiNormalTransition（可选）
-    -> makeReservedTrialProfiles
-    -> generateRegularLayers
-    -> coordinateFront
-    -> buildTriangleTransition / buildQuadTransition
+    -> generateIncrementalBoundaryLayers
+       -> generateRegularLayers
+       -> LayerTransitionResolver（逐层固定点）
+       -> buildProvisionalTransition
+       -> finalizeIncrementalLayerTopology
     -> mergeMultiNormalAndRegularMeshes
-    -> combineFarfieldAndTop
  -> writeLegacyVtk（三次）
 ```
 
@@ -257,7 +258,7 @@ main -> runBoundaryMeshCommand
 
 ### `VolumeMesh`
 
-保存 Tetra/Pyramid/Prism/Hexa 及同长 `CellMetadata`。单元角色明确区分 `RegularLayer`、`MultiNormalTransition` 和 `ReservedLayerTransition`，并记录源面与层号。Prism/Hexa 顶点顺序由 `PrismVertexOrder`/`HexaVertexOrder` 注释约定，质量算法依赖它。
+保存 Tetra/Pyramid/Prism/Hexa 及同长 `CellMetadata`。单元角色明确区分 `RegularLayer`、`MultiNormalTransition` 和 `LayerTransition`，并记录源面与层号。Prism/Hexa 顶点顺序由 `PrismVertexOrder`/`HexaVertexOrder` 注释约定，质量算法依赖它。
 
 ## 7.3 surface / quality
 
@@ -309,11 +310,11 @@ main -> runBoundaryMeshCommand
 
 ## 7.8 transition
 
-`makeReservedTrialProfiles()` 预留额外试层并查溢出。`coordinateFront()` 根据逐面接受层数协调 front 共享边、识别高边，保证模板可处理。
+`LayerTransitionResolver` 在每一候选层内执行角点压制、临时过渡构造、联合碰撞检查和依赖高面回退，直到保留集合稳定。
 
-`buildTriangleTransition/buildQuadTransition` 根据试层数、高边局部下标和逐层顶点 ID 生成最终单元/顶面；Quad 可创建中心点。
+`buildTriangleSideTransition()` 以及三个 Quad 增量模板只处理相邻层差为一的局部拓扑。`LayerQuadDiagonalTable` 保证同一层面由顶盖和侧向模板共享规范对角线。
 
-`generateReservedLayerTransition()` 是 CLI 最高层编排器：多法向前沿、试生长、层协调、模板、重复顶三角过滤、网格重映射/合并、Farfield 构造。
+完整用例入口属于 `boundary_layer` 模块；`transition` 只负责层差处理，不依赖顶层编排模块。
 
 ## 7.9 spatial
 
@@ -332,7 +333,7 @@ main -> runBoundaryMeshCommand
 | `VolumeMesh` | 阶段或最终混合体 | cell 与 metadata 同长；合并后点 ID 可变 |
 | `RegularLayerGrowthResult` | 规则层事务结果 | mesh、逐点/面状态、top/farfield、诊断 |
 | `MultiNormalTransitionResult` | 多法向结果/透传前沿 | transformed-front 到 transition volume 映射 |
-| `ReservedLayerTransitionResult` | CLI 最终结果 | trial mesh 不等于最终 mesh |
+| `BoundaryLayerGenerationResult` | 完整生成结果 | 合并后的体网格、顶面和远场边界 |
 | `Result<T,E>` | 函数返回期 | 访问前检查 `hasValue()` |
 
 # 9. 关键程序流程
@@ -377,11 +378,12 @@ readCgnsSurface
 
 `IsotropicHeightReached` 是“接受当前单元后停止后续层”；其他质量/碰撞停止通常表示首个未接受层。
 
-## 9.5 保留层和输出
+## 9.5 逐层过渡和输出
 
 ```text
-逐面试接受层数 -> 协调/高边
- -> LayerVertexTable 取各层点 -> Triangle/Quad 模板
+每层候选 -> 停止集合 -> 角点压制
+ -> 临时顶盖/侧向模板 -> 联合碰撞 -> 回退至固定点
+ -> 提交规则单元 -> 最终拓扑物化
  -> 去内部重复顶三角 -> 多法向/规则网格合并
  -> Farfield + top -> 3 个 VTK
 ```
@@ -406,9 +408,10 @@ readCgnsSurface
 | 碰撞语义 | `collision_boundary_policy.*`、`src/spatial/*`、`layer_collision_checker.cpp` |
 | 相邻停止传播 | `face_layer_constraint.cpp`、`termination_propagator.cpp` |
 | 多法向拆点 | `multi_normal_*`、`third/blmesh_mnormal` |
-| 层协调/高边 | `reserved_layer_transition.cpp::coordinateFront()` |
-| 过渡单元 | triangle/quad transition template |
-| 最高层流水线 | `reserved_layer_transition.cpp` |
+| 层协调/高边 | `layer_transition_resolver.cpp`、`quad_high_neighbor_selector.cpp` |
+| 临时过渡边界 | `provisional_transition_builder.cpp` |
+| 过渡单元 | `triangle_side_transition.cpp`、`incremental_transition_templates.cpp` |
+| 完整流水线 | `src/boundary_layer/*` |
 | targets/依赖 | 顶层 CMake、`cmake/Dependencies.cmake` |
 
 修改后先跑对应 unit，再跑相关 integration，最后全量 CTest。

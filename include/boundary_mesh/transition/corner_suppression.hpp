@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <vector>
 
+#include <boundary_mesh/core/result.hpp>
 #include <boundary_mesh/growth/growth_front.hpp>
 #include <boundary_mesh/transition/incremental_transition_types.hpp>
-#include <boundary_mesh/transition/transition_coordination.hpp>
 
 namespace boundary_mesh
 {

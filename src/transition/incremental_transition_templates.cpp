@@ -15,23 +15,23 @@ namespace boundary_mesh
         }
 
         void addMetadata(
-            IncrementalTransitionResult &result,
+            TransitionTemplateOutput &result,
             std::size_t count,
             std::uint32_t layer)
         {
             for (std::size_t index = 0; index < count; ++index)
                 result.metadata.push_back({
-                    CellRole::ReservedLayerTransition,
+                    CellRole::LayerTransition,
                     result.source_face_id,
                     layer});
         }
     }
 
-    Result<IncrementalTransitionResult, TransitionTemplateError>
+    TransitionTemplateResult
     buildQuadTopCap(const QuadTopCapInput &input)
     {
         using BuildResult = Result<
-            IncrementalTransitionResult, TransitionTemplateError>;
+            TransitionTemplateOutput, TransitionTemplateError>;
         if (input.mesh_vertices == nullptr || input.layer == 0 ||
             !validIds(input.bottom, *input.mesh_vertices) ||
             !validIds(input.top, *input.mesh_vertices))
@@ -40,7 +40,7 @@ namespace boundary_mesh
                     InvalidTransitionTemplateInput{
                         input.source_face_id}});
 
-        IncrementalTransitionResult result;
+        TransitionTemplateOutput result;
         result.source_face_id = input.source_face_id;
         result.low_diagonal = input.diagonal;
         Point3 center = Point3::Zero();
@@ -87,18 +87,18 @@ namespace boundary_mesh
         return BuildResult::success(std::move(result));
     }
 
-    Result<IncrementalTransitionResult, TransitionTemplateError>
+    TransitionTemplateResult
     buildQuadSideTransition(const QuadSideTransitionInput &input)
     {
         using BuildResult = Result<
-            IncrementalTransitionResult, TransitionTemplateError>;
+            TransitionTemplateOutput, TransitionTemplateError>;
         if (input.high_edge_local_index >= 4)
             return BuildResult::failure(
                 TransitionTemplateError{
                     InvalidTransitionTemplateInput{
                         input.source_face_id}});
 
-        IncrementalTransitionResult result;
+        TransitionTemplateOutput result;
         result.source_face_id = input.source_face_id;
         result.low_diagonal = input.low_diagonal;
         const std::size_t edge = input.high_edge_local_index;
@@ -136,12 +136,12 @@ namespace boundary_mesh
         return BuildResult::success(std::move(result));
     }
 
-    Result<IncrementalTransitionResult, TransitionTemplateError>
+    TransitionTemplateResult
     buildQuadAdjacentSideTransition(
         const QuadAdjacentSideTransitionInput &input)
     {
         using BuildResult = Result<
-            IncrementalTransitionResult, TransitionTemplateError>;
+            TransitionTemplateOutput, TransitionTemplateError>;
         const std::size_t first = input.first_high_edge_local_index;
         const std::size_t second = input.second_high_edge_local_index;
         if (input.mesh_vertices == nullptr || first >= 4 || second >= 4 ||
@@ -171,7 +171,7 @@ namespace boundary_mesh
         const VertexId f = input.high[(common + 1) % 4];
         const VertexId g = input.high[(common + 3) % 4];
 
-        IncrementalTransitionResult result;
+        TransitionTemplateOutput result;
         result.source_face_id = input.source_face_id;
         result.low_diagonal = input.low_diagonal;
         result.volume_cells = {

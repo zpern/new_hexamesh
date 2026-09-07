@@ -4,20 +4,10 @@
 #include <cstdint>
 #include <vector>
 
-#include <boundary_mesh/transition/transition_templates.hpp>
+#include <boundary_mesh/transition/transition_template_types.hpp>
 
 namespace boundary_mesh
 {
-    struct IncrementalTransitionResult
-    {
-        SurfaceFaceId source_face_id{};
-        QuadDiagonal low_diagonal{};
-        std::vector<Point3> created_vertices;
-        std::vector<VolumeCell> volume_cells;
-        std::vector<CellMetadata> metadata;
-        std::vector<Triangle> top_faces;
-    };
-
     struct QuadTopCapInput
     {
         SurfaceFaceId source_face_id{};
@@ -52,13 +42,13 @@ namespace boundary_mesh
         Scalar length_tolerance{1e-12};
     };
 
-    Result<IncrementalTransitionResult, TransitionTemplateError>
+    TransitionTemplateResult
     buildQuadTopCap(const QuadTopCapInput &input);
 
-    Result<IncrementalTransitionResult, TransitionTemplateError>
+    TransitionTemplateResult
     buildQuadSideTransition(const QuadSideTransitionInput &input);
 
-    Result<IncrementalTransitionResult, TransitionTemplateError>
+    TransitionTemplateResult
     buildQuadAdjacentSideTransition(
         const QuadAdjacentSideTransitionInput &input);
 }

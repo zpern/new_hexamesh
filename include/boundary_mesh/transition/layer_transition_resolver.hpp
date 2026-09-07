@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <boundary_mesh/transition/corner_suppression.hpp>
+#include <boundary_mesh/transition/transition_template_types.hpp>
 #include <boundary_mesh/transition/transition_boundary_checker.hpp>
 
 namespace boundary_mesh
@@ -34,8 +35,13 @@ namespace boundary_mesh
         bool all_top_faces_are_triangles{};
     };
 
+    using LayerTransitionError = std::variant<
+        TransitionCoordinationError,
+        TransitionBoundaryError,
+        TransitionTemplateError>;
+
     using ProvisionalLayerTransitionResult = Result<
-        ProvisionalLayerTransition, TransitionBoundaryError>;
+        ProvisionalLayerTransition, LayerTransitionError>;
 
     struct LayerTransitionInput
     {
@@ -60,10 +66,6 @@ namespace boundary_mesh
         std::uint32_t iterations{};
         bool all_top_faces_are_triangles{};
     };
-
-    using LayerTransitionError = std::variant<
-        TransitionCoordinationError,
-        TransitionBoundaryError>;
 
     class LayerTransitionResolver
     {

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <variant>
 #include <vector>
 
 #include <boundary_mesh/core/types.hpp>
@@ -33,6 +35,37 @@ namespace boundary_mesh
         std::vector<SurfaceFaceId> transition_low_faces;
         std::vector<LayerStopState> states;
     };
+
+    struct MissingTransitionFaceState
+    {
+        SurfaceFaceId source_face_id{};
+    };
+
+    struct UncoordinatedTransitionLayerDifference
+    {
+        SurfaceFaceId first{};
+        SurfaceFaceId second{};
+    };
+
+    struct MultipleTransitionHighEdges
+    {
+        SurfaceFaceId source_face_id{};
+        std::vector<std::size_t> high_edge_local_indices;
+    };
+
+    struct TransitionCornerLayerViolation
+    {
+        SurfaceFaceId low_source_face_id{};
+        std::size_t high_edge_local_index{};
+        VertexId non_contact_vertex_id{};
+        SurfaceFaceId violating_source_face_id{};
+    };
+
+    using TransitionCoordinationError = std::variant<
+        MissingTransitionFaceState,
+        UncoordinatedTransitionLayerDifference,
+        MultipleTransitionHighEdges,
+        TransitionCornerLayerViolation>;
 
     namespace detail
     {

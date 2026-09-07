@@ -8,7 +8,7 @@
 #include <boundary_mesh/growth/growth_profile.hpp>
 #include <boundary_mesh/multi_normal/multi_normal_mesh_merge.hpp>
 #include <boundary_mesh/multi_normal/multi_normal_transition_generator.hpp>
-#include <boundary_mesh/transition/incremental_boundary_layer_generator.hpp>
+#include <boundary_mesh/boundary_layer/incremental_boundary_layer_generator.hpp>
 #include <boundary_mesh/mesh/mesh_surface.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology.hpp>
 

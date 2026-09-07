@@ -81,7 +81,7 @@ namespace boundary_mesh
     {
         RegularLayer,           // 规则边界层单元
         MultiNormalTransition,  // 多法向拆点和拓扑变化产生的过渡单元
-        ReservedLayerTransition // 规则层停止或层差产生的保留层过渡单元
+        LayerTransition // 规则层停止或层差产生的过渡单元
     };
 
     struct CellMetadata

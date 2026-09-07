@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <variant>
 
-#include <boundary_mesh/transition/boundary_layer_generator.hpp>
+#include <boundary_mesh/boundary_layer/boundary_layer_generator.hpp>
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
