@@ -21,6 +21,7 @@
 #include <boundary_mesh/growth/sliding_constraint_adapter.hpp>
 #include <boundary_mesh/growth/termination_propagator.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
+#include <boundary_mesh/spatial/sliding_intersection_index.hpp>
 
 namespace boundary_mesh
 {
@@ -353,6 +354,14 @@ namespace boundary_mesh
                 CollisionInitializationFailure{
                     original_collision.error()});
         }
+        const auto sliding_collision =
+            SlidingIntersectionIndex::build(surface_mesh);
+        if (!sliding_collision.hasValue())
+        {
+            return GrowthResult::failure(
+                CollisionInitializationFailure{
+                    sliding_collision.error()});
+        }
 
         const auto profile_result = GrowthProfileBuilder{}.build(
             patch, profiles);
@@ -532,6 +541,8 @@ namespace boundary_mesh
             const auto obstacle_step =
                 LayerCollisionChecker{}.filterAgainstObstacles(
                     original_collision.value(),
+                    sliding_collision.value(),
+                    sliding_surfaces.value(),
                     exposed_boundary,
                     current_front,
                     isotropic_step.value());

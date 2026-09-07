@@ -61,9 +61,18 @@ int main()
     appendCube(
         mesh,
         {-1.0, -1.0, -1.0},
-        {2.0, 2.0, 1.05},
+        {2.0, 2.0, 2.0},
         SurfaceBoundaryKind::Farfield,
         SurfaceBoundaryKind::Farfield);
+    const VertexId internal_base =
+        static_cast<VertexId>(mesh.vertices.size());
+    mesh.vertices.insert(mesh.vertices.end(), {
+        {0.0, 0.0, 1.05}, {1.0, 0.0, 1.05},
+        {1.0, 1.0, 1.05}, {0.0, 1.0, 1.05}});
+    mesh.faces.push_back(Quad{{
+        internal_base, internal_base + 1,
+        internal_base + 2, internal_base + 3}});
+    mesh.face_tags.push_back({SurfaceBoundaryKind::Internal, 90});
 
     const auto topology = SurfaceTopologyBuilder{}.build(mesh);
     assert(topology.hasValue());
@@ -84,8 +93,7 @@ int main()
         patch.value(),
         front.value(),
         profiles);
-    assert(result.hasValue());
-    assert(result.value().mesh.cells.empty());
+    if (!result.hasValue() || !result.value().mesh.cells.empty()) return 1;
     assert(result.value().mesh.vertices.size() == front.value().vertices.size());
     assert(result.value().faces.size() == 1);
     assert(result.value().faces.front().status == FaceGrowthStatus::Stopped);
