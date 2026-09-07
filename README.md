@@ -137,6 +137,7 @@ cmake --build build-no-io --parallel
 | `boundary_mesh_surface` | 面几何静态库 |
 | `boundary_mesh_quality` | 体质量静态库 |
 | `boundary_mesh_spatial` | 碰撞空间结构静态库 |
+| `boundary_mesh_sliding_surface` | Symmetry/Internal 区域建模、方向约束与位置投影静态库 |
 | `boundary_mesh_boundary_layer` | 生长主静态库 |
 | `boundary_mesh_transition` | 保留层/模板静态库 |
 | `boundary_mesh_io` | VTK；开关 ON 时也含 CGNS |
@@ -396,13 +397,13 @@ readCgnsSurface
 | 表面合法性/邻接 | `src/mesh/surface_topology_builder.cpp` |
 | Wall/Patch | `growth_patch_builder.cpp` |
 | 初始前沿/映射 | `growth_front_builder.cpp`、`growth_front.hpp` |
-| 方向/角点/对称 | `growth_direction.cpp`、`incident_face_fan.cpp`、symmetry builder |
+| 方向/角点/滑移约束 | `growth_direction.cpp`、`incident_face_fan.cpp`、`src/sliding/*` |
 | 方向/高度平滑 | `growth_field_smoother.cpp`、`skewness_direction_refiner.cpp` |
 | 高度公式 | `growth_profile_builder.cpp` |
 | 单层候选接受 | `regular_layer_stepper.cpp` |
 | 多层循环/提交 | `regular_layer_generator.cpp`、`regular_layer_growth.hpp` |
 | Prism/Hexa 质量 | `src/quality/*_evaluator.cpp`、face skewness |
-| 碰撞语义 | `src/spatial/*`、`layer_collision_checker.cpp` |
+| 碰撞语义 | `collision_boundary_policy.*`、`src/spatial/*`、`layer_collision_checker.cpp` |
 | 相邻停止传播 | `face_layer_constraint.cpp`、`termination_propagator.cpp` |
 | 多法向拆点 | `multi_normal_*`、`third/blmesh_mnormal` |
 | 层协调/高边 | `reserved_layer_transition.cpp::coordinateFront()` |
@@ -422,6 +423,7 @@ readCgnsSurface
 6. **跨 Zone 不做容差焊接。** 显式连接优先；缺少连接时仅自动合并坐标完全相同的跨 Zone 顶点，同一 Zone 内不自动合并。
 7. **.bc.txt 须全覆盖且无注释。**
 8. **Symmetry/Internal 都是滑移面。** 二者使用相同约束算法但保留各自 kind；与 Wall 相邻的侧面会逐层生成并保留。
+   滑移几何与投影属于 `BoundaryMesh::SlidingSurface`；Internal 双层邻接仍属于 Core。碰撞由 Spatial 的独立策略决定，当前默认策略只是暂时不把两者加入障碍。
 9. **trial mesh 不等于最终 mesh。** 后者经过协调、模板重建、合并。
 10. **Prism/Hexa 顶点顺序不可随意改。**
 11. **停止可能是接受后停止。** 尤其 IsotropicHeightReached。
