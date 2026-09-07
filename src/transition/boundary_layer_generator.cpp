@@ -27,7 +27,7 @@ namespace boundary_mesh
                 MultiNormalGenerationFailure{transition.error()});
         }
 
-        auto regular = generateRegularLayers(
+        auto regular = generateIncrementalBoundaryLayers(
             surface_mesh,
             topology,
             patch,

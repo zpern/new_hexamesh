@@ -40,6 +40,7 @@ namespace boundary_mesh
         ReservedMultiNormalFailure,
         ReservedMultiNormalMergeFailure>;
 
+    [[deprecated("use generateBoundaryLayers incremental transition path")]]
     Result<ReservedLayerTransitionResult,
            CombinedReservedLayerTransitionError>
     generateReservedLayerTransition(

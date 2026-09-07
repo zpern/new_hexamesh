@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <iostream>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -166,12 +167,12 @@ int main()
     }();
     if (!result.hasValue()) return 4;
 
-    const std::string expected_progress =
-        "generate 1 boundarylayer\n"
-        "finish 1 boundarylayer. add 2 cell\n"
-        "generate 2 boundarylayer\n"
-        "finish 2 boundarylayer. add 2 cell\n";
-    if (progress_output.str() != expected_progress)
+    const std::regex expected_progress{
+        "generate 1 boundarylayer\\n"
+        "finish 1 boundarylayer\\. add 2 cell\\. elapsed_ms=[0-9]+\\n"
+        "generate 2 boundarylayer\\n"
+        "finish 2 boundarylayer\\. add 2 cell\\. elapsed_ms=[0-9]+\\n"};
+    if (!std::regex_match(progress_output.str(), expected_progress))
     {
         std::cerr
             << "Unexpected progress output:\n"
@@ -271,6 +272,25 @@ int main()
         }
     }
 
+    RegularLayerGrowthOptions coordinated_options;
+    coordinated_options.candidate_rejections = [](
+        const GrowthFront &, const LayerStepResult &step,
+        const std::vector<VertexId> &, const CollisionIndex &,
+        const ExposedBoundaryTracker &)
+    {
+        return step.layer == 2
+            ? std::vector<SurfaceFaceId>{1}
+            : std::vector<SurfaceFaceId>{};
+    };
+    const auto coordinated = generateRegularLayers(
+        surface, topology.value(), patch.value(), front.value(),
+        profiles, coordinated_options);
+    if (!coordinated.hasValue() ||
+        coordinated.value().mesh.cells.size() != 3 ||
+        coordinated.value().faces[0].accepted_layer_count != 1 ||
+        coordinated.value().faces[1].accepted_layer_count != 2)
+        return 33;
+
     std::vector<SourceVertexGrowthProfile> isotropic_profiles;
     for (const PatchVertex &vertex : patch.value().vertices())
     {
@@ -311,12 +331,13 @@ int main()
         return 16;
     }
 
-    const std::string expected_isotropic_progress =
-        "generate 1 boundarylayer\n"
-        "finish 1 boundarylayer. add 2 cell\n"
-        "generate 2 boundarylayer\n"
-        "finish 2 boundarylayer. add 2 cell\n";
-    if (isotropic_progress.str() != expected_isotropic_progress)
+    const std::regex expected_isotropic_progress{
+        "generate 1 boundarylayer\\n"
+        "finish 1 boundarylayer\\. add 2 cell\\. elapsed_ms=[0-9]+\\n"
+        "generate 2 boundarylayer\\n"
+        "finish 2 boundarylayer\\. add 2 cell\\. elapsed_ms=[0-9]+\\n"};
+    if (!std::regex_match(
+            isotropic_progress.str(), expected_isotropic_progress))
     {
         return 17;
     }

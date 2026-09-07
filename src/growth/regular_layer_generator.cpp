@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -462,6 +463,8 @@ namespace boundary_mesh
                 current_front.layer + 1;
             const bool report_layer =
                 hasLayerAttempt(current_front, constraints);
+            const auto layer_started =
+                std::chrono::steady_clock::now();
             if (report_layer)
             {
                 std::cout
@@ -593,7 +596,40 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(final_step.error());
             }
-            const LayerStepResult &step = final_step.value();
+            LayerStepResult coordinated_step = final_step.value();
+            if (options.candidate_rejections)
+            {
+                std::vector<SurfaceFaceId> rejected =
+                    options.candidate_rejections(
+                        current_front, coordinated_step,
+                        current_global_ids, original_collision.value(),
+                        exposed_boundary);
+                std::sort(rejected.begin(), rejected.end());
+                rejected.erase(
+                    std::unique(rejected.begin(), rejected.end()),
+                    rejected.end());
+                for (const SurfaceFaceId id : rejected)
+                {
+                    FaceLayerConstraint *constraint = constraints.find(id);
+                    if (constraint == nullptr || coordinated_step.layer == 0)
+                        return GrowthResult::failure(
+                            InvalidFaceConstraintState{
+                                id, coordinated_step.layer});
+                    constraint->allowed_layer_count = std::min(
+                        constraint->allowed_layer_count,
+                        coordinated_step.layer - 1);
+                    if (constraint->limit_kind !=
+                        FaceLayerLimitKind::DirectStop)
+                        constraint->limit_kind =
+                            FaceLayerLimitKind::NeighborConstraint;
+                }
+                const auto filtered = propagator.filterCandidates(
+                    current_front, coordinated_step, constraints);
+                if (!filtered.hasValue())
+                    return GrowthResult::failure(filtered.error());
+                coordinated_step = std::move(filtered.value());
+            }
+            const LayerStepResult &step = coordinated_step;
             if (step.next_front.vertices.size() !=
                     step.previous_front_vertex_indices.size() ||
                 step.next_front.faces.size() !=
@@ -714,7 +750,11 @@ namespace boundary_mesh
                     << step.layer
                     << " boundarylayer. add "
                     << new_cells.size()
-                    << " cell"
+                    << " cell. elapsed_ms="
+                    << std::chrono::duration_cast<
+                           std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() -
+                           layer_started).count()
                     << std::endl;
             }
 

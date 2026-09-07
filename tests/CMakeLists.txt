@@ -1013,3 +1013,107 @@ add_test(
         -DPROJECT_ROOT=${PROJECT_SOURCE_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/reserved_transition_single_entry_test.cmake
 )
+
+add_executable(
+    boundary_mesh_incremental_transition_types_test
+    unit/transition/incremental_transition_types_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_incremental_transition_types_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_incremental_transition_types_test
+    COMMAND boundary_mesh_incremental_transition_types_test
+)
+
+add_executable(
+    boundary_mesh_accepted_stopped_front_carry_test
+    unit/transition/accepted_stopped_front_carry_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_accepted_stopped_front_carry_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_accepted_stopped_front_carry_test
+    COMMAND boundary_mesh_accepted_stopped_front_carry_test
+)
+
+add_executable(
+    boundary_mesh_incremental_transition_templates_test
+    unit/transition/incremental_transition_templates_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_incremental_transition_templates_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_incremental_transition_templates_test
+    COMMAND boundary_mesh_incremental_transition_templates_test
+)
+
+add_executable(
+    boundary_mesh_quad_high_neighbor_selector_test
+    unit/transition/quad_high_neighbor_selector_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_quad_high_neighbor_selector_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_quad_high_neighbor_selector_test
+    COMMAND boundary_mesh_quad_high_neighbor_selector_test
+)
+
+add_executable(
+    boundary_mesh_corner_suppression_test
+    unit/transition/corner_suppression_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_corner_suppression_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_corner_suppression_test
+    COMMAND boundary_mesh_corner_suppression_test
+)
+
+add_executable(
+    boundary_mesh_transition_boundary_checker_test
+    unit/transition/transition_boundary_checker_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_transition_boundary_checker_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_transition_boundary_checker_test
+    COMMAND boundary_mesh_transition_boundary_checker_test
+)
+
+add_executable(
+    boundary_mesh_layer_transition_resolver_test
+    unit/transition/layer_transition_resolver_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_layer_transition_resolver_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_layer_transition_resolver_test
+    COMMAND boundary_mesh_layer_transition_resolver_test
+)
+
+add_executable(
+    boundary_mesh_incremental_layer_transition_pipeline_test
+    integration/incremental_layer_transition_pipeline_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_incremental_layer_transition_pipeline_test
+    PRIVATE BoundaryMesh::Transition
+)
+add_test(
+    NAME boundary_mesh_incremental_layer_transition_pipeline_test
+    COMMAND boundary_mesh_incremental_layer_transition_pipeline_test
+)

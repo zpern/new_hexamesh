@@ -233,6 +233,14 @@ add_library(
         src/transition/quad_diagonal.cpp
         src/transition/triangle_transition_template.cpp
         src/transition/quad_transition_template.cpp
+        src/transition/layer_quad_diagonal_table.cpp
+        src/transition/incremental_transition_templates.cpp
+        src/transition/quad_high_neighbor_selector.cpp
+        src/transition/corner_suppression.cpp
+        src/transition/transition_boundary_checker.cpp
+        src/transition/layer_transition_resolver.cpp
+        src/transition/incremental_boundary_layer_generator.cpp
+        src/transition/accepted_stopped_front_carry.cpp
         src/transition/reserved_layer_transition.cpp
         src/transition/boundary_layer_generator.cpp
 )

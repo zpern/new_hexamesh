@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 #include <boundary_mesh/growth/growth_front.hpp>
@@ -13,6 +14,8 @@
 
 namespace boundary_mesh
 {
+    class CollisionIndex;
+    class ExposedBoundaryTracker;
     enum class FaceGrowthStatus
     {
         Active,    // 仍可尝试生成下一层
@@ -86,6 +89,14 @@ namespace boundary_mesh
         std::uint32_t max_layer_diff{1};             // 共享边两侧最大允许层数差
         Scalar isotropic_height{1};                  // BLMesh 风格实际层高与前沿多尺度的停止阈值
         bool enforce_single_high_edge{false};        // 过渡试生长按 HexaMesh 规则限制唯一高邻边
+        // 在规则质量与碰撞过滤完成后、提交本层单元前，返回还需回退的源面。
+        // 过渡模块用它执行逐层角点压制/固定点协调；空回调保持规则生成行为不变。
+        std::function<std::vector<SurfaceFaceId>(
+            const GrowthFront &, const LayerStepResult &,
+            const std::vector<VertexId> &,
+            const CollisionIndex &,
+            const ExposedBoundaryTracker &)>
+            candidate_rejections;
     };
 
     struct RegularLayerGrowthResult
