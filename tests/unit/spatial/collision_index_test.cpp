@@ -2,12 +2,26 @@
 #include <cassert>
 
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
+#include <boundary_mesh/spatial/collision_boundary_policy.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
 
 using namespace boundary_mesh;
 
 int main()
 {
+    const CollisionBoundaryPolicy policy;
+    for (const auto origin : {
+             CollisionSurfaceOrigin::InputSurface,
+             CollisionSurfaceOrigin::GeneratedBoundary})
+    {
+        assert(!policy.isObstacle(SurfaceBoundaryKind::Symmetry, origin));
+        assert(!policy.isObstacle(SurfaceBoundaryKind::Internal, origin));
+        assert(policy.isObstacle(SurfaceBoundaryKind::Wall, origin));
+        assert(policy.isObstacle(SurfaceBoundaryKind::Farfield, origin));
+        assert(policy.isObstacle(
+            SurfaceBoundaryKind::BoundaryLayerInterface, origin));
+    }
+
     SurfaceMesh mesh;
     mesh.vertices = {
         {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0},

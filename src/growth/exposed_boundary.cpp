@@ -306,14 +306,16 @@ namespace boundary_mesh
     }
 
     Result<std::vector<CollisionTriangle>, SpatialError>
-    ExposedBoundaryTracker::collisionTriangles() const
+    ExposedBoundaryTracker::collisionTriangles(
+        const CollisionBoundaryPolicy &policy) const
     {
         std::vector<CollisionTriangle> triangles;
         for (std::size_t face_index = 0; face_index < faces_.size(); ++face_index)
         {
             const BoundaryFace &face = faces_[face_index];
-            if (face.boundary_kind == SurfaceBoundaryKind::Symmetry ||
-                face.boundary_kind == SurfaceBoundaryKind::Internal)
+            if (!policy.isObstacle(
+                    face.boundary_kind,
+                    CollisionSurfaceOrigin::GeneratedBoundary))
                 continue;
             const std::array<std::array<std::size_t, 3>, 2> splits{{
                 {{0, 1, 2}}, {{0, 2, 3}}}};

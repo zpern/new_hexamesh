@@ -9,6 +9,7 @@
 #include <boundary_mesh/mesh/mesh_surface.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology.hpp>
 #include <boundary_mesh/spatial/binary_aabb_tree.hpp>
+#include <boundary_mesh/spatial/collision_boundary_policy.hpp>
 #include <boundary_mesh/spatial/spatial_error.hpp>
 #include <boundary_mesh/spatial/triangle_contact.hpp>
 
@@ -54,5 +55,6 @@ namespace boundary_mesh
     Result<CollisionIndex, SpatialError>
     buildOriginalSurfaceCollisionIndex(
         const SurfaceMesh &mesh,
-        const SurfaceTopology &topology);
+        const SurfaceTopology &topology,
+        const CollisionBoundaryPolicy &policy = {});
 }

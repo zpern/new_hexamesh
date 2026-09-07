@@ -57,7 +57,8 @@ namespace boundary_mesh
         const std::vector<BoundaryFace> &faces() const noexcept;
 
         Result<std::vector<CollisionTriangle>, SpatialError>
-        collisionTriangles() const;
+        collisionTriangles(
+            const CollisionBoundaryPolicy &policy = {}) const;
 
     private:
         std::vector<BoundaryFace> faces_; // 按规范面键排序的当前外露面

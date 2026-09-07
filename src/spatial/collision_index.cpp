@@ -200,7 +200,8 @@ namespace boundary_mesh
     Result<CollisionIndex, SpatialError>
     buildOriginalSurfaceCollisionIndex(
         const SurfaceMesh &mesh,
-        const SurfaceTopology &topology)
+        const SurfaceTopology &topology,
+        const CollisionBoundaryPolicy &policy)
     {
         if (mesh.faces.size() != mesh.face_tags.size() ||
             topology.faceEdges().size() != mesh.faces.size() ||
@@ -220,8 +221,9 @@ namespace boundary_mesh
         {
             const SurfaceBoundaryKind kind =
                 mesh.face_tags[face_index].kind;
-            if (kind == SurfaceBoundaryKind::Symmetry ||
-                kind == SurfaceBoundaryKind::Internal)
+            if (!policy.isObstacle(
+                    kind,
+                    CollisionSurfaceOrigin::InputSurface))
             {
                 continue;
             }
