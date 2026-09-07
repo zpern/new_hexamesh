@@ -11,6 +11,8 @@
 #include <vector>
 
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
+
+#include "surface_topology_layer.hpp"
 #include <optional>
 
 namespace boundary_mesh
@@ -108,13 +110,6 @@ namespace boundary_mesh
             IncidenceLayer non_internal;
             IncidenceLayer internal;
         };
-
-        bool isInternalFaceTag(
-            const SurfaceBoundaryTag &tag) noexcept
-        {
-            return tag.kind ==
-                   SurfaceBoundaryKind::Internal;
-        }
 
         /// 将局部有向边转换成规范无向边。
         EdgeKey makeEdgeKey(
@@ -532,7 +527,7 @@ namespace boundary_mesh
                     face_index);
 
             const bool is_internal =
-                isInternalFaceTag(
+                detail::isInternalTopologyLayer(
                     mesh.face_tags[face_index]);
 
             face_edges.push_back(
@@ -624,7 +619,7 @@ namespace boundary_mesh
                     face_index);
 
             const bool is_internal =
-                isInternalFaceTag(
+                detail::isInternalTopologyLayer(
                     mesh.face_tags[face_index]);
 
             face_neighbors.push_back(
