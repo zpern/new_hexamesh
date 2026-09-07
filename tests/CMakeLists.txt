@@ -16,6 +16,19 @@ add_test(
     COMMAND boundary_mesh_sliding_intersection_test
 )
 
+add_executable(
+    boundary_mesh_sliding_intersection_index_test
+    unit/spatial/sliding_intersection_index_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_sliding_intersection_index_test
+    PRIVATE BoundaryMesh::Spatial
+)
+add_test(
+    NAME boundary_mesh_sliding_intersection_index_test
+    COMMAND boundary_mesh_sliding_intersection_index_test
+)
+
 #2
 add_executable(boundary_mesh_surface_mesh_test unit/mesh/surface_mesh_test.cpp)
 target_link_libraries(boundary_mesh_surface_mesh_test PRIVATE BoundaryMesh::Core)
