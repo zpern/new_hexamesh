@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
+#include <boundary_mesh/spatial/sliding_intersection_index.hpp>
 
 using namespace boundary_mesh;
 
@@ -235,4 +236,47 @@ int main()
     assert(reordered_filtered.value().stopped_faces.size() == 2);
     assert(reordered_filtered.value().stopped_faces[0].source_face_id == 4);
     assert(reordered_filtered.value().stopped_faces[1].source_face_id == 5);
+
+    SurfaceMesh sliding_mesh;
+    sliding_mesh.vertices = {
+        {0.5, -1.0, -1.0}, {0.5, 2.0, -1.0}, {0.5, -1.0, 2.0}};
+    sliding_mesh.faces = {Triangle{{0, 1, 2}}};
+    sliding_mesh.face_tags = {
+        {SurfaceBoundaryKind::Internal, 70}};
+    const auto sliding_index = SlidingIntersectionIndex::build(sliding_mesh);
+    assert(sliding_index.hasValue());
+    const auto empty_obstacles = CollisionIndex::build({});
+    assert(empty_obstacles.hasValue());
+    const SlidingSurfaceSet empty_sliding_surfaces;
+    const auto sliding_filtered =
+        LayerCollisionChecker{}.filterAgainstObstacles(
+            empty_obstacles.value(), sliding_index.value(),
+            empty_sliding_surfaces, empty_history, current, quality);
+    assert(sliding_filtered.hasValue());
+    assert(sliding_filtered.value().next_front.faces.empty());
+    assert(sliding_filtered.value().stopped_faces.size() == 1);
+
+    SurfaceMesh owned_mesh;
+    owned_mesh.vertices = {
+        {-1.0, 0.0, -1.0}, {2.0, 0.0, -1.0}, {-1.0, 0.0, 2.0}};
+    owned_mesh.faces = {Triangle{{0, 1, 2}}};
+    owned_mesh.face_tags = {
+        {SurfaceBoundaryKind::Symmetry, 71}};
+    const auto owned_index = SlidingIntersectionIndex::build(owned_mesh);
+    assert(owned_index.hasValue());
+    GrowthFront owned_current = current;
+    owned_current.vertices[0].boundary.sliding_region_ids = {71};
+    owned_current.vertices[1].boundary.sliding_region_ids = {71};
+    LayerStepResult owned_quality = quality;
+    owned_quality.next_front.vertices[0].boundary.sliding_region_ids = {71};
+    owned_quality.next_front.vertices[1].boundary.sliding_region_ids = {71};
+    const auto owned_filtered =
+        LayerCollisionChecker{}.filterAgainstObstacles(
+            empty_obstacles.value(), owned_index.value(),
+            empty_sliding_surfaces, empty_history,
+            owned_current, owned_quality);
+    if (!owned_filtered.hasValue() ||
+        owned_filtered.value().next_front.faces.size() != 1 ||
+        !owned_filtered.value().stopped_faces.empty())
+        return 3;
 }

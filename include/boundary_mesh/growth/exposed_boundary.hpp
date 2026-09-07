@@ -27,6 +27,7 @@ namespace boundary_mesh
         std::uint32_t region_id{}; // 对应输入 Wall 的区域编号
         SurfaceBoundaryKind boundary_kind{
             SurfaceBoundaryKind::BoundaryLayerInterface};
+        std::vector<std::vector<std::uint32_t>> vertex_sliding_region_ids;
     };
 
     struct LayerBoundaryCandidate

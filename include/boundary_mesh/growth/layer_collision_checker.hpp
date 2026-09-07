@@ -8,6 +8,7 @@
 #include <boundary_mesh/growth/regular_layer_growth.hpp>
 #include <boundary_mesh/growth/sliding_surface.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
+#include <boundary_mesh/spatial/sliding_intersection_index.hpp>
 #include <boundary_mesh/spatial/spatial_error.hpp>
 
 namespace boundary_mesh
@@ -29,6 +30,15 @@ namespace boundary_mesh
         Result<LayerStepResult, SpatialError>
         filterAgainstObstacles(
             const CollisionIndex &original_surface,
+            const ExposedBoundaryTracker &exposed_boundary,
+            const GrowthFront &current_front,
+            const LayerStepResult &quality_step) const;
+
+        Result<LayerStepResult, SpatialError>
+        filterAgainstObstacles(
+            const CollisionIndex &original_surface,
+            const SlidingIntersectionIndex &sliding_surface,
+            const SlidingSurfaceSet &sliding_surfaces,
             const ExposedBoundaryTracker &exposed_boundary,
             const GrowthFront &current_front,
             const LayerStepResult &quality_step) const;

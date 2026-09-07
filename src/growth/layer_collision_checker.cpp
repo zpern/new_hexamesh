@@ -207,6 +207,166 @@ namespace boundary_mesh
                 });
         }
 
+        Result<bool, SpatialError> hitsSlidingIndex(
+            const LayerBoundaryCandidate &candidate,
+            const SlidingIntersectionIndex &index)
+        {
+            struct SlidingQuery
+            {
+                TrianglePoints points;
+                std::array<std::vector<std::uint32_t>, 3> associations;
+                std::uint8_t physical_edges{};
+                std::vector<std::uint32_t> complete_exemptions;
+            };
+            const auto commonRegions = [](const std::array<
+                std::vector<std::uint32_t>, 4> &input)
+            {
+                std::array<std::vector<std::uint32_t>, 4> normalized = input;
+                for (auto &regions : normalized)
+                {
+                    std::sort(regions.begin(), regions.end());
+                    regions.erase(std::unique(regions.begin(), regions.end()),
+                                  regions.end());
+                }
+                std::vector<std::uint32_t> common = normalized[0];
+                for (std::size_t i = 1; i < 4 && !common.empty(); ++i)
+                {
+                    std::vector<std::uint32_t> next;
+                    std::set_intersection(
+                        common.begin(), common.end(),
+                        normalized[i].begin(), normalized[i].end(),
+                        std::back_inserter(next));
+                    common.swap(next);
+                }
+                return common;
+            };
+            const auto validFace = [](const BoundaryFace &face)
+            {
+                return face.points.size() == face.vertex_sliding_region_ids.size() &&
+                    (face.points.size() == 3 || face.points.size() == 4);
+            };
+            if (!validFace(candidate.bottom) || !validFace(candidate.top) ||
+                candidate.bottom.points.size() != candidate.top.points.size())
+                return Result<bool, SpatialError>::failure(
+                    SpatialError::InvalidTopologyReference);
+
+            std::vector<SlidingQuery> queries;
+            const std::size_t count = candidate.top.points.size();
+            const std::array<std::array<std::size_t, 3>, 2> top_splits{{
+                {{0, 1, 2}}, {{0, 2, 3}}}};
+            const std::size_t top_split_count = count == 3 ? 1 : 2;
+            for (std::size_t split = 0; split < top_split_count; ++split)
+            {
+                SlidingQuery query;
+                for (std::size_t corner = 0; corner < 3; ++corner)
+                {
+                    const std::size_t local = top_splits[split][corner];
+                    query.points[corner] = candidate.top.points[local];
+                    query.associations[corner] =
+                        candidate.top.vertex_sliding_region_ids[local];
+                }
+                query.physical_edges = count == 3 ? 0b111 :
+                    (split == 0 ? 0b011 : 0b110);
+                queries.push_back(std::move(query));
+            }
+            for (std::size_t side = 0; side < count; ++side)
+            {
+                const std::size_t next = (side + 1) % count;
+                const std::array<Point3, 4> points{{
+                    candidate.bottom.points[side],
+                    candidate.bottom.points[next],
+                    candidate.top.points[next],
+                    candidate.top.points[side]}};
+                const std::array<std::vector<std::uint32_t>, 4> regions{{
+                    candidate.bottom.vertex_sliding_region_ids[side],
+                    candidate.bottom.vertex_sliding_region_ids[next],
+                    candidate.top.vertex_sliding_region_ids[next],
+                    candidate.top.vertex_sliding_region_ids[side]}};
+                const std::vector<std::uint32_t> complete = commonRegions(regions);
+                const std::array<std::array<std::size_t, 3>, 2> splits{{
+                    {{0, 1, 2}}, {{0, 2, 3}}}};
+                for (std::size_t split = 0; split < 2; ++split)
+                {
+                    SlidingQuery query;
+                    for (std::size_t corner = 0; corner < 3; ++corner)
+                    {
+                        const std::size_t local = splits[split][corner];
+                        query.points[corner] = points[local];
+                        query.associations[corner] = regions[local];
+                    }
+                    query.physical_edges = split == 0 ? 0b011 : 0b110;
+                    query.complete_exemptions = complete;
+                    queries.push_back(std::move(query));
+                }
+            }
+
+            for (const SlidingQuery &query : queries)
+            {
+                const auto permissions = buildSlidingContactPermissions(
+                    query.associations, query.physical_edges,
+                    query.complete_exemptions);
+                auto hit = index.query(query.points, permissions);
+                if (!hit.hasValue())
+                    return Result<bool, SpatialError>::failure(hit.error());
+                if (hit.value().intersected)
+                {
+                    const std::uint32_t region = hit.value().region_id;
+                    std::vector<std::size_t> associated_columns;
+                    for (std::size_t column = 0; column < count; ++column)
+                    {
+                        const auto contains = [region](const auto &regions) {
+                            return std::find(regions.begin(), regions.end(), region) !=
+                                regions.end();
+                        };
+                        if (contains(candidate.bottom.vertex_sliding_region_ids[column]) &&
+                            contains(candidate.top.vertex_sliding_region_ids[column]))
+                            associated_columns.push_back(column);
+                    }
+                    if (!associated_columns.empty() &&
+                        associated_columns.size() < count)
+                    {
+                        const auto reference = index.faceNormalAtPoint(
+                            region,
+                            candidate.top.points[associated_columns.front()]);
+                        bool valid = reference.hasValue();
+                        std::vector<Scalar> sides;
+                        for (std::size_t column = 0; valid && column < count; ++column)
+                        {
+                            if (std::find(associated_columns.begin(),
+                                          associated_columns.end(), column) !=
+                                associated_columns.end())
+                                continue;
+                            for (const Point3 *point : {
+                                     &candidate.bottom.points[column],
+                                     &candidate.top.points[column]})
+                            {
+                                const auto side_value = index.signedSideToRegion(
+                                    region, *point, reference.value());
+                                if (!side_value.hasValue())
+                                {
+                                    valid = false;
+                                    break;
+                                }
+                                sides.push_back(side_value.value());
+                            }
+                        }
+                        if (valid && slidingSideValuesStayOnOneSide(
+                                sides, Scalar{1e-10}))
+                        {
+                            hit = index.query(
+                                query.points, permissions, {region});
+                            if (!hit.hasValue())
+                                return Result<bool, SpatialError>::failure(
+                                    hit.error());
+                        }
+                    }
+                }
+                if (hit.value().intersected)
+                    return Result<bool, SpatialError>::success(true);
+            }
+            return Result<bool, SpatialError>::success(false);
+        }
+
     }
 
     Result<std::vector<LayerBoundaryCandidate>, SpatialError>
@@ -275,12 +435,18 @@ namespace boundary_mesh
                     {current_front.vertices[bottom_index].source_vertex_id,
                      current_front.layer,
                      current_front.vertices[bottom_index].branch_id});
+                bottom.vertex_sliding_region_ids.push_back(
+                    current_front.vertices[bottom_index]
+                        .boundary.sliding_region_ids);
                 top.points.push_back(
                     step.next_front.vertices[top_index].position);
                 top.vertex_keys.push_back(
                     {step.next_front.vertices[top_index].source_vertex_id,
                      step.next_front.layer,
                      step.next_front.vertices[top_index].branch_id});
+                top.vertex_sliding_region_ids.push_back(
+                    step.next_front.vertices[top_index]
+                        .boundary.sliding_region_ids);
             }
             std::vector<SurfaceBoundaryTag> side_tags;
             side_tags.reserve(top_ids.size());
@@ -356,6 +522,49 @@ namespace boundary_mesh
             }
             stopped[index] = hitsIndex(triangles.value(), original_surface) ||
                              hitsIndex(triangles.value(), history.value());
+        }
+        return Result<LayerStepResult, SpatialError>::success(
+            compactStep(current_front, quality_step, stopped));
+    }
+
+    Result<LayerStepResult, SpatialError>
+    LayerCollisionChecker::filterAgainstObstacles(
+        const CollisionIndex &original_surface,
+        const SlidingIntersectionIndex &sliding_surface,
+        const SlidingSurfaceSet &sliding_surfaces,
+        const ExposedBoundaryTracker &exposed_boundary,
+        const GrowthFront &current_front,
+        const LayerStepResult &quality_step) const
+    {
+        const auto candidates = buildLayerBoundaryCandidates(
+            current_front, quality_step, sliding_surfaces);
+        if (!candidates.hasValue())
+            return Result<LayerStepResult, SpatialError>::failure(
+                candidates.error());
+        const auto history_triangles = exposed_boundary.collisionTriangles();
+        if (!history_triangles.hasValue())
+            return Result<LayerStepResult, SpatialError>::failure(
+                history_triangles.error());
+        const auto history = CollisionIndex::build(history_triangles.value());
+        if (!history.hasValue())
+            return Result<LayerStepResult, SpatialError>::failure(history.error());
+
+        std::vector<bool> stopped(candidates.value().size(), false);
+        for (std::size_t index = 0; index < candidates.value().size(); ++index)
+        {
+            const auto triangles = candidateTriangles(
+                candidates.value()[index], static_cast<std::uint32_t>(index));
+            if (!triangles.hasValue())
+                return Result<LayerStepResult, SpatialError>::failure(
+                    triangles.error());
+            const auto sliding_hit = hitsSlidingIndex(
+                candidates.value()[index], sliding_surface);
+            if (!sliding_hit.hasValue())
+                return Result<LayerStepResult, SpatialError>::failure(
+                    sliding_hit.error());
+            stopped[index] = hitsIndex(triangles.value(), original_surface) ||
+                hitsIndex(triangles.value(), history.value()) ||
+                sliding_hit.value();
         }
         return Result<LayerStepResult, SpatialError>::success(
             compactStep(current_front, quality_step, stopped));
