@@ -388,7 +388,7 @@ namespace boundary_mesh
                << "transition_cells="
                << growth.value().transition.transition_cells.cells.size()
                << '\n'
-               << "reserved_transition_cells="
+               << "layer_transition_cells="
                << std::count_if(
                       growth.value().mesh.metadata.begin(),
                       growth.value().mesh.metadata.end(),
