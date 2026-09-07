@@ -29,6 +29,24 @@ add_test(
     COMMAND boundary_mesh_sliding_intersection_index_test
 )
 
+add_executable(
+    boundary_mesh_sliding_surface_intersection_regression_test
+    integration/sliding_surface_intersection_regression_test.cpp
+    support/boundary_meshing_fixture.cpp
+)
+target_compile_definitions(
+    boundary_mesh_sliding_surface_intersection_regression_test
+    PRIVATE BOUNDARY_MESH_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(
+    boundary_mesh_sliding_surface_intersection_regression_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_sliding_surface_intersection_regression_test
+    COMMAND boundary_mesh_sliding_surface_intersection_regression_test
+)
+
 #2
 add_executable(boundary_mesh_surface_mesh_test unit/mesh/surface_mesh_test.cpp)
 target_link_libraries(boundary_mesh_surface_mesh_test PRIVATE BoundaryMesh::Core)
