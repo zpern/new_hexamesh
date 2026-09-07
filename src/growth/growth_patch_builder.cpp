@@ -74,8 +74,7 @@ namespace boundary_mesh
             {
                 const SurfaceBoundaryTag &tag =
                     mesh.face_tags[static_cast<std::size_t>(face_id)];
-                if (tag.kind == SurfaceBoundaryKind::Symmetry ||
-                    tag.kind == SurfaceBoundaryKind::Internal)
+                if (isSlidingBoundary(tag.kind))
                 {
                     sliding_region_ids.push_back(tag.region_id);
                 }

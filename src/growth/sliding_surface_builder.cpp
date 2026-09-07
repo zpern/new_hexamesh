@@ -54,8 +54,7 @@ namespace boundary_mesh
         for (std::size_t face_index = 0; face_index < mesh.faces.size(); ++face_index)
         {
             const SurfaceBoundaryTag tag = mesh.face_tags[face_index];
-            if (tag.kind != SurfaceBoundaryKind::Symmetry &&
-                tag.kind != SurfaceBoundaryKind::Internal) continue;
+            if (!isSlidingBoundary(tag.kind)) continue;
             RegionData &region = regions[tag.region_id];
             if (region.has_kind && region.kind != tag.kind)
                 return BuildResult::failure(SlidingInputMismatch{tag.region_id});

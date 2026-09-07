@@ -31,6 +31,13 @@ namespace boundary_mesh
         BoundaryLayerInterface // 边界层与后续远场体网格之间的界面
     };
 
+    constexpr bool isSlidingBoundary(
+        SurfaceBoundaryKind kind) noexcept
+    {
+        return kind == SurfaceBoundaryKind::Symmetry ||
+               kind == SurfaceBoundaryKind::Internal;
+    }
+
     struct SurfaceBoundaryTag
     {
         SurfaceBoundaryKind kind{SurfaceBoundaryKind::Farfield}; // 面片的边界类别

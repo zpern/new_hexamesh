@@ -63,5 +63,15 @@ int main()
         return 6;
     }
 
+    if (!isSlidingBoundary(SurfaceBoundaryKind::Symmetry) ||
+        !isSlidingBoundary(SurfaceBoundaryKind::Internal) ||
+        isSlidingBoundary(SurfaceBoundaryKind::Wall) ||
+        isSlidingBoundary(SurfaceBoundaryKind::Farfield) ||
+        isSlidingBoundary(SurfaceBoundaryKind::MatchNoPush) ||
+        isSlidingBoundary(SurfaceBoundaryKind::BoundaryLayerInterface))
+    {
+        return 7;
+    }
+
     return 0;
 }
