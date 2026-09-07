@@ -9,6 +9,19 @@ target_link_libraries(boundary_mesh_surface_mesh_test PRIVATE BoundaryMesh::Core
 add_test(NAME boundary_mesh_surface_mesh_test COMMAND boundary_mesh_surface_mesh_test)
 
 add_executable(
+    boundary_mesh_sliding_surface_module_boundary_test
+    cmake/sliding_surface_module_boundary_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_sliding_surface_module_boundary_test
+    PRIVATE BoundaryMesh::SlidingSurface
+)
+add_test(
+    NAME boundary_mesh_sliding_surface_module_boundary_test
+    COMMAND boundary_mesh_sliding_surface_module_boundary_test
+)
+
+add_executable(
     boundary_mesh_surface_orientation_test
     unit/mesh/surface_orientation_test.cpp
 )
