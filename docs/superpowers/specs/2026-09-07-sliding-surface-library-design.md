@@ -11,7 +11,7 @@
 最终依赖方向为：
 
 ```text
-BoundaryMesh::Core
+BoundaryMesh::Core（包含纯边界类型分类）
         |
         +--> BoundaryMesh::Spatial
                     |
@@ -35,7 +35,6 @@ src/sliding/
 
 现有 `growth/sliding_surface*` 和 `growth/sliding_constraints*` 的通用能力迁入该目录。库提供：
 
-- `isSlidingBoundary(SurfaceBoundaryKind)`：统一判断 Symmetry/Internal，消除散落的重复条件；
 - 按 `region_id` 收集并验证 Symmetry/Internal 区域；
 - 构造轴对齐解析平面或一般三角曲面索引；
 - 表达单个区域及区域集合；
@@ -45,6 +44,8 @@ src/sliding/
 - 返回与边界层流程无关的滑移错误和投影诊断信息。
 
 库不负责：前沿创建、层高计算、质量判定、碰撞判定、停止传播、体单元生成或边界侧面追踪。
+
+`isSlidingBoundary(SurfaceBoundaryKind)` 是不涉及几何算法的纯边界类型分类。为避免 `Spatial → SlidingSurface → Spatial` 循环，它放在 `BoundaryMesh::Core` 的表面边界类型接口中，由 SlidingSurface、Spatial 和 BoundaryLayer 共同使用。
 
 ## 与 BoundaryLayer 的接口解耦
 
@@ -89,7 +90,7 @@ internal_faces
 
 ## 侧面追踪
 
-`ExposedBoundaryTracker` 和侧面创建继续属于 `BoundaryMesh::BoundaryLayer`，因为它们管理逐层生成状态。它们调用统一的滑移边界分类接口，并继续保留每个侧面的原始 `SurfaceBoundaryKind` 与 `region_id`，不会把 Internal 改写成 Symmetry。
+`ExposedBoundaryTracker` 和侧面创建继续属于 `BoundaryMesh::BoundaryLayer`，因为它们管理逐层生成状态。它们调用 Core 提供的统一滑移边界分类接口，并继续保留每个侧面的原始 `SurfaceBoundaryKind` 与 `region_id`，不会把 Internal 改写成 Symmetry。
 
 ## 构建系统与测试
 
