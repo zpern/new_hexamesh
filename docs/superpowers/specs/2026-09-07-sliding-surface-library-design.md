@@ -55,9 +55,8 @@ src/sliding/
 
 - 调用方使用的顶点索引；
 - 源表面 `VertexId`；
-- 当前点坐标；
 - 该点所属的滑移 `region_id` 集合；
-- 建立约束所需的法向或容差信息。
+- 前沿特征长度、有效长度容差和层号。
 
 `BoundaryLayer` 内保留一个薄适配器，将 `GrowthFront` 和 `FrontEvaluation` 转换为上述输入，并将滑移库错误映射为现有 `GrowthDirectionError`。现有边界层调用者不需要了解新输入模型。
 
