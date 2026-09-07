@@ -181,6 +181,9 @@ Triangle 模板收敛为 `buildTriangleSideTransition()`。它只表达相邻层
 
 ## 8. 文档与构建更新
 
+- 当前 CMake 目标 `boundary_mesh_boundary_layer` 实际只包含 `src/growth/`。将其改名为 `boundary_mesh_growth`，公开别名改为 `BoundaryMesh::Growth`，并更新所有直接依赖规则生长组件的目标和测试；
+- 新建真正的 `boundary_mesh_boundary_layer` 目标及 `BoundaryMesh::BoundaryLayer` 别名，包含 `src/boundary_layer/`，并依赖 `BoundaryMesh::Growth`、`BoundaryMesh::Transition` 和 `BoundaryMesh::MultiNormal`；
+- `BoundaryMesh::Transition` 依赖 `BoundaryMesh::Growth`，不再依赖 `BoundaryMesh::MultiNormal` 或新的顶层 `BoundaryMesh::BoundaryLayer`，从而保持依赖图无环；
 - CMake 新增 `src/boundary_layer/` 源文件并删除 reserved 源文件；
 - CLI include 改为新的 `boundary_layer` 路径；
 - README 只描述 `generateBoundaryLayers()` 当前生产路径；
