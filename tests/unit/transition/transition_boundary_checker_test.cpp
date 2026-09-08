@@ -1,4 +1,5 @@
 #include <cassert>
+#include <memory>
 #include <vector>
 
 #include <boundary_mesh/transition/transition_boundary_checker.hpp>
@@ -44,9 +45,18 @@ int main()
     permission_metadata.vertex_sliding_region_ids = {{{7}, {7}, {7}}};
     permission_metadata.physical_edge_mask = 0b101;
     permission_metadata.complete_face_exemption_regions = {7};
+    auto context = std::make_shared<SlidingColumnContext>();
+    context->low_points = {{0,0,0},{1,0,0},{0,1,0}};
+    context->high_points = {{0,0,0},{1,0,1},{0,1,1}};
+    context->low_region_ids = {{9},{},{}};
+    context->high_region_ids = {{9},{},{}};
+    permission_metadata.sliding_columns = context;
     if (permission_metadata.physical_edge_mask != 0b101 ||
         permission_metadata.complete_face_exemption_regions !=
-            std::vector<std::uint32_t>{7})
+            std::vector<std::uint32_t>{7} ||
+        permission_metadata.sliding_columns->low_points.size() != 3 ||
+        permission_metadata.sliding_columns->high_region_ids[0] !=
+            std::vector<std::uint32_t>{9})
         return 20;
 
     const std::array<Point3, 3> flat{{

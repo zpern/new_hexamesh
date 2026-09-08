@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <variant>
 #include <vector>
 
@@ -27,6 +28,14 @@ namespace boundary_mesh
         std::vector<SurfaceFaceId> rollback_high_faces;
     };
 
+    struct SlidingColumnContext
+    {
+        std::vector<Point3> low_points;
+        std::vector<Point3> high_points;
+        std::vector<std::vector<std::uint32_t>> low_region_ids;
+        std::vector<std::vector<std::uint32_t>> high_region_ids;
+    };
+
     struct OwnedBoundaryTriangle
     {
         std::array<Point3, 3> points{};
@@ -36,6 +45,7 @@ namespace boundary_mesh
             vertex_sliding_region_ids;
         std::uint8_t physical_edge_mask{};
         std::vector<std::uint32_t> complete_face_exemption_regions;
+        std::shared_ptr<const SlidingColumnContext> sliding_columns;
     };
 
     struct LayerDiagonalRequirement
