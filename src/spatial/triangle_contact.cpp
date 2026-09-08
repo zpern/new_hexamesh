@@ -563,9 +563,7 @@ namespace boundary_mesh
             const SharedFeature &feature,
             const TriangleContactEvidence &evidence)
         {
-            if (boundaryVertexCount(first) != 4 ||
-                boundaryVertexCount(second) != 4 ||
-                feature.kind != SharedFeatureKind::Segment ||
+            if (feature.kind != SharedFeatureKind::Segment ||
                 feature.same_count != 2 ||
                 feature.points.size() != 2 ||
                 evidence.kind != TriangleContactKind::CoplanarOverlap)
