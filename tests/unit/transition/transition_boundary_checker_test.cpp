@@ -304,6 +304,11 @@ int main()
                 [](const auto &ids)
                 { return std::find(ids.begin(), ids.end(), 9) != ids.end(); });
         }
+        else if (owned.owner.role == BoundaryOwnerRole::RegularCandidate)
+        {
+            if (owned.sliding_columns == nullptr) return 37;
+            if (owned.sliding_columns->low_points.size() != 4) return 38;
+        }
     if (side_triangles != 4) return 34;
     if (attached_sides != 0) return 35;
     if (associated_vertices == 0) return 36;

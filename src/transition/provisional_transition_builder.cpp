@@ -154,6 +154,31 @@ namespace boundary_mesh
             return result;
         }
 
+        std::shared_ptr<SlidingColumnContext> candidateColumnContext(
+            const GrowthFront &current,
+            const GrowthFront &candidate,
+            std::size_t face_index,
+            const std::unordered_map<std::uint64_t, std::size_t>
+                &current_vertices)
+        {
+            auto result = std::make_shared<SlidingColumnContext>();
+            for (const VertexId local : faceIds(candidate.faces[face_index]))
+            {
+                const auto &high = candidate.vertices[local];
+                const auto low_position = current_vertices.find(
+                    cellKey(high.source_vertex_id, high.branch_id));
+                if (low_position == current_vertices.end()) return {};
+                const auto &low = current.vertices[low_position->second];
+                result->low_points.push_back(low.position);
+                result->high_points.push_back(high.position);
+                result->low_region_ids.push_back(
+                    low.boundary.sliding_region_ids);
+                result->high_region_ids.push_back(
+                    high.boundary.sliding_region_ids);
+            }
+            return result;
+        }
+
         void appendOwnedTriangle(
             TransitionBoundaryInput &boundary,
             const Triangle &triangle,
@@ -185,7 +210,8 @@ namespace boundary_mesh
             TransitionBoundaryInput &boundary,
             const GrowthFront &front,
             std::size_t face_index,
-            const LayerBoundaryOwner &owner)
+            const LayerBoundaryOwner &owner,
+            std::shared_ptr<const SlidingColumnContext> columns = {})
         {
             const SurfaceFace &face = front.faces[face_index];
             const auto ids = faceIds(face);
@@ -206,7 +232,7 @@ namespace boundary_mesh
             if (ids.size() == 3)
                 appendOwnedTriangle(
                     boundary, Triangle{{0,1,2}}, points, keys, owner,
-                    regions, 0b111);
+                    regions, 0b111, {}, columns);
             else if (owner.role == BoundaryOwnerRole::RegularCandidate)
             {
                 // A retained high face is only a collision proxy for an
@@ -215,10 +241,10 @@ namespace boundary_mesh
                 // after the face becomes a transition low face or final cap.
                 appendOwnedTriangle(
                     boundary, Triangle{{0,1,2}}, points, keys, owner,
-                    regions, 0b011);
+                    regions, 0b011, {}, columns);
                 appendOwnedTriangle(
                     boundary, Triangle{{0,2,3}}, points, keys, owner,
-                    regions, 0b110);
+                    regions, 0b110, {}, columns);
             }
             else
             {
@@ -227,7 +253,8 @@ namespace boundary_mesh
                 if (!diagonal.hasValue()) return;
                 for (const Triangle &triangle : diagonal.value().triangles)
                     appendOwnedTriangle(
-                        boundary, triangle, points, keys, owner, regions);
+                        boundary, triangle, points, keys, owner, regions,
+                        0, {}, columns);
             }
         }
     }
@@ -263,6 +290,15 @@ namespace boundary_mesh
                 candidate_vertices[cellKey(
                     vertex.source_vertex_id, vertex.branch_id)] = index;
             }
+            std::unordered_map<std::uint64_t, std::size_t>
+                current_vertices;
+            for (std::size_t index = 0;
+                 index < current.vertices.size(); ++index)
+            {
+                const auto &vertex = current.vertices[index];
+                current_vertices[cellKey(
+                    vertex.source_vertex_id, vertex.branch_id)] = index;
+            }
             for (std::size_t index = 0;
                  index < candidate.faces.size(); ++index)
             {
@@ -270,7 +306,9 @@ namespace boundary_mesh
                 if (!retainedFace(retained, id)) continue;
                 appendFrontFace(provisional.boundary, candidate, index,
                     {id, candidate.layer,
-                     BoundaryOwnerRole::RegularCandidate, {id}});
+                     BoundaryOwnerRole::RegularCandidate, {id}},
+                    candidateColumnContext(
+                        current, candidate, index, current_vertices));
             }
 
             for (const SurfaceFaceId low_id :
