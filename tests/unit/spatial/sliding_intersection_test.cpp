@@ -36,7 +36,7 @@ int main()
     const TrianglePoints beyond_vertex{{
         {0.0, 0.0, 0.0},
         {0.5, 0.5, -1.0},
-        {-1.0, 0.0, 1.0}}};
+        {1.5, 0.5, 1.0}}};
     const auto beyond_result = hasInvalidSlidingIntersection(
         beyond_vertex, surface, vertex_permission);
     assert(beyond_result.hasValue() && beyond_result.value());
