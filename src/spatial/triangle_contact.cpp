@@ -803,13 +803,33 @@ namespace boundary_mesh
             int intersection_code{};
             double intersection_point[3]{};
             bool epsilon = false;
-            return TiGER_GEOM_FUNC::lin_tri_intersect3d(
+            const bool intersects_line =
+                TiGER_GEOM_FUNC::lin_tri_intersect3d(
                        line,
                        face,
                        &intersection_type,
                        &intersection_code,
                        intersection_point,
                        epsilon) != 0;
+            if (!intersects_line) return false;
+
+            const Point3 intersection{
+                intersection_point[0],
+                intersection_point[1],
+                intersection_point[2]};
+            const Scalar scale_squared = std::max(
+                maximumBoundaryEdgeSquared(edge_source),
+                maximumBoundaryEdgeSquared(target));
+            constexpr Scalar multiplier = Scalar{128};
+            const Scalar tolerance_squared =
+                multiplier * multiplier *
+                std::numeric_limits<Scalar>::epsilon() *
+                std::numeric_limits<Scalar>::epsilon() *
+                scale_squared;
+            return pointSegmentDistanceSquared(
+                       intersection,
+                       edge_source.points[first],
+                       edge_source.points[second]) <= tolerance_squared;
         }
 
     }

@@ -413,6 +413,34 @@ int main()
         return 5;
     }
 
+    const TrianglePoints face3067_side{{
+        {0.0, -0.89999999900000005, 5.6696428571428488},
+        {0.25, -0.77999999780000095, 6.1026785714285623},
+        {0.0, -0.77999999780000007, 5.6696428571428488}}};
+    const TrianglePoints face3174_side{{
+        face3067_side[0],
+        {-0.25, -0.89999999900000005, 5.2366071428571352},
+        {-0.25, -0.77999999780000007, 5.2366071428571352}}};
+    const CollisionTriangle face3067_candidate = makeCollisionTriangle(
+        face3067_side,
+        {{{1652, 1, 0}, {1600, 2, 0}, {1652, 2, 0}}},
+        {{face3067_side[0], face3067_side[1],
+          face3067_side[2], Point3{}}},
+        {{{1652, 1, 0}, {1600, 2, 0}, {1652, 2, 0}, {}}},
+        3);
+    const CollisionTriangle face3174_candidate = makeCollisionTriangle(
+        face3174_side,
+        {{{1652, 1, 0}, {1742, 1, 0}, {1742, 2, 0}}},
+        {{face3174_side[0], face3174_side[1],
+          face3174_side[2], Point3{}}},
+        {{{1652, 1, 0}, {1742, 1, 0}, {1742, 2, 0}, {}}},
+        3);
+    if (hasIllegalTriangleContact(
+            face3067_candidate, face3174_candidate).value())
+    {
+        return 6;
+    }
+
     const std::array<Point3, 4> stable_side_points{{
         {277.05828857421875,
          -8.6681995391845703,
