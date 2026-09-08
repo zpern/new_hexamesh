@@ -46,7 +46,7 @@ namespace
         options.cell_quality.maximum_skewness =
             fixture.maximum_prism_skewness;
         options.isotropic_height = fixture.isotropic_stop;
-        options.max_layer_diff = 6;
+        options.max_layer_diff = 1;
         return generateIncrementalBoundaryLayers(
             mesh, topology.value(), patch.value(), front.value(),
             profiles, options);
