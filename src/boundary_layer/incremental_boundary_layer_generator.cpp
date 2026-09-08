@@ -41,10 +41,11 @@ namespace boundary_mesh
         RegularLayerGrowthOptions coordinated_options = options;
         std::optional<IncrementalLayerGrowthError> incremental_error;
         AcceptedStoppedFrontCarry previously_accepted;
+        std::vector<OwnedBoundaryTriangle> prior_transition_boundary;
         const auto upstream_rejections = options.candidate_rejections;
         coordinated_options.candidate_rejections =
             [upstream_rejections, &incremental_error, &previously_accepted,
-             &sliding_surface](
+             &sliding_surface, &prior_transition_boundary](
                 const GrowthFront &current,
                 const LayerStepResult &candidate,
                 const std::vector<VertexId> &current_global_ids,
@@ -112,6 +113,8 @@ namespace boundary_mesh
             input.completed_layer = current.layer;
             input.original_surface = original_surface;
             input.historical_boundary = &historical_boundary;
+            input.prior_transition_boundary =
+                &prior_transition_boundary;
             input.sliding_surface = &sliding_surface.value();
             input.build_provisional =
                 [&effective_current, &candidate](
@@ -131,6 +134,11 @@ namespace boundary_mesh
                 }, stable.error());
                 return rejected;
             }
+            prior_transition_boundary.clear();
+            for (const auto &triangle : stable.value().exposed_boundary)
+                if (triangle.owner.role !=
+                    BoundaryOwnerRole::RegularCandidate)
+                    prior_transition_boundary.push_back(triangle);
             for (const SurfaceFaceId id :
                  candidate.next_front.source_face_ids)
                 if (!retainedFace(

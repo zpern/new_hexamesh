@@ -225,6 +225,24 @@ namespace boundary_mesh
             }
         }
 
+        std::optional<CollisionIndex> prior_transition_index;
+        if (input.prior_transition_boundary != nullptr &&
+            !input.prior_transition_boundary->empty())
+        {
+            std::vector<CollisionTriangle> prior;
+            prior.reserve(input.prior_transition_boundary->size());
+            for (std::size_t index = 0;
+                 index < input.prior_transition_boundary->size(); ++index)
+                prior.push_back(collisionTriangle(
+                    (*input.prior_transition_boundary)[index],
+                    static_cast<std::uint32_t>(index)));
+            auto built = CollisionIndex::build(prior);
+            if (!built.hasValue())
+                return RollbackResult::failure(
+                    TransitionBoundaryError{built.error()});
+            prior_transition_index = std::move(built.value());
+        }
+
         std::vector<SurfaceFaceId> rollback;
         for (std::size_t index = 0; index < collisions.size(); ++index)
         {
@@ -274,6 +292,19 @@ namespace boundary_mesh
                             owned[index],
                             history_faces[obstacle.owner_id]);
                     if (!own_historical_top)
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
+            if (prior_transition_index.has_value())
+                for (const std::size_t contact :
+                     prior_transition_index->queryIllegalContacts(
+                         collisions[index]))
+                {
+                    const auto &prior = (*input.prior_transition_boundary)[
+                        prior_transition_index->primitive(contact).owner_id];
+                    if (key(owned[index]) != key(prior))
                     {
                         hit = true;
                         break;

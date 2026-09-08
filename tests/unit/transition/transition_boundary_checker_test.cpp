@@ -312,4 +312,21 @@ int main()
     if (side_triangles != 4) return 34;
     if (attached_sides != 0) return 35;
     if (associated_vertices == 0) return 36;
+
+    std::vector<OwnedBoundaryTriangle> prior_transition_boundary = {
+        triangle(
+            {{{0,0,0},{1,0,0},{0,1,0}}},
+            {{{20,10,0},{21,10,0},{22,10,0}}},
+            80, {80})};
+    TransitionBoundaryInput later_transition;
+    later_transition.candidate_triangles.push_back(triangle(
+        {{{0.25,0.25,-0.5},{0.75,0.25,0.5},{0.25,0.75,0.5}}},
+        {{{30,11,0},{31,11,0},{32,11,0}}},
+        81, {81}));
+    later_transition.prior_transition_boundary =
+        &prior_transition_boundary;
+    const auto cross_prior = checker.findRollbackFaces(later_transition);
+    if (!cross_prior.hasValue() ||
+        cross_prior.value() != std::vector<SurfaceFaceId>{81})
+        return 39;
 }

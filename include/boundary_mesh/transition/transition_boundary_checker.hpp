@@ -60,6 +60,8 @@ namespace boundary_mesh
         std::vector<LayerDiagonalRequirement> diagonal_requirements;
         const CollisionIndex *original_surface{};
         const ExposedBoundaryTracker *historical_boundary{};
+        const std::vector<OwnedBoundaryTriangle>
+            *prior_transition_boundary{};
         const SlidingIntersectionIndex *sliding_surface{};
     };
 
