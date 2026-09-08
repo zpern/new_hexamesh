@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <set>
 #include <tuple>
 #include <utility>
 
@@ -86,6 +87,63 @@ namespace boundary_mesh
                         { return sameVertexKey(key, other); }))
                     return false;
             return true;
+        }
+
+        bool containsRegion(
+            const std::vector<std::uint32_t> &ids, std::uint32_t region)
+        {
+            return std::find(ids.begin(), ids.end(), region) != ids.end();
+        }
+
+        Result<bool, SpatialError> canIgnoreOwnSlidingRegion(
+            const OwnedBoundaryTriangle &owned,
+            const SlidingIntersectionIndex &index,
+            std::uint32_t region)
+        {
+            using IgnoreResult = Result<bool, SpatialError>;
+            if (!owned.sliding_columns)
+                return IgnoreResult::success(false);
+            const auto &columns = *owned.sliding_columns;
+            const std::size_t count = columns.low_points.size();
+            if (count == 0 || columns.high_points.size() != count ||
+                columns.low_region_ids.size() != count ||
+                columns.high_region_ids.size() != count)
+                return IgnoreResult::failure(
+                    SpatialError::InvalidTopologyReference);
+
+            std::vector<std::size_t> associated;
+            for (std::size_t column = 0; column < count; ++column)
+                if (containsRegion(
+                        columns.low_region_ids[column], region) &&
+                    containsRegion(
+                        columns.high_region_ids[column], region))
+                    associated.push_back(column);
+            if (associated.empty() || associated.size() == count)
+                return IgnoreResult::success(false);
+
+            const auto reference = index.faceNormalAtPoint(
+                region, columns.high_points[associated.front()]);
+            if (!reference.hasValue())
+                return IgnoreResult::failure(reference.error());
+            std::vector<Scalar> sides;
+            for (std::size_t column = 0; column < count; ++column)
+            {
+                if (std::find(associated.begin(), associated.end(), column) !=
+                    associated.end())
+                    continue;
+                for (const Point3 *point : {
+                         &columns.low_points[column],
+                         &columns.high_points[column]})
+                {
+                    const auto side = index.signedSideToRegion(
+                        region, *point, reference.value());
+                    if (!side.hasValue())
+                        return IgnoreResult::failure(side.error());
+                    sides.push_back(side.value());
+                }
+            }
+            return IgnoreResult::success(
+                slidingSideValuesStayOnOneSide(sides, Scalar{1e-10}));
         }
     }
 
@@ -227,12 +285,28 @@ namespace boundary_mesh
                     owned[index].vertex_sliding_region_ids,
                     owned[index].physical_edge_mask,
                     owned[index].complete_face_exemption_regions);
-                const auto sliding_hit = input.sliding_surface->query(
-                    owned[index].points, permissions);
-                if (!sliding_hit.hasValue())
-                    return RollbackResult::failure(
-                        TransitionBoundaryError{sliding_hit.error()});
-                hit = hit || sliding_hit.value().intersected;
+                std::set<std::uint32_t> ignored;
+                while (true)
+                {
+                    const auto sliding_hit = input.sliding_surface->query(
+                        owned[index].points, permissions, ignored);
+                    if (!sliding_hit.hasValue())
+                        return RollbackResult::failure(
+                            TransitionBoundaryError{sliding_hit.error()});
+                    if (!sliding_hit.value().intersected) break;
+                    const auto legal = canIgnoreOwnSlidingRegion(
+                        owned[index], *input.sliding_surface,
+                        sliding_hit.value().region_id);
+                    if (!legal.hasValue())
+                        return RollbackResult::failure(
+                            TransitionBoundaryError{legal.error()});
+                    if (!legal.value())
+                    {
+                        hit = true;
+                        break;
+                    }
+                    ignored.insert(sliding_hit.value().region_id);
+                }
             }
             if (hit) appendOwner(rollback, owned[index].owner);
         }

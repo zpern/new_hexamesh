@@ -3,6 +3,7 @@
 #include <vector>
 
 #include <boundary_mesh/transition/transition_boundary_checker.hpp>
+#include <boundary_mesh/transition/provisional_transition_builder.hpp>
 #include <boundary_mesh/spatial/sliding_intersection_index.hpp>
 
 using namespace boundary_mesh;
@@ -206,4 +207,104 @@ int main()
     if (!internal_rollback.hasValue() ||
         internal_rollback.value() != std::vector<SurfaceFaceId>{70})
         return 24;
+
+    TransitionBoundaryInput attached_transition;
+    auto attached = triangle(
+        {{{0,0,0},{1,0,0},{0,1,0.3}}},
+        candidate_keys, 71, {71});
+    attached.vertex_sliding_region_ids = {{{90},{90},{}}};
+    auto attached_columns = std::make_shared<SlidingColumnContext>();
+    attached_columns->low_points = {
+        {0,0,0},{1,0,0},{0,1,0.2}};
+    attached_columns->high_points = {
+        {0,0,0},{1,0,0},{0,1,0.4}};
+    attached_columns->low_region_ids = {{90},{90},{}};
+    attached_columns->high_region_ids = {{90},{90},{}};
+    attached.sliding_columns = attached_columns;
+    attached_transition.candidate_triangles.push_back(attached);
+    attached_transition.sliding_surface = &internal.value();
+    const auto attached_result = checker.findRollbackFaces(
+        attached_transition);
+    if (!attached_result.hasValue() || !attached_result.value().empty())
+        return 26;
+
+    auto crossing_columns = std::make_shared<SlidingColumnContext>(
+        *attached_columns);
+    crossing_columns->high_points[2].z() = -0.4;
+    attached_transition.candidate_triangles.front().sliding_columns =
+        crossing_columns;
+    const auto upper_crossing = checker.findRollbackFaces(
+        attached_transition);
+    if (!upper_crossing.hasValue() ||
+        upper_crossing.value() != std::vector<SurfaceFaceId>{71})
+        return 27;
+
+    SurfaceMesh two_regions = sliding_mesh;
+    two_regions.vertices.insert(two_regions.vertices.end(), {
+        {0.25,-0.1,-1},{0.25,1.1,-1},{0.25,-0.1,1}});
+    two_regions.faces.push_back(Triangle{{3,4,5}});
+    two_regions.face_tags.push_back(
+        {SurfaceBoundaryKind::Internal,91});
+    const auto two_region_index = SlidingIntersectionIndex::build(
+        two_regions);
+    if (!two_region_index.hasValue()) return 28;
+    attached_transition.candidate_triangles.front().sliding_columns =
+        attached_columns;
+    attached_transition.sliding_surface = &two_region_index.value();
+    const auto other_region = checker.findRollbackFaces(
+        attached_transition);
+    if (!other_region.hasValue() ||
+        other_region.value() != std::vector<SurfaceFaceId>{71})
+        return 29;
+
+    GrowthFront transition_low;
+    transition_low.layer = 1;
+    transition_low.vertices = {
+        {{0,0,0},0}, {{1,0,0},1}, {{1,1,0},2},
+        {{0,1,0},3}, {{2,0,0},4}, {{2,1,0},5}};
+    transition_low.faces = {
+        Quad{{0,1,2,3}}, Quad{{1,4,5,2}}};
+    transition_low.source_face_ids = {0,1};
+    transition_low.vertices[1].boundary.sliding_region_ids = {9};
+    transition_low.vertices[2].boundary.sliding_region_ids = {9};
+    GrowthFront transition_high;
+    transition_high.layer = 2;
+    transition_high.vertices = {
+        {{1,0,1},1}, {{2,0,1},4},
+        {{2,1,1},5}, {{1,1,1},2}};
+    transition_high.faces = {Quad{{0,1,2,3}}};
+    transition_high.source_face_ids = {1};
+    transition_high.vertices[0].boundary.sliding_region_ids = {9};
+    transition_high.vertices[3].boundary.sliding_region_ids = {9};
+    LayerFaceSets transition_sets;
+    addInitialStop(transition_sets,
+        {0,1,StopOrigin::Collision});
+    const auto provisional = buildProvisionalTransition(
+        transition_low, transition_high, {1}, transition_sets);
+    if (!provisional.hasValue()) return 30;
+    std::size_t side_triangles{};
+    std::size_t attached_sides{};
+    std::size_t associated_vertices{};
+    for (const auto &owned :
+         provisional.value().boundary.candidate_triangles)
+        if (owned.owner.role == BoundaryOwnerRole::SideTransition)
+        {
+            ++side_triangles;
+            if (owned.sliding_columns == nullptr) return 31;
+            if (owned.sliding_columns->low_points.size() != 4) return 32;
+            if (std::find(
+                owned.complete_face_exemption_regions.begin(),
+                owned.complete_face_exemption_regions.end(), 9) !=
+                owned.complete_face_exemption_regions.end())
+                ++attached_sides;
+            if (owned.physical_edge_mask == 0b111) return 33;
+            associated_vertices += std::count_if(
+                owned.vertex_sliding_region_ids.begin(),
+                owned.vertex_sliding_region_ids.end(),
+                [](const auto &ids)
+                { return std::find(ids.begin(), ids.end(), 9) != ids.end(); });
+        }
+    if (side_triangles != 4) return 34;
+    if (attached_sides != 0) return 35;
+    if (associated_vertices == 0) return 36;
 }

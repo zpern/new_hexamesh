@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -71,6 +72,88 @@ namespace boundary_mesh
             return std::binary_search(retained.begin(), retained.end(), id);
         }
 
+        bool containsRegion(
+            const std::vector<std::uint32_t> &ids, std::uint32_t region)
+        {
+            return std::find(ids.begin(), ids.end(), region) != ids.end();
+        }
+
+        std::vector<std::uint32_t> commonRegions(
+            const Triangle &triangle,
+            const std::vector<std::vector<std::uint32_t>> &regions)
+        {
+            std::vector<std::uint32_t> common =
+                regions[triangle.vertex_ids[0]];
+            std::sort(common.begin(), common.end());
+            common.erase(std::unique(common.begin(), common.end()),
+                         common.end());
+            for (std::size_t corner = 1; corner < 3; ++corner)
+            {
+                const auto &candidate = regions[triangle.vertex_ids[corner]];
+                common.erase(std::remove_if(common.begin(), common.end(),
+                    [&](std::uint32_t region)
+                    { return !containsRegion(candidate, region); }),
+                    common.end());
+            }
+            return common;
+        }
+
+        std::uint8_t physicalEdgeMask(
+            const Triangle &triangle, std::size_t column_count)
+        {
+            std::uint8_t mask{};
+            for (std::size_t edge = 0; edge < 3; ++edge)
+            {
+                const VertexId first = triangle.vertex_ids[edge];
+                const VertexId second = triangle.vertex_ids[(edge + 1) % 3];
+                const std::size_t first_column = first % column_count;
+                const std::size_t second_column = second % column_count;
+                const bool column_edge = first_column == second_column;
+                const bool same_level =
+                    (first < column_count) == (second < column_count);
+                const bool source_edge = same_level &&
+                    ((first_column + 1) % column_count == second_column ||
+                     (second_column + 1) % column_count == first_column);
+                if (column_edge || source_edge)
+                    mask |= static_cast<std::uint8_t>(1u << edge);
+            }
+            return mask;
+        }
+
+        std::shared_ptr<SlidingColumnContext> columnContext(
+            const GrowthFront &current,
+            const GrowthFront &candidate,
+            const std::vector<VertexId> &source_ids,
+            const std::unordered_map<std::uint64_t, std::size_t>
+                &candidate_vertices)
+        {
+            auto result = std::make_shared<SlidingColumnContext>();
+            for (const VertexId source_id : source_ids)
+            {
+                const auto &low = current.vertices[source_id];
+                result->low_points.push_back(low.position);
+                result->low_region_ids.push_back(
+                    low.boundary.sliding_region_ids);
+                const auto high_position = candidate_vertices.find(
+                    cellKey(low.source_vertex_id, low.branch_id));
+                if (high_position == candidate_vertices.end())
+                {
+                    result->high_points.push_back(low.position);
+                    result->high_region_ids.push_back(
+                        low.boundary.sliding_region_ids);
+                }
+                else
+                {
+                    const auto &high = candidate.vertices[
+                        high_position->second];
+                    result->high_points.push_back(high.position);
+                    result->high_region_ids.push_back(
+                        high.boundary.sliding_region_ids);
+                }
+            }
+            return result;
+        }
+
         void appendOwnedTriangle(
             TransitionBoundaryInput &boundary,
             const Triangle &triangle,
@@ -79,7 +162,8 @@ namespace boundary_mesh
             const LayerBoundaryOwner &owner,
             const std::vector<std::vector<std::uint32_t>> &regions = {},
             std::uint8_t physical_edge_mask = 0,
-            const std::vector<std::uint32_t> &complete_regions = {})
+            const std::vector<std::uint32_t> &complete_regions = {},
+            std::shared_ptr<const SlidingColumnContext> columns = {})
         {
             OwnedBoundaryTriangle output;
             output.owner = owner;
@@ -93,6 +177,7 @@ namespace boundary_mesh
             }
             output.physical_edge_mask = physical_edge_mask;
             output.complete_face_exemption_regions = complete_regions;
+            output.sliding_columns = std::move(columns);
             boundary.candidate_triangles.push_back(std::move(output));
         }
 
@@ -219,6 +304,7 @@ namespace boundary_mesh
                     if (!high_edge.has_value()) continue;
                     std::vector<Point3> points(6);
                     std::vector<CollisionVertexKey> keys(6);
+                    std::vector<std::vector<std::uint32_t>> regions(6);
                     std::array<VertexId,3> low{{0,1,2}};
                     std::array<VertexId,3> high{{0,1,2}};
                     for (std::size_t local = 0; local < 3; ++local)
@@ -228,8 +314,11 @@ namespace boundary_mesh
                         points[local] = vertex.position;
                         keys[local] = {vertex.source_vertex_id,
                                        current.layer,vertex.branch_id};
+                        regions[local] =
+                            vertex.boundary.sliding_region_ids;
                         points[3+local] = vertex.position;
                         keys[3+local] = keys[local];
+                        regions[3+local] = regions[local];
                     }
                     for (const std::size_t local : {
                              *high_edge, (*high_edge+1)%3})
@@ -246,6 +335,8 @@ namespace boundary_mesh
                             keys[3+local] = {vertex.source_vertex_id,
                                             candidate.layer,
                                             vertex.branch_id};
+                            regions[3+local] = candidate.vertices[
+                                found->second].boundary.sliding_region_ids;
                         }
                     }
                     const auto side = buildTriangleSideTransition({
@@ -260,13 +351,18 @@ namespace boundary_mesh
                     for (const Triangle &triangle : side.value().top_faces)
                         appendOwnedTriangle(
                             provisional.boundary,triangle,
-                            points,keys,owner);
+                            points,keys,owner,regions,
+                            physicalEdgeMask(triangle, 3),
+                            commonRegions(triangle, regions),
+                            columnContext(current, candidate,
+                                low_source_ids, candidate_vertices));
                     continue;
                 }
                 if (low_source_ids.size() != 4) continue;
 
                 std::vector<Point3> points(8);
                 std::vector<CollisionVertexKey> keys(8);
+                std::vector<std::vector<std::uint32_t>> regions(8);
                 std::array<VertexId,4> low{{0,1,2,3}};
                 std::array<VertexId,4> high{{0,1,2,3}};
                 for (std::size_t local = 0; local < 4; ++local)
@@ -276,8 +372,11 @@ namespace boundary_mesh
                     points[local] = vertex.position;
                     keys[local] = {vertex.source_vertex_id,
                                    current.layer, vertex.branch_id};
+                    regions[local] =
+                        vertex.boundary.sliding_region_ids;
                     points[4+local] = vertex.position;
                     keys[4+local] = keys[local];
+                    regions[4+local] = regions[local];
                     const auto candidate_vertex = candidate_vertices.find(
                         cellKey(vertex.source_vertex_id,
                                 vertex.branch_id));
@@ -288,6 +387,8 @@ namespace boundary_mesh
                         keys[4+local] = {vertex.source_vertex_id,
                                         candidate.layer,
                                         vertex.branch_id};
+                        regions[4+local] = candidate.vertices[
+                            candidate_vertex->second].boundary.sliding_region_ids;
                     }
                 }
 
@@ -361,7 +462,10 @@ namespace boundary_mesh
                 for (const Triangle &triangle : low_cap)
                     appendOwnedTriangle(
                         provisional.boundary, triangle,
-                        points, keys, owner);
+                        points, keys, owner, regions,
+                        physicalEdgeMask(triangle, 4), {},
+                        columnContext(current, candidate,
+                            low_source_ids, candidate_vertices));
 
                 const auto side =
                     selection.value().retained_local_edges.size() == 1
@@ -383,7 +487,11 @@ namespace boundary_mesh
                 for (const Triangle &triangle : side.value().top_faces)
                     appendOwnedTriangle(
                         provisional.boundary, triangle,
-                        points, keys, side_owner);
+                        points, keys, side_owner, regions,
+                        physicalEdgeMask(triangle, 4),
+                        commonRegions(triangle, regions),
+                        columnContext(current, candidate,
+                            low_source_ids, candidate_vertices));
             }
             return ProvisionalLayerTransitionResult::success(
                 std::move(provisional));
