@@ -11,7 +11,9 @@ namespace boundary_mesh
     enum class VolumeCellKind
     {
         Prism, // 六顶点三棱柱候选单元
-        Hexa   // 八顶点六面体候选单元
+        Hexa,  // 八顶点六面体候选单元
+        Tetra,
+        Pyramid
     };
 
     enum class VolumeCellEvaluationErrorCategory
@@ -25,7 +27,7 @@ namespace boundary_mesh
     {
         VolumeCellEvaluationErrorCategory category{
             VolumeCellEvaluationErrorCategory::InvalidMaximumSkewness}; // 失败的输入、配置或数值错误类别
-        VolumeCellKind cell_kind{VolumeCellKind::Prism};                 // 发生错误的 Prism 或 Hexa 候选单元类别
+        VolumeCellKind cell_kind{VolumeCellKind::Prism};                 // 发生错误的体单元类别
         Scalar configuration_value{};                                   // 触发配置错误的原始数值，没有配置时为零
         std::optional<std::size_t> local_vertex_index{};                 // 非有限输入对应的可选局部顶点下标
         std::optional<std::size_t> subtet_index{};                       // 数值错误对应的可选固定子四面体下标

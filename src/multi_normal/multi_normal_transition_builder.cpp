@@ -139,13 +139,12 @@ namespace boundary_mesh
             const Point3 &b = output.transition_cells.vertices[ids[1]];
             const Point3 &c = output.transition_cells.vertices[ids[2]];
             const Point3 &d = output.transition_cells.vertices[ids[3]];
-            Scalar volume = signedVolume(a, b, c, d);
+            const Scalar volume = signedVolume(a, b, c, d);
             if (!std::isfinite(volume) ||
                 std::abs(volume) <= Scalar{1e-14})
             {
                 return;
             }
-            if (volume < Scalar{0}) std::swap(ids[1], ids[2]);
             output.transition_cells.cells.push_back(Tetra{ids});
             output.transition_cells.metadata.push_back(CellMetadata{
                 CellRole::MultiNormalTransition, source_face_id, 0});

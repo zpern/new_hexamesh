@@ -581,6 +581,19 @@ add_test(
     COMMAND boundary_mesh_volume_cell_validity_test
 )
 
+add_executable(
+    boundary_mesh_tetra_pyramid_orientation_test
+    unit/quality/tetra_pyramid_orientation_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_tetra_pyramid_orientation_test
+    PRIVATE BoundaryMesh::Quality
+)
+add_test(
+    NAME boundary_mesh_tetra_pyramid_orientation_test
+    COMMAND boundary_mesh_tetra_pyramid_orientation_test
+)
+
 # 22：阶段 05 预推出候选接受与停止决策模拟
 add_executable(
     boundary_mesh_volume_cell_quality_pipeline_test
@@ -876,7 +889,7 @@ add_executable(
 )
 target_link_libraries(
     boundary_mesh_legacy_vtk_writer_test
-    PRIVATE BoundaryMesh::IO
+    PRIVATE BoundaryMesh::IO BoundaryMesh::Quality
 )
 add_test(
     NAME boundary_mesh_legacy_vtk_writer_test

@@ -10,6 +10,12 @@
 
 namespace boundary_mesh
 {
+    inline constexpr std::array<std::size_t, 4> TetraVertexOrder{
+        0, 1, 2, 3}; // Tetra：有向基面 0-1-2，顶点 3 位于正体积侧
+
+    inline constexpr std::array<std::size_t, 5> PyramidVertexOrder{
+        0, 1, 2, 3, 4}; // Pyramid：环绕基面 0-1-2-3，顶点 4 位于正体积侧
+
     inline constexpr std::array<std::size_t, 6> PrismVertexOrder{
         0, 1, 2, 3, 4, 5}; // Prism 顶点顺序：底面 0-1-2、顶面 3-4-5、生长边 0-3/1-4/2-5
 
@@ -18,12 +24,12 @@ namespace boundary_mesh
 
     struct Tetra
     {
-        std::array<VertexId, 4> vertex_ids{}; // 四面体的四个顶点编号
+        std::array<VertexId, 4> vertex_ids{}; // 按 TetraVertexOrder 保存
     };
 
     struct Pyramid
     {
-        std::array<VertexId, 5> vertex_ids{}; // 金字塔的五个顶点编号
+        std::array<VertexId, 5> vertex_ids{}; // 按 PyramidVertexOrder 保存
     };
 
     struct Prism

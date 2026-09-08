@@ -258,7 +258,7 @@ main -> runBoundaryMeshCommand
 
 ### `VolumeMesh`
 
-保存 Tetra/Pyramid/Prism/Hexa 及同长 `CellMetadata`。单元角色明确区分 `RegularLayer`、`MultiNormalTransition` 和 `LayerTransition`，并记录源面与层号。Prism/Hexa 顶点顺序由 `PrismVertexOrder`/`HexaVertexOrder` 注释约定，质量算法依赖它。
+保存 Tetra/Pyramid/Prism/Hexa 及同长 `CellMetadata`。单元角色明确区分 `RegularLayer`、`MultiNormalTransition` 和 `LayerTransition`，并记录源面与层号。Tetra 使用有向基面 `0-1-2` 与正体积侧顶点 `3`；Pyramid 使用连续环绕基面 `0-1-2-3` 与正体积侧顶点 `4`。四类单元的顺序分别由 `TetraVertexOrder`、`PyramidVertexOrder`、`PrismVertexOrder`、`HexaVertexOrder` 注释约定，质量算法依赖它；负体积作为反转诊断保留，不自动交换节点。
 
 ## 7.3 surface / quality
 

@@ -66,9 +66,9 @@ namespace boundary_mesh
         if (input.diagonal == QuadDiagonal::ZeroTwo)
         {
             result.volume_cells.push_back(
-                Tetra{{input.top[0], input.top[1], input.top[2], c}});
+                Tetra{{input.top[0], input.top[2], input.top[1], c}});
             result.volume_cells.push_back(
-                Tetra{{input.top[0], input.top[2], input.top[3], c}});
+                Tetra{{input.top[0], input.top[3], input.top[2], c}});
             result.top_faces = {
                 Triangle{{input.top[0], input.top[1], input.top[2]}},
                 Triangle{{input.top[0], input.top[2], input.top[3]}}};
@@ -76,9 +76,9 @@ namespace boundary_mesh
         else
         {
             result.volume_cells.push_back(
-                Tetra{{input.top[1], input.top[2], input.top[3], c}});
+                Tetra{{input.top[1], input.top[3], input.top[2], c}});
             result.volume_cells.push_back(
-                Tetra{{input.top[1], input.top[3], input.top[0], c}});
+                Tetra{{input.top[1], input.top[0], input.top[3], c}});
             result.top_faces = {
                 Triangle{{input.top[1], input.top[2], input.top[3]}},
                 Triangle{{input.top[1], input.top[3], input.top[0]}}};
@@ -117,7 +117,7 @@ namespace boundary_mesh
         {
             result.volume_cells = {
                 Pyramid{{e, f, b, a, d}},
-                Tetra{{a, c, d, e}}};
+                Tetra{{a, d, c, e}}};
             result.top_faces = {
                 Triangle{{a, e, c}}, Triangle{{e, d, c}},
                 Triangle{{e, f, d}}, Triangle{{f, b, d}}};
@@ -125,7 +125,7 @@ namespace boundary_mesh
         else
         {
             result.volume_cells = {
-                Pyramid{{f, e, a, b, c}},
+                Pyramid{{f, b, a, e, c}},
                 Tetra{{b, d, c, f}}};
             result.top_faces = {
                 Triangle{{b, f, d}}, Triangle{{f, c, d}},
@@ -175,7 +175,7 @@ namespace boundary_mesh
         result.source_face_id = input.source_face_id;
         result.low_diagonal = input.low_diagonal;
         result.volume_cells = {
-            Pyramid{{a,b,f,e,d}}, Pyramid{{a,e,g,c,d}}};
+            Pyramid{{a,e,f,b,d}}, Pyramid{{a,c,g,e,d}}};
         result.top_faces = {
             Triangle{{b,f,d}}, Triangle{{e,f,d}},
             Triangle{{e,g,d}}, Triangle{{g,c,d}}};

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <boundary_mesh/io/legacy_vtk_writer.hpp>
+#include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
 namespace
 {
@@ -27,6 +28,27 @@ namespace
         std::vector<int> types(count);
         for (int &type : types) input >> type;
         return types;
+    }
+
+    std::vector<std::vector<boundary_mesh::VertexId>> cellConnectivity(
+        const std::string &text)
+    {
+        const std::size_t position = text.find("CELLS ");
+        if (position == std::string::npos) return {};
+        std::istringstream input(text.substr(position));
+        std::string label;
+        std::size_t count{};
+        std::size_t total{};
+        input >> label >> count >> total;
+        std::vector<std::vector<boundary_mesh::VertexId>> cells(count);
+        for (auto &cell : cells)
+        {
+            std::size_t size{};
+            input >> size;
+            cell.resize(size);
+            for (boundary_mesh::VertexId &id : cell) input >> id;
+        }
+        return cells;
     }
 }
 
@@ -76,9 +98,16 @@ int main()
     if (!volume_status.hasValue() || !surface_status.hasValue()) return 1;
     const std::string volume_text = fileText(volume_path);
     const std::string surface_text = fileText(surface_path);
+    const auto exported_cells = cellConnectivity(volume_text);
     if (volume_text.find("old content") != std::string::npos ||
         volume_text.find("ASCII") == std::string::npos ||
         volume_text.find("CELL_DATA 4\n") == std::string::npos ||
+        volume_text.find(
+            "CELLS 4 27\n"
+            "4 0 1 2 4\n"
+            "5 0 1 2 3 4\n"
+            "6 0 1 2 4 5 6\n"
+            "8 0 1 2 3 4 5 6 7\n") == std::string::npos ||
         volume_text.find(
             "SCALARS source_face_id unsigned_int 1\n"
             "LOOKUP_TABLE default\n11\n12\n13\n14\n") ==
@@ -94,10 +123,26 @@ int main()
         surface_text.find("CELL_DATA") != std::string::npos ||
         volume_text.find("POINT_DATA") != std::string::npos ||
         cellTypes(volume_text) != std::vector<int>({10, 14, 13, 12}) ||
-        cellTypes(surface_text) != std::vector<int>({5, 9}))
+        cellTypes(surface_text) != std::vector<int>({5, 9}) ||
+        exported_cells.size() != 4 ||
+        exported_cells[0] != std::vector<VertexId>({0, 1, 2, 4}) ||
+        exported_cells[1] != std::vector<VertexId>({0, 1, 2, 3, 4}))
     {
         return 2;
     }
+
+    TetraPoints exported_tetra{};
+    for (std::size_t i = 0; i < exported_tetra.size(); ++i)
+        exported_tetra[i] = volume.vertices[exported_cells[0][i]];
+    PyramidPoints exported_pyramid{};
+    for (std::size_t i = 0; i < exported_pyramid.size(); ++i)
+        exported_pyramid[i] = volume.vertices[exported_cells[1][i]];
+    const auto tetra_evaluation = evaluateTetra(exported_tetra);
+    const auto pyramid_evaluation = evaluatePyramid(exported_pyramid);
+    if (!tetra_evaluation.hasValue() || !pyramid_evaluation.hasValue() ||
+        tetra_evaluation.value().validity != VolumeCellValidity::Valid ||
+        pyramid_evaluation.value().validity != VolumeCellValidity::Valid)
+        return 8;
 
     const std::size_t points_position = volume_text.find("POINTS 8 double");
     if (points_position == std::string::npos) return 3;

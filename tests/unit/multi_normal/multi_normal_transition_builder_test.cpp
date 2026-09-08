@@ -3,6 +3,7 @@
 
 #include <boundary_mesh/multi_normal/multi_normal_transition_builder.hpp>
 #include <boundary_mesh/multi_normal/multi_normal_transition_generator.hpp>
+#include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
 namespace
 {
@@ -19,6 +20,23 @@ namespace
         value.multi_normal_branch = true;
         value.direction = direction;
         return value;
+    }
+
+    bool allPositive(const VolumeMesh &mesh)
+    {
+        for (const VolumeCell &cell : mesh.cells)
+        {
+            const auto *tetra = std::get_if<Tetra>(&cell);
+            if (tetra == nullptr) continue;
+            TetraPoints points{};
+            for (std::size_t i = 0; i < 4; ++i)
+                points[i] = mesh.vertices[tetra->vertex_ids[i]];
+            const auto result = evaluateTetra(points);
+            if (!result.hasValue() ||
+                result.value().validity != VolumeCellValidity::Valid)
+                return false;
+        }
+        return true;
     }
 }
 
@@ -46,6 +64,21 @@ int main()
     {
         return 1;
     }
+    if (!allPositive(same_result.value().transition_cells)) return 9;
+    if (std::get<Tetra>(same_result.value().transition_cells.cells[0])
+            .vertex_ids != std::array<VertexId, 4>{0, 1, 2, 3})
+        return 14;
+
+    MultiNormalTopology reversed_same_source = same_source;
+    reversed_same_source.front.faces = {
+        Triangle{{VertexId{0}, VertexId{2}, VertexId{1}}}};
+    const auto reversed_same_result = buildMultiNormalTransition(
+        reversed_same_source, options);
+    if (!reversed_same_result.hasValue() ||
+        reversed_same_result.value().transition_cells.cells.size() != 1 ||
+        std::get<Tetra>(reversed_same_result.value().transition_cells.cells[0])
+                .vertex_ids != std::array<VertexId, 4>{0, 1, 3, 2})
+        return 10;
 
     MultiNormalOptions per_vertex_options = options;
     per_vertex_options.resolved_transition_lengths = {
@@ -90,6 +123,10 @@ int main()
     {
         return 3;
     }
+    if (!allPositive(two_result.value().transition_cells)) return 11;
+    if (std::get<Tetra>(two_result.value().transition_cells.cells[0])
+            .vertex_ids != std::array<VertexId, 4>{0, 2, 3, 4})
+        return 15;
 
     MultiNormalTopology repeated_after_lower_id;
     repeated_after_lower_id.front.vertices = {
@@ -106,6 +143,12 @@ int main()
     {
         return 4;
     }
+    if (!allPositive(repeated_result.value().transition_cells)) return 12;
+    if (std::get<Tetra>(repeated_result.value().transition_cells.cells[0])
+            .vertex_ids != std::array<VertexId, 4>{0, 3, 4, 2} ||
+        std::get<Tetra>(repeated_result.value().transition_cells.cells[1])
+            .vertex_ids != std::array<VertexId, 4>{1, 3, 4, 0})
+        return 16;
 
     MultiNormalTopology all_distinct;
     all_distinct.front.vertices = {
@@ -122,6 +165,10 @@ int main()
     {
         return 5;
     }
+    if (!allPositive(distinct_result.value().transition_cells)) return 13;
+    if (std::get<Tetra>(distinct_result.value().transition_cells.cells[0])
+            .vertex_ids != std::array<VertexId, 4>{0, 3, 4, 5})
+        return 17;
 
     MultiNormalTopology quad;
     quad.front.vertices = {

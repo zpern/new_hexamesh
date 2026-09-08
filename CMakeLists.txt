@@ -75,6 +75,7 @@ add_library(
     boundary_mesh_quality
     STATIC
         src/quality/volume_cell_evaluator_common.cpp
+        src/quality/tetra_pyramid_evaluator.cpp
         src/quality/prism_evaluator.cpp
         src/quality/hexa_evaluator.cpp
 )

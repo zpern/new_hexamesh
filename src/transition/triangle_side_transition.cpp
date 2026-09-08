@@ -18,8 +18,8 @@ namespace boundary_mesh
         TransitionTemplateOutput result;
         result.source_face_id = input.source_face_id;
         result.volume_cells.push_back(Pyramid{{
-            input.low[first], input.low[second],
-            input.high[second], input.high[first], input.low[apex]}});
+            input.low[first], input.high[first],
+            input.high[second], input.low[second], input.low[apex]}});
         result.metadata.push_back({
             CellRole::LayerTransition,
             input.source_face_id,

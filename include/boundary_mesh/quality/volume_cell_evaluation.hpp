@@ -7,6 +7,8 @@
 
 namespace boundary_mesh
 {
+    using TetraPoints = std::array<Point3, 4>; // 按 TetraVertexOrder 排列
+    using PyramidPoints = std::array<Point3, 5>; // 按 PyramidVertexOrder 排列
     using PrismPoints = std::array<Point3, 6>; // Prism 候选单元按公共顶点顺序排列的六个坐标
     using HexaPoints = std::array<Point3, 8>;  // Hexa 候选单元按公共顶点顺序排列的八个坐标
 
