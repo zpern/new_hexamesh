@@ -55,6 +55,9 @@ int main()
     expect_argument_error({"--input", "a.cgns", "--first-height", "0.1",
                            "--growth-ratio", "1", "--layer-count", "1",
                            "--isotropic-height", "inf"});
+    expect_argument_error({"--input", "a.cgns", "--first-height", "0.1",
+                           "--growth-ratio", "1", "--layer-count", "1",
+                           "--debuglog", "maybe"});
 
     const auto directory =
         std::filesystem::temp_directory_path() /
@@ -84,36 +87,39 @@ int main()
 
     assert(code == 0);
     assert(error.str().empty());
-    assert(output.str().find("maximum_skewness=0.95") !=
+    assert(output.str().find("Generating multi-normal boundary layer") !=
            std::string::npos);
-    assert(output.str().find("max_layer_diff=1") !=
-           std::string::npos);
-    if (output.str().find("isotropic_height=1") ==
-        std::string::npos)
-    {
-        return 20;
-    }
-    assert(output.str().find("stop_none=") != std::string::npos);
-    assert(output.str().find("transition_cells=") != std::string::npos);
-    assert(output.str().find("regular_cells=") != std::string::npos);
-    assert(output.str().find("stop_vertex_layer_limit=") !=
-           std::string::npos);
-    assert(output.str().find("stop_degenerate_candidate=") !=
-           std::string::npos);
-    assert(output.str().find("stop_reversed_candidate=") !=
-           std::string::npos);
-    assert(output.str().find("stop_locally_inverted_candidate=") !=
-           std::string::npos);
-    assert(output.str().find("stop_skewness_exceeded=") !=
-           std::string::npos);
-    assert(output.str().find("stop_collision=") != std::string::npos);
-    assert(output.str().find("stop_neighbor_layer_constraint=") !=
-           std::string::npos);
-    if (output.str().find("stop_isotropic_height=") ==
-        std::string::npos)
-    {
-        return 21;
-    }
+    assert(output.str().find("wall_regions=1") != std::string::npos);
+    assert(output.str().find("far_regions=2") != std::string::npos);
+    assert(output.str().find("wall_faces=1") != std::string::npos);
+    assert(output.str().find("symmetry_regions=") == std::string::npos);
+    assert(output.str().find("internal_regions=") == std::string::npos);
+    assert(output.str().find("input_vertices=") == std::string::npos);
+    assert(output.str().find("volume_cells=") == std::string::npos);
+    assert(output.str().find("stop_none=") == std::string::npos);
+    assert(!std::filesystem::exists(
+        std::filesystem::path(prefix.string() + "_debug.txt")));
+
+    const auto debug_prefix = directory / "output" / "cube-debug";
+    const std::vector<std::string> debug_arguments{
+        "--input", input.string(),
+        "--first-height", "0.1",
+        "--growth-ratio", "1.0",
+        "--layer-count", "1",
+        "--debuglog", "true",
+        "--output-prefix", debug_prefix.string()};
+    std::ostringstream debug_output;
+    std::ostringstream debug_error;
+    assert(boundary_mesh::runBoundaryMeshCommand(
+               debug_arguments, debug_output, debug_error) == 0);
+    assert(debug_error.str().empty());
+    const auto debug_path = std::filesystem::path(
+        debug_prefix.string() + "_debug.txt");
+    assert(std::filesystem::exists(debug_path));
+    const std::string debug_text = fileText(debug_path);
+    assert(debug_text.rfind("0 ", 0) == 0);
+    assert(debug_text.find(" accepted_layers=") != std::string::npos);
+    assert(debug_text.find(" stop_layer=") != std::string::npos);
 
     const auto isotropic_prefix = directory / "output" / "cube-isotropic";
     const std::vector<std::string> isotropic_arguments{
@@ -130,7 +136,7 @@ int main()
             isotropic_output,
             isotropic_error) != 0 ||
         !isotropic_error.str().empty() ||
-        isotropic_output.str().find("isotropic_height=0.75") ==
+        isotropic_output.str().find("wall_faces=1") ==
             std::string::npos)
     {
         return 22;

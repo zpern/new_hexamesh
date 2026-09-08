@@ -160,6 +160,7 @@ boundary_mesh_cli --input FILE --first-height VALUE
   [--max-neighbor-layer-difference COUNT]
   [--isotropic-height VALUE]
   [--multi-normal true|false]
+  [--debuglog true|false]
   [--output-prefix PATH]
 ```
 
@@ -173,6 +174,7 @@ boundary_mesh_cli --input FILE --first-height VALUE
 | `--max-neighbor-layer-difference` | 默认 1，uint32 |
 | `--isotropic-height` | 默认 1，必须 > 0 |
 | `--multi-normal` | 默认 false，仅 true/false/1/0 |
+| `--debuglog` | 默认 false；启用后写出 `<输出前缀>_debug.txt`，记录每个 Wall 源面的停止原因 |
 | `--output-prefix` | 默认 `<输入目录>/<输入主名>` |
 
 参数必须严格按“名字 值”成对出现；重复、未知或缺值返回退出码 2。

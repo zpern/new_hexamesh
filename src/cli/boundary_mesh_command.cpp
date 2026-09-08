@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <locale>
 #include <sstream>
 #include <string>
@@ -161,6 +162,14 @@ namespace boundary_mesh
                         return ParseStatus::Failure;
                     }
                 }
+                else if (name == "--debuglog")
+                {
+                    if (!parseBoolean(value, options.debug_log_enabled))
+                    {
+                        message = "invalid debuglog flag";
+                        return ParseStatus::Failure;
+                    }
+                }
                 else if (name == "--output-prefix")
                 {
                     options.output_prefix = value;
@@ -201,35 +210,89 @@ namespace boundary_mesh
                 << "[--max-neighbor-layer-difference COUNT] "
                 << "[--isotropic-height VALUE] "
                 << "[--multi-normal true|false] "
+                << "[--debuglog true|false] "
                 << "[--output-prefix PATH]\n";
         }
 
-        std::array<std::size_t, 10> stopReasonCounts(
-            const RegularLayerGrowthResult &growth)
+        std::vector<std::uint32_t> regionIds(
+            const SurfaceMesh &mesh,
+            SurfaceBoundaryKind kind)
         {
-            std::array<std::size_t, 10> counts{};
-            for (const FaceGrowthRecord &face : growth.faces)
+            std::vector<std::uint32_t> ids;
+            for (std::size_t index = 0; index < mesh.faces.size(); ++index)
             {
-                ++counts[static_cast<std::size_t>(face.stop_reason)];
+                if (index < mesh.face_tags.size() &&
+                    mesh.face_tags[index].kind == kind)
+                    ids.push_back(mesh.face_tags[index].region_id);
             }
-            return counts;
+            std::sort(ids.begin(), ids.end());
+            ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+            return ids;
         }
 
-        void printStopReasonCounts(
+        void printRegionLine(
             std::ostream &output,
+            const char *name,
+            const std::vector<std::uint32_t> &ids)
+        {
+            if (ids.empty()) return;
+            output << name << '=';
+            for (std::size_t i = 0; i < ids.size(); ++i)
+                output << (i == 0 ? "" : ",") << ids[i];
+            output << '\n';
+        }
+
+        void printInputBoundaries(std::ostream &output, const SurfaceMesh &mesh)
+        {
+            printRegionLine(output, "symmetry_regions",
+                            regionIds(mesh, SurfaceBoundaryKind::Symmetry));
+            printRegionLine(output, "internal_regions",
+                            regionIds(mesh, SurfaceBoundaryKind::Internal));
+            printRegionLine(output, "wall_regions",
+                            regionIds(mesh, SurfaceBoundaryKind::Wall));
+            printRegionLine(output, "far_regions",
+                            regionIds(mesh, SurfaceBoundaryKind::Farfield));
+            const auto wall_count = std::count_if(
+                mesh.face_tags.begin(), mesh.face_tags.end(),
+                [](const SurfaceBoundaryTag &tag)
+                { return tag.kind == SurfaceBoundaryKind::Wall; });
+            output << "wall_faces=" << wall_count << '\n';
+        }
+
+        const char *stopReasonName(FaceStopReason reason)
+        {
+            switch (reason)
+            {
+            case FaceStopReason::None: return "None";
+            case FaceStopReason::VertexLayerLimit: return "VertexLayerLimit";
+            case FaceStopReason::DegenerateCandidate: return "DegenerateCandidate";
+            case FaceStopReason::ReversedCandidate: return "ReversedCandidate";
+            case FaceStopReason::LocallyInvertedCandidate: return "LocallyInvertedCandidate";
+            case FaceStopReason::SkewnessExceeded: return "SkewnessExceeded";
+            case FaceStopReason::Collision: return "Collision";
+            case FaceStopReason::SlidingProjectionFailure: return "SlidingProjectionFailure";
+            case FaceStopReason::NeighborLayerConstraint: return "NeighborLayerConstraint";
+            case FaceStopReason::IsotropicHeightReached: return "IsotropicHeightReached";
+            }
+            return "None";
+        }
+
+        bool writeDebugLog(
+            const std::filesystem::path &path,
             const RegularLayerGrowthResult &growth)
         {
-            const auto counts = stopReasonCounts(growth);
-            output << "stop_none=" << counts[0] << '\n'
-                   << "stop_vertex_layer_limit=" << counts[1] << '\n'
-                   << "stop_degenerate_candidate=" << counts[2] << '\n'
-                   << "stop_reversed_candidate=" << counts[3] << '\n'
-                   << "stop_locally_inverted_candidate=" << counts[4] << '\n'
-                   << "stop_skewness_exceeded=" << counts[5] << '\n'
-                   << "stop_collision=" << counts[6] << '\n'
-                   << "stop_sliding_projection=" << counts[7] << '\n'
-                   << "stop_neighbor_layer_constraint=" << counts[8] << '\n'
-                   << "stop_isotropic_height=" << counts[9] << '\n';
+            std::vector<FaceGrowthRecord> faces = growth.faces;
+            std::sort(faces.begin(), faces.end(),
+                      [](const FaceGrowthRecord &a, const FaceGrowthRecord &b)
+                      { return a.source_face_id < b.source_face_id; });
+            std::ofstream debug(path);
+            if (!debug) return false;
+            for (const FaceGrowthRecord &face : faces)
+                debug << face.source_face_id << ' '
+                      << stopReasonName(face.stop_reason)
+                      << " accepted_layers=" << face.accepted_layer_count
+                      << " stop_layer=" << face.stop_layer << '\n';
+            return static_cast<bool>(debug);
         }
     }
 
@@ -256,6 +319,7 @@ namespace boundary_mesh
             error << "failed to read CGNS surface\n";
             return 3;
         }
+        printInputBoundaries(output, surface.value());
 
         const auto topology = SurfaceTopologyBuilder{}.build(surface.value());
         if (!topology.hasValue())
@@ -302,6 +366,8 @@ namespace boundary_mesh
         MultiNormalOptions multi_normal_options;
         multi_normal_options.enabled = command_options.multi_normal_enabled;
         multi_normal_options.transition_height = command_options.first_height;
+        if (command_options.multi_normal_enabled)
+            output << "Generating multi-normal boundary layer\n";
 
         const auto growth = generateBoundaryLayers(
             surface.value(),
@@ -379,47 +445,16 @@ namespace boundary_mesh
             return 7;
         }
 
-        output << "input_vertices=" << surface.value().vertices.size()
-               << '\n'
-               << "input_faces=" << surface.value().faces.size()
-               << '\n'
-               << "volume_cells=" << growth.value().mesh.cells.size()
-               << '\n'
-               << "transition_cells="
-               << growth.value().transition.transition_cells.cells.size()
-               << '\n'
-               << "layer_transition_cells="
-               << std::count_if(
-                      growth.value().mesh.metadata.begin(),
-                      growth.value().mesh.metadata.end(),
-                      [](const CellMetadata &metadata)
-                      {
-                          return metadata.role ==
-                              CellRole::LayerTransition;
-                      })
-               << '\n'
-               << "regular_cells="
-               << std::count_if(
-                      growth.value().mesh.metadata.begin(),
-                      growth.value().mesh.metadata.end(),
-                      [](const CellMetadata &metadata)
-                      {
-                          return metadata.role == CellRole::RegularLayer;
-                      })
-               << '\n'
-               << "farfield_faces="
-               << growth.value().farfield_boundary.faces.size()
-               << '\n'
-               << "maximum_skewness="
-               << command_options.maximum_skewness
-               << '\n'
-               << "max_layer_diff="
-               << command_options.max_layer_diff
-               << '\n'
-               << "isotropic_height="
-               << command_options.isotropic_height
-               << '\n';
-        printStopReasonCounts(output, growth.value().regular);
+        if (command_options.debug_log_enabled)
+        {
+            const auto debug_path = std::filesystem::path(
+                command_options.output_prefix.string() + "_debug.txt");
+            if (!writeDebugLog(debug_path, growth.value().regular))
+            {
+                error << "failed to write debug log\n";
+                return 7;
+            }
+        }
         return 0;
     }
 }
