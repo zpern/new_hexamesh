@@ -7,6 +7,7 @@
 
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
+#include <boundary_mesh/spatial/sliding_intersection_index.hpp>
 #include <boundary_mesh/transition/layer_quad_diagonal_table.hpp>
 
 namespace boundary_mesh
@@ -31,6 +32,10 @@ namespace boundary_mesh
         std::array<Point3, 3> points{};
         std::array<CollisionVertexKey, 3> vertex_keys{};
         LayerBoundaryOwner owner;
+        std::array<std::vector<std::uint32_t>, 3>
+            vertex_sliding_region_ids;
+        std::uint8_t physical_edge_mask{};
+        std::vector<std::uint32_t> complete_face_exemption_regions;
     };
 
     struct LayerDiagonalRequirement
@@ -45,6 +50,7 @@ namespace boundary_mesh
         std::vector<LayerDiagonalRequirement> diagonal_requirements;
         const CollisionIndex *original_surface{};
         const ExposedBoundaryTracker *historical_boundary{};
+        const SlidingIntersectionIndex *sliding_surface{};
     };
 
     using TransitionBoundaryError = std::variant<

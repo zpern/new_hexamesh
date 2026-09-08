@@ -2,6 +2,7 @@
 #include <vector>
 
 #include <boundary_mesh/transition/transition_boundary_checker.hpp>
+#include <boundary_mesh/spatial/sliding_intersection_index.hpp>
 
 using namespace boundary_mesh;
 
@@ -39,6 +40,15 @@ namespace
 
 int main()
 {
+    OwnedBoundaryTriangle permission_metadata;
+    permission_metadata.vertex_sliding_region_ids = {{{7}, {7}, {7}}};
+    permission_metadata.physical_edge_mask = 0b101;
+    permission_metadata.complete_face_exemption_regions = {7};
+    if (permission_metadata.physical_edge_mask != 0b101 ||
+        permission_metadata.complete_face_exemption_regions !=
+            std::vector<std::uint32_t>{7})
+        return 20;
+
     const std::array<Point3, 3> flat{{
         {0,0,0}, {1,0,0}, {0,1,0}}};
     const std::array<CollisionVertexKey, 3> candidate_keys{{
@@ -161,4 +171,29 @@ int main()
     assert(!conflicting.hasValue());
     assert(std::holds_alternative<ConflictingLayerQuadDiagonal>(
         conflicting.error()));
+
+    SurfaceMesh sliding_mesh;
+    sliding_mesh.vertices = {{0,0,0},{1,0,0},{0,1,0}};
+    sliding_mesh.faces = {Triangle{{0,1,2}}};
+    sliding_mesh.face_tags = {{SurfaceBoundaryKind::Symmetry, 90}};
+    const auto sliding = SlidingIntersectionIndex::build(sliding_mesh);
+    if (!sliding.hasValue()) return 21;
+    TransitionBoundaryInput sliding_crossing;
+    sliding_crossing.candidate_triangles.push_back(triangle(
+        {{{0.2,0.2,-0.1},{0.7,0.2,0.1},{0.2,0.7,0.1}}},
+        candidate_keys, 70, {70}));
+    sliding_crossing.sliding_surface = &sliding.value();
+    const auto sliding_rollback = checker.findRollbackFaces(sliding_crossing);
+    if (!sliding_rollback.hasValue() ||
+        sliding_rollback.value() != std::vector<SurfaceFaceId>{70})
+        return 22;
+
+    sliding_mesh.face_tags.front().kind = SurfaceBoundaryKind::Internal;
+    const auto internal = SlidingIntersectionIndex::build(sliding_mesh);
+    if (!internal.hasValue()) return 23;
+    sliding_crossing.sliding_surface = &internal.value();
+    const auto internal_rollback = checker.findRollbackFaces(sliding_crossing);
+    if (!internal_rollback.hasValue() ||
+        internal_rollback.value() != std::vector<SurfaceFaceId>{70})
+        return 24;
 }

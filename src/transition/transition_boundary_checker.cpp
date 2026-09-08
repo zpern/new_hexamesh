@@ -221,6 +221,19 @@ namespace boundary_mesh
                         break;
                     }
                 }
+            if (input.sliding_surface != nullptr)
+            {
+                const auto permissions = buildSlidingContactPermissions(
+                    owned[index].vertex_sliding_region_ids,
+                    owned[index].physical_edge_mask,
+                    owned[index].complete_face_exemption_regions);
+                const auto sliding_hit = input.sliding_surface->query(
+                    owned[index].points, permissions);
+                if (!sliding_hit.hasValue())
+                    return RollbackResult::failure(
+                        TransitionBoundaryError{sliding_hit.error()});
+                hit = hit || sliding_hit.value().intersected;
+            }
             if (hit) appendOwner(rollback, owned[index].owner);
         }
 

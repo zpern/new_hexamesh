@@ -76,7 +76,10 @@ namespace boundary_mesh
             const Triangle &triangle,
             const std::vector<Point3> &points,
             const std::vector<CollisionVertexKey> &keys,
-            const LayerBoundaryOwner &owner)
+            const LayerBoundaryOwner &owner,
+            const std::vector<std::vector<std::uint32_t>> &regions = {},
+            std::uint8_t physical_edge_mask = 0,
+            const std::vector<std::uint32_t> &complete_regions = {})
         {
             OwnedBoundaryTriangle output;
             output.owner = owner;
@@ -85,7 +88,11 @@ namespace boundary_mesh
                 const std::size_t id = triangle.vertex_ids[local];
                 output.points[local] = points[id];
                 output.vertex_keys[local] = keys[id];
+                if (id < regions.size())
+                    output.vertex_sliding_region_ids[local] = regions[id];
             }
+            output.physical_edge_mask = physical_edge_mask;
+            output.complete_face_exemption_regions = complete_regions;
             boundary.candidate_triangles.push_back(std::move(output));
         }
 
@@ -99,18 +106,22 @@ namespace boundary_mesh
             const auto ids = faceIds(face);
             std::vector<Point3> points;
             std::vector<CollisionVertexKey> keys;
+            std::vector<std::vector<std::uint32_t>> regions;
             points.reserve(ids.size());
             keys.reserve(ids.size());
+            regions.reserve(ids.size());
             for (const VertexId local : ids)
             {
                 const auto &vertex = front.vertices[local];
                 points.push_back(vertex.position);
                 keys.push_back({vertex.source_vertex_id,
                                 front.layer, vertex.branch_id});
+                regions.push_back(vertex.boundary.sliding_region_ids);
             }
             if (ids.size() == 3)
                 appendOwnedTriangle(
-                    boundary, Triangle{{0,1,2}}, points, keys, owner);
+                    boundary, Triangle{{0,1,2}}, points, keys, owner,
+                    regions, 0b111);
             else if (owner.role == BoundaryOwnerRole::RegularCandidate)
             {
                 // A retained high face is only a collision proxy for an
@@ -118,9 +129,11 @@ namespace boundary_mesh
                 // checker; canonical/quality diagonals are resolved only
                 // after the face becomes a transition low face or final cap.
                 appendOwnedTriangle(
-                    boundary, Triangle{{0,1,2}}, points, keys, owner);
+                    boundary, Triangle{{0,1,2}}, points, keys, owner,
+                    regions, 0b011);
                 appendOwnedTriangle(
-                    boundary, Triangle{{0,2,3}}, points, keys, owner);
+                    boundary, Triangle{{0,2,3}}, points, keys, owner,
+                    regions, 0b110);
             }
             else
             {
@@ -129,7 +142,7 @@ namespace boundary_mesh
                 if (!diagonal.hasValue()) return;
                 for (const Triangle &triangle : diagonal.value().triangles)
                     appendOwnedTriangle(
-                        boundary, triangle, points, keys, owner);
+                        boundary, triangle, points, keys, owner, regions);
             }
         }
     }
