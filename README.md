@@ -294,7 +294,7 @@ main -> runBoundaryMeshCommand
 
 ### `RegularLayerStepper`
 
-执行一层预推出：构造候选点和 Prism/Hexa，做滑移约束、质量、固定障碍碰撞和同层自碰撞，生成仅含合格面的紧凑 `next_front`，返回新旧局部映射和停止事件。Symmetry/Internal 不进入普通 `CollisionIndex`，而由独立静态索引按 region 检查非法穿越，并放行授权的顶点、真实物理边和完整侧面接触；投影失败只停止受影响的局部面。该相交检测目前仅接入常规逐层生成，多法向过渡仍沿用原路径。
+执行一层预推出：构造候选点和 Prism/Hexa，做滑移约束、质量、固定障碍碰撞和同层自碰撞，生成仅含合格面的紧凑 `next_front`，返回新旧局部映射和停止事件。Symmetry/Internal 不进入普通 `CollisionIndex`，而由独立静态索引按 region 检查非法穿越，并放行授权的顶点、真实物理边和完整侧面接触；投影失败只停止受影响的局部面。多法向预处理及多法向过渡生成阶段不执行该相交检测；进入逐层生长后，常规单元和层差过渡区的联合碰撞检测都使用静态滑移索引。
 
 ### `RegularLayerGenerator` / `generateRegularLayers()`
 

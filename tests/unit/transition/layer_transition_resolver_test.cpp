@@ -71,6 +71,9 @@ namespace
 
 int main()
 {
+    LayerTransitionInput sliding_context;
+    sliding_context.sliding_surface = nullptr;
+
     LayerTransitionResolver resolver;
     auto input = collisionInput({32,30,31});
     const auto result = resolver.resolve(input);

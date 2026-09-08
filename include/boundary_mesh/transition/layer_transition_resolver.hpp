@@ -52,6 +52,7 @@ namespace boundary_mesh
         Scalar length_tolerance{1e-12};
         std::optional<CollisionIndex> original_surface;
         const ExposedBoundaryTracker *historical_boundary{};
+        const SlidingIntersectionIndex *sliding_surface{};
         std::function<ProvisionalLayerTransitionResult(
             const std::vector<SurfaceFaceId> &,
             const LayerFaceSets &)> build_provisional;

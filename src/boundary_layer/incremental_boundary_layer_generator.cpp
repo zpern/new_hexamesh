@@ -31,12 +31,20 @@ namespace boundary_mesh
     {
         using GrowthResult = Result<
             RegularLayerGrowthResult, IncrementalLayerGrowthError>;
+        const auto sliding_surface =
+            SlidingIntersectionIndex::build(surface_mesh);
+        if (!sliding_surface.hasValue())
+            return GrowthResult::failure(IncrementalLayerGrowthError{
+                RegularLayerGrowthError{
+                    CollisionInitializationFailure{
+                        sliding_surface.error()}}});
         RegularLayerGrowthOptions coordinated_options = options;
         std::optional<IncrementalLayerGrowthError> incremental_error;
         AcceptedStoppedFrontCarry previously_accepted;
         const auto upstream_rejections = options.candidate_rejections;
         coordinated_options.candidate_rejections =
-            [upstream_rejections, &incremental_error, &previously_accepted](
+            [upstream_rejections, &incremental_error, &previously_accepted,
+             &sliding_surface](
                 const GrowthFront &current,
                 const LayerStepResult &candidate,
                 const std::vector<VertexId> &current_global_ids,
@@ -104,6 +112,7 @@ namespace boundary_mesh
             input.completed_layer = current.layer;
             input.original_surface = original_surface;
             input.historical_boundary = &historical_boundary;
+            input.sliding_surface = &sliding_surface.value();
             input.build_provisional =
                 [&effective_current, &candidate](
                     const std::vector<SurfaceFaceId> &retained,

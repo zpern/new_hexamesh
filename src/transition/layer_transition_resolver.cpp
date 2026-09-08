@@ -73,6 +73,8 @@ namespace boundary_mesh
                     : nullptr;
             provisional.value().boundary.historical_boundary =
                 input.historical_boundary;
+            provisional.value().boundary.sliding_surface =
+                input.sliding_surface;
 
             const auto rollback = checker.findRollbackFaces(
                 provisional.value().boundary);
