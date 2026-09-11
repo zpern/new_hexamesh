@@ -33,6 +33,7 @@ namespace boundary_mesh
         Scalar maximum_subtet_signed_volume{};                       // 最大固定子四面体有向体积
         std::size_t worst_subtet_index{};                            // 最小子体积对应的最早固定下标
         Scalar skewness{};                                           // 所有组成面中的最大等角偏斜度
+        Scalar minimum_local_jacobian{};                             // 采样点中的最小有向 Jacobian
         bool acceptable{};                                           // 有效且偏斜度不大于阈值时为真
     };
 }

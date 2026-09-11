@@ -9,5 +9,9 @@ namespace boundary_mesh
         const GrowthFront &current,
         const GrowthFront &candidate,
         const std::vector<SurfaceFaceId> &retained,
-        const LayerFaceSets &face_sets);
+        const LayerFaceSets &face_sets,
+        const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
+            terminal_hexa_points = {},
+        const ExternalPatchControls &external_controls = {},
+        const std::vector<SurfaceFaceId> &terminal_candidate_faces = {});
 }

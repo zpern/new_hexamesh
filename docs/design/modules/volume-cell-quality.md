@@ -171,6 +171,14 @@ struct VolumeCellEvaluation
 
 相同最小子体积出现多次时，保留固定分解顺序中最早的下标。
 
+`signed_volume` 保存标准参考单元上的有向 Jacobian 积分体积；
+`minimum_subtet_signed_volume` 和 `maximum_subtet_signed_volume` 仍保存固定
+子四面体分解的诊断值。Tet、Pyramid、Prism、Hexa 的硬准入同时要求 Jacobian
+积分体积严格为正，并要求固定分解的每个子 Tet 严格为正。两者任一非正都不能
+通过，且禁止通过重排节点或绝对值掩盖。对于翘曲 Pyramid，Jacobian 积分可能
+与某一条固定对角线的子 Tet 求和不同；该差异正是用来识别固定分解没有暴露的
+整体反转。
+
 ## 9. 公开接口
 
 ```cpp

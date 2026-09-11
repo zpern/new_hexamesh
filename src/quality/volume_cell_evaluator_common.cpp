@@ -6,6 +6,23 @@
 
 namespace boundary_mesh::quality_internal
 {
+    namespace
+    {
+        Scalar determinant(
+            const Vector3 &dr,
+            const Vector3 &ds,
+            const Vector3 &dt) noexcept
+        {
+            return dr.dot(ds.cross(dt));
+        }
+
+        constexpr Scalar gauss_offset =
+            Scalar{0.5} / Scalar{1.7320508075688772935274463415059};
+        constexpr std::array<Scalar,2> gauss_points{{
+            Scalar{0.5} - gauss_offset,
+            Scalar{0.5} + gauss_offset}};
+    }
+
     bool SubtetVolumeAccumulator::add(
         const Point3 &a,
         const Point3 &b,
@@ -102,6 +119,206 @@ namespace boundary_mesh::quality_internal
         }
 
         return VolumeCellValidity::Valid;
+    }
+
+    VolumeCellValidity combinedValidity(
+        VolumeCellValidity subtet_validity,
+        Scalar integrated_volume) noexcept
+    {
+        if (subtet_validity != VolumeCellValidity::Valid)
+            return subtet_validity;
+        if (integrated_volume > Scalar{0})
+            return VolumeCellValidity::Valid;
+        if (integrated_volume < Scalar{0})
+            return VolumeCellValidity::LocallyInverted;
+        return VolumeCellValidity::Degenerate;
+    }
+
+    std::optional<Scalar> integratedJacobianVolume(
+        const PyramidPoints &p) noexcept
+    {
+        Scalar volume{};
+        for (const Scalar r : gauss_points)
+            for (const Scalar s : gauss_points)
+                for (const Scalar t : gauss_points)
+                {
+                    const Vector3 dr = (Scalar{1}-t) * (
+                        (Scalar{1}-s)*(p[1]-p[0]) +
+                        s*(p[2]-p[3]));
+                    const Vector3 ds = (Scalar{1}-t) * (
+                        (Scalar{1}-r)*(p[3]-p[0]) +
+                        r*(p[2]-p[1]));
+                    const Point3 base =
+                        (Scalar{1}-r)*(Scalar{1}-s)*p[0] +
+                        r*(Scalar{1}-s)*p[1] + r*s*p[2] +
+                        (Scalar{1}-r)*s*p[3];
+                    volume += determinant(dr,ds,p[4]-base) /
+                        Scalar{8};
+                }
+        return std::isfinite(volume)
+            ? std::optional<Scalar>{volume} : std::nullopt;
+    }
+
+    std::optional<Scalar> integratedJacobianVolume(
+        const PrismPoints &p) noexcept
+    {
+        constexpr std::array<std::array<Scalar,2>,3> triangle_points{{
+            {{Scalar{1}/Scalar{6},Scalar{1}/Scalar{6}}},
+            {{Scalar{2}/Scalar{3},Scalar{1}/Scalar{6}}},
+            {{Scalar{1}/Scalar{6},Scalar{2}/Scalar{3}}}}};
+        Scalar volume{};
+        for (const auto &rs : triangle_points)
+            for (const Scalar t : gauss_points)
+            {
+                const Scalar r = rs[0];
+                const Scalar s = rs[1];
+                const Vector3 dr = (Scalar{1}-t)*(p[1]-p[0]) +
+                    t*(p[4]-p[3]);
+                const Vector3 ds = (Scalar{1}-t)*(p[2]-p[0]) +
+                    t*(p[5]-p[3]);
+                const Point3 bottom = (Scalar{1}-r-s)*p[0] +
+                    r*p[1] + s*p[2];
+                const Point3 top = (Scalar{1}-r-s)*p[3] +
+                    r*p[4] + s*p[5];
+                volume += determinant(dr,ds,top-bottom) /
+                    Scalar{12};
+            }
+        return std::isfinite(volume)
+            ? std::optional<Scalar>{volume} : std::nullopt;
+    }
+
+    std::optional<Scalar> integratedJacobianVolume(
+        const HexaPoints &p) noexcept
+    {
+        Scalar volume{};
+        for (const Scalar r : gauss_points)
+            for (const Scalar s : gauss_points)
+                for (const Scalar t : gauss_points)
+                {
+                    const Vector3 dr =
+                        (Scalar{1}-s)*(Scalar{1}-t)*(p[1]-p[0]) +
+                        s*(Scalar{1}-t)*(p[2]-p[3]) +
+                        (Scalar{1}-s)*t*(p[5]-p[4]) +
+                        s*t*(p[6]-p[7]);
+                    const Vector3 ds =
+                        (Scalar{1}-r)*(Scalar{1}-t)*(p[3]-p[0]) +
+                        r*(Scalar{1}-t)*(p[2]-p[1]) +
+                        (Scalar{1}-r)*t*(p[7]-p[4]) +
+                        r*t*(p[6]-p[5]);
+                    const Vector3 dt =
+                        (Scalar{1}-r)*(Scalar{1}-s)*(p[4]-p[0]) +
+                        r*(Scalar{1}-s)*(p[5]-p[1]) +
+                        r*s*(p[6]-p[2]) +
+                        (Scalar{1}-r)*s*(p[7]-p[3]);
+                    volume += determinant(dr,ds,dt) / Scalar{8};
+                }
+        return std::isfinite(volume)
+            ? std::optional<Scalar>{volume} : std::nullopt;
+    }
+
+    namespace
+    {
+        std::optional<Scalar> determinantValue(
+            const Vector3 &dr,
+            const Vector3 &ds,
+            const Vector3 &dt) noexcept
+        {
+            const Scalar value = determinant(dr, ds, dt);
+            return std::isfinite(value) ? std::optional<Scalar>{value}
+                                        : std::nullopt;
+        }
+    }
+
+    std::optional<Scalar> minimumLocalJacobian(
+        const TetraPoints &p) noexcept
+    {
+        return determinantValue(
+            p[1] - p[0], p[2] - p[0], p[3] - p[0]);
+    }
+
+    std::optional<Scalar> minimumLocalJacobian(
+        const PyramidPoints &p) noexcept
+    {
+        Scalar minimum = std::numeric_limits<Scalar>::infinity();
+        for (const Scalar r : {Scalar{0}, Scalar{1}, Scalar{0.5}})
+            for (const Scalar s : {Scalar{0}, Scalar{1}, Scalar{0.5}})
+                for (const Scalar t : {Scalar{0}, Scalar{0.5}})
+                {
+                    const Vector3 dr = (Scalar{1} - t) *
+                        ((Scalar{1} - s) * (p[1] - p[0]) +
+                         s * (p[2] - p[3]));
+                    const Vector3 ds = (Scalar{1} - t) *
+                        ((Scalar{1} - r) * (p[3] - p[0]) +
+                         r * (p[2] - p[1]));
+                    const Point3 base =
+                        (Scalar{1} - r) * (Scalar{1} - s) * p[0] +
+                        r * (Scalar{1} - s) * p[1] + r * s * p[2] +
+                        (Scalar{1} - r) * s * p[3];
+                    const auto value = determinantValue(
+                        dr, ds, p[4] - base);
+                    if (!value) return std::nullopt;
+                    minimum = std::min(minimum, *value);
+                }
+        return minimum;
+    }
+
+    std::optional<Scalar> minimumLocalJacobian(
+        const PrismPoints &p) noexcept
+    {
+        constexpr std::array<std::array<Scalar, 3>, 9> samples{{
+            {{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}},
+            {{0, 0, 1}}, {{1, 0, 1}}, {{0, 1, 1}},
+            {{Scalar{1}/3, Scalar{1}/3, 0}},
+            {{Scalar{1}/3, Scalar{1}/3, 1}},
+            {{Scalar{1}/3, Scalar{1}/3, Scalar{1}/2}}}};
+        Scalar minimum = std::numeric_limits<Scalar>::infinity();
+        for (const auto &sample : samples)
+        {
+            const Scalar r = sample[0];
+            const Scalar s = sample[1];
+            const Scalar t = sample[2];
+            const Scalar a = Scalar{1} - t;
+            const Scalar b = t;
+            const Vector3 dr = a * (p[1] - p[0]) + b * (p[4] - p[3]);
+            const Vector3 ds = a * (p[2] - p[0]) + b * (p[5] - p[3]);
+            const Vector3 dt =
+                (Scalar{1} - r - s) * (p[3] - p[0]) +
+                r * (p[4] - p[1]) + s * (p[5] - p[2]);
+            const auto value = determinantValue(dr, ds, dt);
+            if (!value) return std::nullopt;
+            minimum = std::min(minimum, *value);
+        }
+        return minimum;
+    }
+
+    std::optional<Scalar> minimumLocalJacobian(
+        const HexaPoints &p) noexcept
+    {
+        Scalar minimum = std::numeric_limits<Scalar>::infinity();
+        for (const Scalar r : {Scalar{0}, Scalar{1}, Scalar{0.5}})
+            for (const Scalar s : {Scalar{0}, Scalar{1}, Scalar{0.5}})
+                for (const Scalar t : {Scalar{0}, Scalar{1}, Scalar{0.5}})
+                {
+                    const Vector3 dr =
+                        (Scalar{1}-s)*(Scalar{1}-t)*(p[1]-p[0]) +
+                        s*(Scalar{1}-t)*(p[2]-p[3]) +
+                        (Scalar{1}-s)*t*(p[5]-p[4]) +
+                        s*t*(p[6]-p[7]);
+                    const Vector3 ds =
+                        (Scalar{1}-r)*(Scalar{1}-t)*(p[3]-p[0]) +
+                        r*(Scalar{1}-t)*(p[2]-p[1]) +
+                        (Scalar{1}-r)*t*(p[7]-p[4]) +
+                        r*t*(p[6]-p[5]);
+                    const Vector3 dt =
+                        (Scalar{1}-r)*(Scalar{1}-s)*(p[4]-p[0]) +
+                        r*(Scalar{1}-s)*(p[5]-p[1]) +
+                        r*s*(p[6]-p[2]) +
+                        (Scalar{1}-r)*s*(p[7]-p[3]);
+                    const auto value = determinantValue(dr, ds, dt);
+                    if (!value) return std::nullopt;
+                    minimum = std::min(minimum, *value);
+                }
+        return minimum;
     }
 
     std::optional<VolumeCellEvaluationError> validateQualityInput(

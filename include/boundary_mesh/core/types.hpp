@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 
 namespace boundary_mesh
 {

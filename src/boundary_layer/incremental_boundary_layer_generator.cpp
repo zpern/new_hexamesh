@@ -18,6 +18,21 @@ namespace boundary_mesh
         {
             return std::binary_search(retained.begin(), retained.end(), id);
         }
+
+        const LayerVertexRecord *layerRecord(
+            const LayerVertexTable &table,
+            VertexId source_vertex_id,
+            std::uint32_t branch_id)
+        {
+            const auto found = std::find_if(
+                table.begin(), table.end(),
+                [source_vertex_id, branch_id](const LayerVertexRecord &record)
+                {
+                    return record.source_vertex_id == source_vertex_id &&
+                        record.branch_id == branch_id;
+                });
+            return found == table.end() ? nullptr : &*found;
+        }
     }
 
     Result<RegularLayerGrowthResult, IncrementalLayerGrowthError>
@@ -42,19 +57,28 @@ namespace boundary_mesh
         std::optional<IncrementalLayerGrowthError> incremental_error;
         AcceptedStoppedFrontCarry previously_accepted;
         std::vector<OwnedBoundaryTriangle> prior_transition_boundary;
+        std::vector<ResolvedTransitionTopology> resolved_topology;
+        std::unordered_map<VertexId, std::uint32_t> requested_layers;
+        for (const auto &profile : profiles)
+            requested_layers[profile.source_vertex_id] =
+                profile.profile.layer_count;
         const auto upstream_rejections = options.candidate_rejections;
         coordinated_options.candidate_rejections =
             [upstream_rejections, &incremental_error, &previously_accepted,
-             &sliding_surface, &prior_transition_boundary](
+             &sliding_surface, &prior_transition_boundary,
+             &resolved_topology, &requested_layers](
                 const GrowthFront &current,
                 const LayerStepResult &candidate,
                 const std::vector<VertexId> &current_global_ids,
+                const VolumeMesh &committed_mesh,
+                const LayerVertexTable &layer_vertices,
                 const CollisionIndex &original_surface,
                 const ExposedBoundaryTracker &historical_boundary)
         {
             std::vector<SurfaceFaceId> rejected = upstream_rejections
                 ? upstream_rejections(
                     current, candidate, current_global_ids,
+                    committed_mesh, layer_vertices,
                     original_surface, historical_boundary)
                 : std::vector<SurfaceFaceId>{};
             LayerFaceSets face_sets;
@@ -98,7 +122,34 @@ namespace boundary_mesh
                     candidate.accepted_stopped_faces,
                     retained);
             };
-            if (face_sets.transition_low_faces.empty())
+            std::vector<SurfaceFaceId> terminal_candidate_faces;
+            for (std::size_t index = 0;
+                 index < filtered_candidate.faces.size(); ++index)
+            {
+                if (!std::holds_alternative<Quad>(
+                        filtered_candidate.faces[index]))
+                    continue;
+                bool reaches_requested_limit = false;
+                for (const VertexId local : std::get<Quad>(
+                         filtered_candidate.faces[index]).vertex_ids)
+                {
+                    const auto requested = requested_layers.find(
+                        filtered_candidate.vertices[local].source_vertex_id);
+                    if (requested != requested_layers.end() &&
+                        candidate.layer >= requested->second)
+                    {
+                        reaches_requested_limit = true;
+                        break;
+                    }
+                }
+                if (reaches_requested_limit)
+                    terminal_candidate_faces.push_back(
+                        filtered_candidate.source_face_ids[index]);
+            }
+            std::sort(terminal_candidate_faces.begin(),
+                      terminal_candidate_faces.end());
+            if (face_sets.transition_low_faces.empty() &&
+                terminal_candidate_faces.empty())
             {
                 std::vector<SurfaceFaceId> retained =
                     filtered_candidate.source_face_ids;
@@ -116,14 +167,59 @@ namespace boundary_mesh
             input.prior_transition_boundary =
                 &prior_transition_boundary;
             input.sliding_surface = &sliding_surface.value();
+            input.terminal_hexa_points =
+                [&effective_current, &committed_mesh, &layer_vertices,
+                 completed_layer = current.layer](SurfaceFaceId id)
+                    -> std::optional<HexaPoints>
+            {
+                if (completed_layer == 0) return std::nullopt;
+                const auto position = std::find(
+                    effective_current.source_face_ids.begin(),
+                    effective_current.source_face_ids.end(), id);
+                if (position == effective_current.source_face_ids.end())
+                    return std::nullopt;
+                const auto index = static_cast<std::size_t>(std::distance(
+                    effective_current.source_face_ids.begin(), position));
+                const auto *quad = std::get_if<Quad>(
+                    &effective_current.faces[index]);
+                if (quad == nullptr) return std::nullopt;
+                HexaPoints points{};
+                for (std::size_t local = 0; local < 4; ++local)
+                {
+                    const auto &vertex = effective_current.vertices[
+                        quad->vertex_ids[local]];
+                    const auto *record = layerRecord(
+                        layer_vertices, vertex.source_vertex_id,
+                        vertex.branch_id);
+                    if (record == nullptr ||
+                        record->layer_vertex_ids.size() <= completed_layer)
+                        return std::nullopt;
+                    const VertexId bottom = record->layer_vertex_ids[
+                        completed_layer - 1];
+                    const VertexId top = record->layer_vertex_ids[
+                        completed_layer];
+                    if (static_cast<std::size_t>(bottom) >=
+                            committed_mesh.vertices.size() ||
+                        static_cast<std::size_t>(top) >=
+                            committed_mesh.vertices.size())
+                        return std::nullopt;
+                    points[local] = committed_mesh.vertices[bottom];
+                    points[4 + local] = committed_mesh.vertices[top];
+                }
+                return points;
+            };
             input.build_provisional =
-                [&effective_current, &candidate](
+                [&effective_current, &candidate,
+                 &terminal_hexa_points = input.terminal_hexa_points,
+                 terminal_candidate_faces](
                     const std::vector<SurfaceFaceId> &retained,
-                    const LayerFaceSets &sets)
+                    const LayerFaceSets &sets,
+                    const ExternalPatchControls &external_controls)
             {
                 return buildProvisionalTransition(
                     effective_current, candidate.next_front,
-                    retained, sets);
+                    retained, sets, terminal_hexa_points,
+                    external_controls, terminal_candidate_faces);
             };
             const auto stable = LayerTransitionResolver{}.resolve(input);
             if (!stable.hasValue())
@@ -139,6 +235,17 @@ namespace boundary_mesh
                 if (triangle.owner.role !=
                     BoundaryOwnerRole::RegularCandidate)
                     prior_transition_boundary.push_back(triangle);
+            resolved_topology.erase(
+                std::remove_if(
+                    resolved_topology.begin(), resolved_topology.end(),
+                    [layer = current.layer](
+                        const ResolvedTransitionTopology &entry)
+                    { return entry.layer == layer; }),
+                resolved_topology.end());
+            resolved_topology.insert(
+                resolved_topology.end(),
+                stable.value().resolved_topology.begin(),
+                stable.value().resolved_topology.end());
             for (const SurfaceFaceId id :
                  candidate.next_front.source_face_ids)
                 if (!retainedFace(
@@ -161,6 +268,7 @@ namespace boundary_mesh
             return GrowthResult::failure(
                 IncrementalLayerGrowthError{regular.error()});
         return finalizeIncrementalLayerTopology(
-            surface_mesh, initial_front, std::move(regular.value()));
+            surface_mesh, initial_front, std::move(regular.value()),
+            resolved_topology);
     }
 }

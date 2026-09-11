@@ -123,7 +123,7 @@ int main()
     if (!mixed_zero_prism.hasValue() ||
         mixed_zero_prism.value().validity != VolumeCellValidity::LocallyInverted ||
         mixed_zero_prism.value().acceptable ||
-        mixed_zero_prism.value().signed_volume != 0.0 ||
+        !near(mixed_zero_prism.value().signed_volume, 0.0) ||
         mixed_zero_prism.value().worst_subtet_index != 1)
     {
         return 4;
@@ -148,7 +148,7 @@ int main()
     if (!inverted_hexa.hasValue() ||
         inverted_hexa.value().validity != VolumeCellValidity::LocallyInverted ||
         inverted_hexa.value().acceptable ||
-        !near(inverted_hexa.value().signed_volume, 1.0 / 3.0) ||
+        !near(inverted_hexa.value().signed_volume, 0.5) ||
         !near(inverted_hexa.value().minimum_subtet_signed_volume, -1.0 / 6.0) ||
         !near(inverted_hexa.value().maximum_subtet_signed_volume, 1.0 / 6.0) ||
         inverted_hexa.value().worst_subtet_index != 3)
@@ -161,7 +161,7 @@ int main()
     if (!degenerate_hexa.hasValue() ||
         degenerate_hexa.value().validity != VolumeCellValidity::Degenerate ||
         degenerate_hexa.value().acceptable ||
-        !near(degenerate_hexa.value().signed_volume, 2.0 / 3.0) ||
+        !near(degenerate_hexa.value().signed_volume, 0.75) ||
         degenerate_hexa.value().minimum_subtet_signed_volume != 0.0 ||
         !near(degenerate_hexa.value().maximum_subtet_signed_volume, 1.0 / 6.0) ||
         degenerate_hexa.value().worst_subtet_index != 3)
@@ -174,7 +174,7 @@ int main()
     if (!mixed_zero_hexa.hasValue() ||
         mixed_zero_hexa.value().validity != VolumeCellValidity::LocallyInverted ||
         mixed_zero_hexa.value().acceptable ||
-        !near(mixed_zero_hexa.value().signed_volume, 1.0 / 6.0) ||
+        !near(mixed_zero_hexa.value().signed_volume, 0.25) ||
         mixed_zero_hexa.value().worst_subtet_index != 3)
     {
         return 8;

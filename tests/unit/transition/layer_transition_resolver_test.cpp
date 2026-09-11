@@ -41,7 +41,8 @@ namespace
         input.completed_layer = 3;
         input.build_provisional = [](
             const std::vector<SurfaceFaceId> &retained,
-            const LayerFaceSets &)
+            const LayerFaceSets &,
+            const ExternalPatchControls &)
         {
             ProvisionalLayerTransition value;
             for (const SurfaceFaceId id : retained)
@@ -71,6 +72,32 @@ namespace
 
 int main()
 {
+    const Point3 feasible_center{0.5,0.5,0.005};
+    if (chooseTerminalQuadDecision(
+            Scalar{0.15}, feasible_center, true) !=
+            TerminalQuadDecision::InternalSplit)
+        return 50;
+    if (chooseTerminalQuadDecision(
+            Scalar{0.15}, std::nullopt, true) !=
+            TerminalQuadDecision::ExternalPatch)
+        return 51;
+    if (chooseTerminalQuadDecision(
+            Scalar{0.01}, feasible_center, true) !=
+            TerminalQuadDecision::ExternalPatch)
+        return 52;
+    if (chooseTerminalQuadDecision(
+            Scalar{0.125}, feasible_center, true) !=
+            TerminalQuadDecision::ExternalPatch)
+        return 55;
+    if (chooseTerminalQuadDecision(
+            Scalar{0.01}, feasible_center, false) !=
+            TerminalQuadDecision::InternalSplit)
+        return 53;
+    if (chooseTerminalQuadDecision(
+            Scalar{0.01}, std::nullopt, false) !=
+            TerminalQuadDecision::KeepHexa)
+        return 54;
+
     LayerTransitionInput sliding_context;
     sliding_context.sliding_surface = nullptr;
 
@@ -119,7 +146,8 @@ int main()
                    {10,2,StopOrigin::Quality});
     suppression.build_provisional = [](
         const std::vector<SurfaceFaceId> &,
-        const LayerFaceSets &)
+        const LayerFaceSets &,
+        const ExternalPatchControls &)
     {
         ProvisionalLayerTransition value;
         value.all_top_faces_are_triangles = true;
@@ -138,4 +166,95 @@ int main()
         suppressed.value().face_sets.transition_low_faces.begin(),
         suppressed.value().face_sets.transition_low_faces.end(),
         SurfaceFaceId{11}));
+
+    LayerTransitionInput external;
+    external.completed_layer = 1;
+    std::size_t external_builds{};
+    external.build_provisional = [&](
+        const std::vector<SurfaceFaceId> &,
+        const LayerFaceSets &,
+        const ExternalPatchControls &controls)
+    {
+        ++external_builds;
+        const Scalar scale = controls.distanceScale(77);
+        ProvisionalLayerTransition value;
+        value.boundary.candidate_triangles.push_back({
+            {{{-1,-1,0},{1,-1,0},{0,1,scale}}},
+            {{{200,1,0},{201,1,0},{202,1,0}}},
+            {77,1,BoundaryOwnerRole::ExternalPatch,{}}});
+        ResolvedTransitionTopology topology;
+        topology.source_face_id = 77;
+        topology.layer = 1;
+        topology.template_kind = TransitionTemplateKind::QuadTopCap;
+        topology.terminal_quad_decision = TerminalQuadDecision::ExternalPatch;
+        topology.generated_point = Point3{0,0,scale};
+        value.resolved_topology.push_back(std::move(topology));
+        value.all_top_faces_are_triangles = true;
+        return ProvisionalLayerTransitionResult::success(std::move(value));
+    };
+    CollisionTriangle ceiling;
+    ceiling.points = {{{-2,-2,0.5},{2,-2,0.5},{0,2,0.5}}};
+    ceiling.vertex_keys = {{{300,0,0},{301,0,0},{302,0,0}}};
+    ceiling.owner_kind = CollisionOwnerKind::OriginalSurface;
+    ceiling.boundary_vertex_count = 3;
+    std::copy(ceiling.points.begin(), ceiling.points.end(),
+              ceiling.boundary_points.begin());
+    std::copy(ceiling.vertex_keys.begin(), ceiling.vertex_keys.end(),
+              ceiling.boundary_vertex_keys.begin());
+    auto ceiling_index = CollisionIndex::build({ceiling});
+    assert(ceiling_index.hasValue());
+    external.original_surface = std::move(ceiling_index.value());
+    const auto external_result = resolver.resolve(external);
+    assert(external_result.hasValue());
+    assert(external_result.value().resolved_topology.size() == 1);
+    const Scalar chosen =
+        external_result.value().resolved_topology.front()
+            .generated_point->z();
+    assert(chosen < 0.5);
+    assert(chosen > 0.49);
+    assert(external_builds > 4);
+
+    LayerTransitionInput narrow_external;
+    narrow_external.completed_layer = 1;
+    narrow_external.build_provisional = [](
+        const std::vector<SurfaceFaceId> &,
+        const LayerFaceSets &,
+        const ExternalPatchControls &controls)
+    {
+        const Scalar scale = controls.distanceScale(78);
+        ProvisionalLayerTransition value;
+        value.boundary.candidate_triangles.push_back({
+            {{{-1,-1,0},{1,-1,0},{0,1,scale}}},
+            {{{210,1,0},{211,1,0},{212,1,0}}},
+            {78,1,BoundaryOwnerRole::ExternalPatch,{}}});
+        ResolvedTransitionTopology topology;
+        topology.source_face_id = 78;
+        topology.layer = 1;
+        topology.template_kind = TransitionTemplateKind::QuadTopCap;
+        topology.terminal_quad_decision = controls.keepHexa(78)
+            ? TerminalQuadDecision::KeepHexa
+            : TerminalQuadDecision::ExternalPatch;
+        if (topology.terminal_quad_decision ==
+            TerminalQuadDecision::ExternalPatch)
+            topology.generated_point = Point3{0,0,scale};
+        value.resolved_topology.push_back(std::move(topology));
+        value.all_top_faces_are_triangles = true;
+        return ProvisionalLayerTransitionResult::success(std::move(value));
+    };
+    CollisionTriangle narrow_ceiling = ceiling;
+    for (Point3 &point : narrow_ceiling.points) point.z() = Scalar{5e-7};
+    std::copy(narrow_ceiling.points.begin(), narrow_ceiling.points.end(),
+              narrow_ceiling.boundary_points.begin());
+    auto narrow_index = CollisionIndex::build({narrow_ceiling});
+    if (!narrow_index.hasValue()) return 55;
+    narrow_external.original_surface = std::move(narrow_index.value());
+    const auto narrow_result = resolver.resolve(narrow_external);
+    if (!narrow_result.hasValue() ||
+        narrow_result.value().resolved_topology.size() != 1 ||
+        narrow_result.value().resolved_topology.front()
+                .terminal_quad_decision !=
+            TerminalQuadDecision::KeepHexa ||
+        narrow_result.value().resolved_topology.front()
+             .generated_point.has_value())
+        return 56;
 }

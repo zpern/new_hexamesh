@@ -1,15 +1,18 @@
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <optional>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <iostream>
 
 #include <boundary_mesh/boundary_layer/incremental_topology_finalizer.hpp>
 #include <boundary_mesh/transition/layer_quad_diagonal_table.hpp>
 #include <boundary_mesh/transition/quad_high_neighbor_selector.hpp>
 #include <boundary_mesh/transition/triangle_side_transition.hpp>
+#include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
 namespace boundary_mesh
 {
@@ -103,7 +106,10 @@ namespace boundary_mesh
             SurfaceMesh &output,
             const SurfaceFace &input,
             const SurfaceBoundaryTag &tag,
-            const std::vector<Point3> &points)
+            const std::vector<Point3> &points,
+            std::vector<VertexId> &source_to_output,
+            std::map<std::array<Scalar,3>,VertexId> &farfield_points,
+            bool reuse_farfield_coordinate)
         {
             SurfaceFace remapped = input;
             bool valid = true;
@@ -116,9 +122,36 @@ namespace boundary_mesh
                         valid = false;
                         return;
                     }
-                    const Point3 point = points[id];
-                    id = static_cast<VertexId>(output.vertices.size());
-                    output.vertices.push_back(point);
+                    const VertexId source_id = id;
+                    if (source_to_output[source_id] !=
+                        std::numeric_limits<VertexId>::max())
+                    {
+                        id = source_to_output[source_id];
+                        continue;
+                    }
+                    const Point3 &point = points[source_id];
+                    const std::array<Scalar,3> point_key{
+                        point.x(),point.y(),point.z()};
+                    const auto existing = reuse_farfield_coordinate
+                        ? farfield_points.find(point_key)
+                        : farfield_points.end();
+                    if (existing != farfield_points.end())
+                        id = existing->second;
+                    else
+                    {
+                        if (output.vertices.size() >
+                            static_cast<std::size_t>(
+                                std::numeric_limits<VertexId>::max()))
+                        {
+                            valid = false;
+                            return;
+                        }
+                        id = static_cast<VertexId>(output.vertices.size());
+                        output.vertices.push_back(point);
+                        if (!reuse_farfield_coordinate)
+                            farfield_points.emplace(point_key,id);
+                    }
+                    source_to_output[source_id] = id;
                 }
             }, remapped);
             if (!valid) return false;
@@ -242,7 +275,8 @@ namespace boundary_mesh
     finalizeIncrementalLayerTopology(
         const SurfaceMesh &surface_mesh,
         const GrowthFront &initial_front,
-        RegularLayerGrowthResult result)
+        RegularLayerGrowthResult result,
+        const std::vector<ResolvedTransitionTopology> &resolved_topology)
     {
         using GrowthResult = Result<
             RegularLayerGrowthResult, IncrementalLayerGrowthError>;
@@ -253,6 +287,53 @@ namespace boundary_mesh
             ownerless_zero_layer_caps;
         std::vector<FinalQuad> final_quads;
         std::vector<FinalTriangle> final_triangles;
+        std::size_t diagnostic_external_patches = 0;
+        std::size_t diagnostic_internal_splits = 0;
+        std::size_t diagnostic_external_bad = 0;
+        std::size_t diagnostic_internal_bad = 0;
+        const auto count_bad = [&](const auto &cells, bool external)
+        {
+            for (const auto &cell : cells)
+            {
+                const auto quality = std::visit([&](const auto &value)
+                {
+                    using Cell = std::decay_t<decltype(value)>;
+                    if constexpr (std::is_same_v<Cell, Tetra>)
+                        return evaluateTetra(TetraPoints{
+                            result.mesh.vertices[value.vertex_ids[0]],
+                            result.mesh.vertices[value.vertex_ids[1]],
+                            result.mesh.vertices[value.vertex_ids[2]],
+                            result.mesh.vertices[value.vertex_ids[3]]});
+                    else if constexpr (std::is_same_v<Cell, Pyramid>)
+                        return evaluatePyramid(PyramidPoints{
+                            result.mesh.vertices[value.vertex_ids[0]],
+                            result.mesh.vertices[value.vertex_ids[1]],
+                            result.mesh.vertices[value.vertex_ids[2]],
+                            result.mesh.vertices[value.vertex_ids[3]],
+                            result.mesh.vertices[value.vertex_ids[4]]});
+                    else if constexpr (std::is_same_v<Cell, Prism>)
+                        return evaluatePrism(PrismPoints{
+                            result.mesh.vertices[value.vertex_ids[0]],
+                            result.mesh.vertices[value.vertex_ids[1]],
+                            result.mesh.vertices[value.vertex_ids[2]],
+                            result.mesh.vertices[value.vertex_ids[3]],
+                            result.mesh.vertices[value.vertex_ids[4]],
+                            result.mesh.vertices[value.vertex_ids[5]]});
+                    else
+                        return evaluateHexa(HexaPoints{
+                            result.mesh.vertices[value.vertex_ids[0]],
+                            result.mesh.vertices[value.vertex_ids[1]],
+                            result.mesh.vertices[value.vertex_ids[2]],
+                            result.mesh.vertices[value.vertex_ids[3]],
+                            result.mesh.vertices[value.vertex_ids[4]],
+                            result.mesh.vertices[value.vertex_ids[5]],
+                            result.mesh.vertices[value.vertex_ids[6]],
+                            result.mesh.vertices[value.vertex_ids[7]]});
+                }, cell);
+                if (quality.hasValue() && quality.value().skewness > Scalar{0.9})
+                    external ? ++diagnostic_external_bad : ++diagnostic_internal_bad;
+            }
+        };
         std::unordered_map<SurfaceFaceId, const SurfaceFace *> source_faces;
         for (std::size_t index = 0;
              index < initial_front.source_face_ids.size(); ++index)
@@ -279,6 +360,11 @@ namespace boundary_mesh
         }
         std::unordered_map<std::uint64_t, std::size_t> top_hexa;
         std::unordered_map<std::uint64_t, std::size_t> top_prism;
+        std::unordered_map<std::uint64_t,
+            const ResolvedTransitionTopology *> stable_topology;
+        for (const auto &topology : resolved_topology)
+            stable_topology[cellKey(
+                topology.source_face_id, topology.layer)] = &topology;
         for (std::size_t index = 0; index < result.mesh.cells.size(); ++index)
             if (index < result.mesh.metadata.size())
             {
@@ -376,6 +462,127 @@ namespace boundary_mesh
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{
                                 diagonal.error()});
+                    const auto stable_position = stable_topology.find(
+                        cellKey(id, growth->accepted_layer_count));
+                    const ResolvedTransitionTopology *stable =
+                        stable_position == stable_topology.end()
+                            ? nullptr : stable_position->second;
+                    const QuadDiagonal final_diagonal =
+                        stable != nullptr && stable->low_diagonal.has_value()
+                            ? *stable->low_diagonal : diagonal.value();
+                    const std::vector<std::size_t> final_high_edges =
+                        stable != nullptr
+                            ? stable->retained_local_edges
+                            : selection.value().retained_local_edges;
+
+                    const std::array<Point3, 4> bottom_points{{
+                        result.mesh.vertices[bottom_ids[0]],
+                        result.mesh.vertices[bottom_ids[1]],
+                        result.mesh.vertices[bottom_ids[2]],
+                        result.mesh.vertices[bottom_ids[3]]}};
+                    const std::array<Point3, 4> top_points{{
+                        result.mesh.vertices[top_ids[0]],
+                        result.mesh.vertices[top_ids[1]],
+                        result.mesh.vertices[top_ids[2]],
+                        result.mesh.vertices[top_ids[3]]}};
+                    const auto internal_center =
+                        findPositiveQuadTopCapCenter({
+                            bottom_points, top_points, final_diagonal,
+                            Scalar{1e-12}});
+
+                    // The finalizer must never invent an unchecked external
+                    // patch.  If no stable resolver decision exists and the
+                    // internal split is invalid, preserve the Hexa and report
+                    // the missing decision.
+                    if (stable == nullptr && !internal_center.has_value())
+                    {
+                        const auto split = final_diagonal ==
+                                QuadDiagonal::ZeroTwo
+                            ? std::vector<Triangle>{
+                                Triangle{{top_ids[0],top_ids[1],top_ids[2]}},
+                                Triangle{{top_ids[0],top_ids[2],top_ids[3]}}}
+                            : std::vector<Triangle>{
+                                Triangle{{top_ids[1],top_ids[2],top_ids[3]}},
+                                Triangle{{top_ids[1],top_ids[3],top_ids[0]}}};
+                        result.terminal_transition_diagnostics.push_back({
+                            id,growth->accepted_layer_count,cell->second,
+                            quadTopCapAspectRatio({bottom_points,top_points}),
+                            {},{},
+                            "stable terminal decision unavailable; kept Hexa"});
+                        final_quads.push_back({
+                            id,growth->accepted_layer_count,region,
+                            quad->vertex_ids,top_ids,final_diagonal,{},
+                            split});
+                        continue;
+                    }
+
+                    if (stable != nullptr &&
+                        stable->terminal_quad_decision ==
+                            TerminalQuadDecision::ExternalPatch)
+                    {
+                        ++diagnostic_external_patches;
+                        if (!stable->generated_point.has_value() ||
+                            result.mesh.vertices.size() >
+                                static_cast<std::size_t>(
+                                    std::numeric_limits<VertexId>::max()))
+                            return GrowthResult::failure(
+                                IncrementalLayerGrowthError{
+                                    TransitionTemplateError{
+                                        InvalidTransitionTemplateInput{
+                                            id,22}}});
+                        const VertexId apex = static_cast<VertexId>(
+                            result.mesh.vertices.size());
+                        const auto patch = buildExternalQuadPatch({
+                            id,growth->accepted_layer_count,
+                            top_ids,selector_high,final_high_edges,
+                            &result.mesh.vertices,apex,Scalar{0.25},
+                            Scalar{1e-12},stable->generated_point});
+                        if (!patch.hasValue())
+                            return GrowthResult::failure(
+                                IncrementalLayerGrowthError{
+                                    atStage(patch.error(),23)});
+                        result.mesh.vertices.insert(
+                            result.mesh.vertices.end(),
+                            patch.value().created_vertices.begin(),
+                            patch.value().created_vertices.end());
+                        result.mesh.cells.insert(
+                            result.mesh.cells.end(),
+                            patch.value().volume_cells.begin(),
+                            patch.value().volume_cells.end());
+                        result.mesh.metadata.insert(
+                            result.mesh.metadata.end(),
+                            patch.value().metadata.begin(),
+                            patch.value().metadata.end());
+                        count_bad(patch.value().volume_cells, true);
+                        final_quads.push_back({
+                            id,growth->accepted_layer_count,region,
+                            quad->vertex_ids,top_ids,final_diagonal,{},
+                            patch.value().top_faces});
+                        continue;
+                    }
+
+                    if (stable != nullptr &&
+                        stable->terminal_quad_decision ==
+                            TerminalQuadDecision::KeepHexa)
+                    {
+                        const auto split = final_diagonal ==
+                                QuadDiagonal::ZeroTwo
+                            ? std::vector<Triangle>{
+                                Triangle{{top_ids[0],top_ids[1],top_ids[2]}},
+                                Triangle{{top_ids[0],top_ids[2],top_ids[3]}}}
+                            : std::vector<Triangle>{
+                                Triangle{{top_ids[1],top_ids[2],top_ids[3]}},
+                                Triangle{{top_ids[1],top_ids[3],top_ids[0]}}};
+                        result.terminal_transition_diagnostics.push_back({
+                            id,growth->accepted_layer_count,cell->second,
+                            stable->aspect_ratio,
+                            stable->dependent_high_faces,{},
+                            "no positive non-intersecting terminal quad patch"});
+                        final_quads.push_back({
+                            id,growth->accepted_layer_count,region,
+                            quad->vertex_ids,top_ids,final_diagonal,{},split});
+                        continue;
+                    }
                     if (result.mesh.vertices.size() >
                         static_cast<std::size_t>(
                             std::numeric_limits<VertexId>::max()))
@@ -388,7 +595,10 @@ namespace boundary_mesh
                     const auto cap = buildQuadTopCap({
                         id, growth->accepted_layer_count,
                         bottom_ids, top_ids, &result.mesh.vertices,
-                        center, diagonal.value()});
+                        center, final_diagonal,
+                        stable != nullptr && stable->generated_point.has_value()
+                            ? stable->generated_point
+                            : internal_center});
                     if (!cap.hasValue())
                         return GrowthResult::failure(
                             IncrementalLayerGrowthError{
@@ -409,10 +619,12 @@ namespace boundary_mesh
                         result.mesh.metadata.end(),
                         cap.value().metadata.begin() + 1,
                         cap.value().metadata.end());
+                    count_bad(cap.value().volume_cells, false);
+                    ++diagnostic_internal_splits;
                     final_quads.push_back({
                         id, growth->accepted_layer_count, region,
-                        quad->vertex_ids, top_ids, diagonal.value(),
-                        selection.value().retained_local_edges,
+                        quad->vertex_ids, top_ids, final_diagonal,
+                        final_high_edges,
                         cap.value().top_faces});
                 }
                 else
@@ -613,6 +825,13 @@ namespace boundary_mesh
         retainVolumeBoundaryTopTriangles(
             triangular_top, result.mesh, ownerless_zero_layer_caps);
         SurfaceMesh triangular_farfield;
+        std::vector<VertexId> farfield_vertex_remap(
+            result.farfield_boundary.vertices.size(),
+            std::numeric_limits<VertexId>::max());
+        std::vector<VertexId> top_vertex_remap(
+            result.mesh.vertices.size(),
+            std::numeric_limits<VertexId>::max());
+        std::map<std::array<Scalar,3>,VertexId> farfield_points;
         for (std::size_t index = 0;
              index < result.farfield_boundary.faces.size(); ++index)
         {
@@ -628,7 +847,8 @@ namespace boundary_mesh
                     triangular_farfield,
                     result.farfield_boundary.faces[index],
                     result.farfield_boundary.face_tags[index],
-                    result.farfield_boundary.vertices))
+                    result.farfield_boundary.vertices,
+                    farfield_vertex_remap,farfield_points,false))
                 return GrowthResult::failure(
                     IncrementalLayerGrowthError{
                         TransitionTemplateError{
@@ -640,13 +860,19 @@ namespace boundary_mesh
                     triangular_farfield,
                     triangular_top.faces[index],
                     triangular_top.face_tags[index],
-                    result.mesh.vertices))
+                    result.mesh.vertices,
+                    top_vertex_remap,farfield_points,true))
                 return GrowthResult::failure(
                     IncrementalLayerGrowthError{
                         TransitionTemplateError{
                             InvalidTransitionTemplateInput{}}});
         result.farfield_boundary = std::move(triangular_farfield);
         result.top_surface = std::move(triangular_top);
+        std::cerr << "temporary transition template counts: internal="
+                  << diagnostic_internal_splits << " external="
+                  << diagnostic_external_patches << " skewness>0.9 internal="
+                  << diagnostic_internal_bad << " external="
+                  << diagnostic_external_bad << '\n';
         return GrowthResult::success(std::move(result));
     }
 }

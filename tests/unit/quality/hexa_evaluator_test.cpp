@@ -66,7 +66,7 @@ int main()
     const VolumeCellEvaluation &minimum_positive_evaluation =
         minimum_positive_result.value();
     if (minimum_positive_evaluation.validity !=
-            VolumeCellValidity::Valid ||
+            VolumeCellValidity::Degenerate ||
         minimum_positive_evaluation.acceptable ||
         minimum_positive_evaluation.signed_volume != Scalar{0} ||
         minimum_positive_evaluation.minimum_subtet_signed_volume !=

@@ -17,7 +17,8 @@ namespace boundary_mesh
     {
         RegularCandidate,
         TopCap,
-        SideTransition
+        SideTransition,
+        ExternalPatch
     };
 
     struct LayerBoundaryOwner
@@ -75,7 +76,16 @@ namespace boundary_mesh
         Result<std::vector<OwnedBoundaryTriangle>, TransitionBoundaryError>
         assembleExposedBoundary(const TransitionBoundaryInput &input) const;
 
+        Result<std::vector<LayerBoundaryOwner>, TransitionBoundaryError>
+        findCollidingOwners(const TransitionBoundaryInput &input) const;
+
         Result<std::vector<SurfaceFaceId>, TransitionBoundaryError>
         findRollbackFaces(const TransitionBoundaryInput &input) const;
+
+    private:
+        Result<std::vector<SurfaceFaceId>, TransitionBoundaryError>
+        findRollbackFacesImpl(
+            const TransitionBoundaryInput &input,
+            std::vector<LayerBoundaryOwner> *colliding_owners) const;
     };
 }

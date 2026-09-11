@@ -615,7 +615,8 @@ namespace boundary_mesh
                 std::vector<SurfaceFaceId> rejected =
                     options.candidate_rejections(
                         current_front, coordinated_step,
-                        current_global_ids, original_collision.value(),
+                        current_global_ids, result.mesh,
+                        result.layer_vertices, original_collision.value(),
                         exposed_boundary);
                 std::sort(rejected.begin(), rejected.end());
                 rejected.erase(

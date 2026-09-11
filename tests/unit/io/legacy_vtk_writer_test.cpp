@@ -106,7 +106,7 @@ int main()
             "CELLS 4 27\n"
             "4 0 1 2 4\n"
             "5 0 1 2 3 4\n"
-            "6 0 1 2 4 5 6\n"
+            "6 0 2 1 4 6 5\n"
             "8 0 1 2 3 4 5 6 7\n") == std::string::npos ||
         volume_text.find(
             "SCALARS source_face_id unsigned_int 1\n"
@@ -126,7 +126,10 @@ int main()
         cellTypes(surface_text) != std::vector<int>({5, 9}) ||
         exported_cells.size() != 4 ||
         exported_cells[0] != std::vector<VertexId>({0, 1, 2, 4}) ||
-        exported_cells[1] != std::vector<VertexId>({0, 1, 2, 3, 4}))
+        exported_cells[1] != std::vector<VertexId>({0, 1, 2, 3, 4}) ||
+        exported_cells[2] != std::vector<VertexId>({0, 2, 1, 4, 6, 5}) ||
+        exported_cells[3] !=
+            std::vector<VertexId>({0, 1, 2, 3, 4, 5, 6, 7}))
     {
         return 2;
     }

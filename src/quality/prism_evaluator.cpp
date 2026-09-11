@@ -183,8 +183,22 @@ namespace boundary_mesh
         }
 
         VolumeCellEvaluation evaluation;
-        evaluation.validity = accumulator.validity();
-        evaluation.signed_volume = accumulator.signed_volume;
+        const auto integrated =
+            quality_internal::integratedJacobianVolume(points);
+        if (!integrated.has_value())
+            return EvaluationResult::failure(intermediateError());
+        evaluation.validity = quality_internal::combinedValidity(
+            accumulator.validity(),*integrated);
+        const auto local = quality_internal::minimumLocalJacobian(points);
+        if (!local) return EvaluationResult::failure(intermediateError());
+        evaluation.minimum_local_jacobian = *local;
+        if (evaluation.validity == VolumeCellValidity::Valid &&
+            *local < Scalar{0})
+            evaluation.validity = VolumeCellValidity::LocallyInverted;
+        else if (evaluation.validity == VolumeCellValidity::Valid &&
+                 *local == Scalar{0})
+            evaluation.validity = VolumeCellValidity::Degenerate;
+        evaluation.signed_volume = *integrated;
         evaluation.minimum_subtet_signed_volume =
             accumulator.minimum_signed_volume;
         evaluation.maximum_subtet_signed_volume =

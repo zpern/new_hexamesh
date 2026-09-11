@@ -1,12 +1,14 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 
 #include <boundary_mesh/transition/provisional_transition_builder.hpp>
 #include <boundary_mesh/transition/quad_high_neighbor_selector.hpp>
 #include <boundary_mesh/transition/triangle_side_transition.hpp>
+#include <boundary_mesh/quality/volume_cell_evaluator.hpp>
 
 namespace boundary_mesh
 {
@@ -70,6 +72,41 @@ namespace boundary_mesh
             const std::vector<SurfaceFaceId> &retained, SurfaceFaceId id)
         {
             return std::binary_search(retained.begin(), retained.end(), id);
+        }
+
+        bool hasStrictlyPositiveTemplateVolumes(
+            const TransitionTemplateOutput &output,
+            const std::vector<Point3> &points)
+        {
+            return std::all_of(output.volume_cells.begin(),
+                output.volume_cells.end(), [&](const VolumeCell &cell)
+            {
+                return std::visit([&](const auto &value)
+                {
+                    using Cell = std::decay_t<decltype(value)>;
+                    if constexpr (std::is_same_v<Cell,Tetra>)
+                    {
+                        TetraPoints cell_points{};
+                        for (std::size_t i = 0; i < 4; ++i)
+                            cell_points[i] = points[value.vertex_ids[i]];
+                        const auto quality = evaluateTetra(cell_points);
+                        return quality.hasValue() &&
+                            quality.value().validity ==
+                                VolumeCellValidity::Valid;
+                    }
+                    else if constexpr (std::is_same_v<Cell,Pyramid>)
+                    {
+                        PyramidPoints cell_points{};
+                        for (std::size_t i = 0; i < 5; ++i)
+                            cell_points[i] = points[value.vertex_ids[i]];
+                        const auto quality = evaluatePyramid(cell_points);
+                        return quality.hasValue() &&
+                            quality.value().validity ==
+                                VolumeCellValidity::Valid;
+                    }
+                    return true;
+                },cell);
+            });
         }
 
         bool containsRegion(
@@ -263,7 +300,11 @@ namespace boundary_mesh
             const GrowthFront &current,
             const GrowthFront &candidate,
             const std::vector<SurfaceFaceId> &retained,
-            const LayerFaceSets &face_sets)
+            const LayerFaceSets &face_sets,
+            const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
+                terminal_hexa_points,
+            const ExternalPatchControls &external_controls,
+            const std::vector<SurfaceFaceId> &terminal_candidate_faces)
         {
             ProvisionalLayerTransition provisional;
             provisional.all_top_faces_are_triangles = true;
@@ -304,11 +345,140 @@ namespace boundary_mesh
             {
                 const SurfaceFaceId id = candidate.source_face_ids[index];
                 if (!retainedFace(retained, id)) continue;
+                if (std::binary_search(
+                        terminal_candidate_faces.begin(),
+                        terminal_candidate_faces.end(), id))
+                    continue;
                 appendFrontFace(provisional.boundary, candidate, index,
                     {id, candidate.layer,
                      BoundaryOwnerRole::RegularCandidate, {id}},
                     candidateColumnContext(
                         current, candidate, index, current_vertices));
+            }
+
+            for (const SurfaceFaceId id : terminal_candidate_faces)
+            {
+                if (!retainedFace(retained, id)) continue;
+                const auto position = std::find(
+                    candidate.source_face_ids.begin(),
+                    candidate.source_face_ids.end(), id);
+                if (position == candidate.source_face_ids.end()) continue;
+                const std::size_t face_index = static_cast<std::size_t>(
+                    std::distance(candidate.source_face_ids.begin(),position));
+                const auto *quad = std::get_if<Quad>(
+                    &candidate.faces[face_index]);
+                if (quad == nullptr) continue;
+
+                std::vector<Point3> points(8);
+                std::vector<CollisionVertexKey> keys(8);
+                std::vector<std::vector<std::uint32_t>> regions(8);
+                std::array<VertexId,4> top{{4,5,6,7}};
+                HexaPoints hexa{};
+                bool complete = true;
+                for (std::size_t local = 0; local < 4; ++local)
+                {
+                    const auto &high = candidate.vertices[
+                        quad->vertex_ids[local]];
+                    const auto low_position = current_vertices.find(
+                        cellKey(high.source_vertex_id, high.branch_id));
+                    if (low_position == current_vertices.end())
+                    {
+                        complete = false;
+                        break;
+                    }
+                    const auto &low = current.vertices[low_position->second];
+                    points[local] = low.position;
+                    points[4+local] = high.position;
+                    hexa[local] = low.position;
+                    hexa[4+local] = high.position;
+                    keys[local] = {low.source_vertex_id,
+                                   current.layer,low.branch_id};
+                    keys[4+local] = {high.source_vertex_id,
+                                     candidate.layer,high.branch_id};
+                    regions[local] = low.boundary.sliding_region_ids;
+                    regions[4+local] = high.boundary.sliding_region_ids;
+                }
+                if (!complete) continue;
+                const auto chosen = chooseQuadDiagonal(
+                    oriented(top,points),1e-12);
+                if (!chosen.hasValue())
+                    return ProvisionalLayerTransitionResult::failure(
+                        LayerTransitionError{
+                            TransitionTemplateError{chosen.error()}});
+
+                ResolvedTransitionTopology resolved{
+                    id,candidate.layer,TransitionTemplateKind::QuadTopCap,
+                    chosen.value().diagonal,{}};
+                resolved.aspect_ratio = quadTopCapAspectRatio({
+                    {hexa[0],hexa[1],hexa[2],hexa[3]},
+                    {hexa[4],hexa[5],hexa[6],hexa[7]}});
+                const auto internal_center = findPositiveQuadTopCapCenter({
+                    {hexa[0],hexa[1],hexa[2],hexa[3]},
+                    {hexa[4],hexa[5],hexa[6],hexa[7]},
+                    chosen.value().diagonal,Scalar{1e-12}});
+                resolved.terminal_quad_decision =
+                    chooseTerminalQuadDecision(
+                        resolved.aspect_ratio,internal_center,
+                        !external_controls.keepHexa(id));
+
+                if (resolved.terminal_quad_decision ==
+                    TerminalQuadDecision::ExternalPatch)
+                {
+                    const auto patch = buildExternalQuadPatch({
+                        id,candidate.layer,top,top,{},&points,8,
+                        external_controls.distanceScale(id),Scalar{1e-12}});
+                    if (!patch.hasValue())
+                        resolved.terminal_quad_decision =
+                            chooseTerminalQuadDecision(
+                                resolved.aspect_ratio,internal_center,false);
+                    else
+                    {
+                        resolved.generated_point =
+                            patch.value().created_vertices.front();
+                        points.push_back(*resolved.generated_point);
+                        keys.push_back({static_cast<VertexId>(id),
+                            candidate.layer,
+                            std::numeric_limits<std::uint32_t>::max()});
+                        regions.push_back({});
+                        const LayerBoundaryOwner owner{
+                            id,candidate.layer,
+                            BoundaryOwnerRole::ExternalPatch,{}};
+                        for (const Triangle &triangle :
+                             patch.value().top_faces)
+                            appendOwnedTriangle(
+                                provisional.boundary,triangle,
+                                points,keys,owner,regions,
+                                physicalEdgeMask(triangle,4),{},
+                                candidateColumnContext(
+                                    current,candidate,face_index,
+                                    current_vertices));
+                    }
+                }
+
+                if (resolved.terminal_quad_decision ==
+                    TerminalQuadDecision::InternalSplit)
+                {
+                    resolved.generated_point = internal_center;
+                    const LayerBoundaryOwner owner{
+                        id,candidate.layer,BoundaryOwnerRole::TopCap,{}};
+                    for (const Triangle &triangle : chosen.value().triangles)
+                        appendOwnedTriangle(
+                            provisional.boundary,triangle,
+                            points,keys,owner,regions,
+                            physicalEdgeMask(triangle,4),{},
+                            candidateColumnContext(
+                                current,candidate,face_index,
+                                current_vertices));
+                }
+                else if (resolved.terminal_quad_decision ==
+                         TerminalQuadDecision::KeepHexa)
+                    appendFrontFace(
+                        provisional.boundary,candidate,face_index,
+                        {id,candidate.layer,
+                         BoundaryOwnerRole::RegularCandidate,{id}},
+                        candidateColumnContext(
+                            current,candidate,face_index,current_vertices));
+                provisional.resolved_topology.push_back(std::move(resolved));
             }
 
             for (const SurfaceFaceId low_id :
@@ -383,6 +553,14 @@ namespace boundary_mesh
                         return ProvisionalLayerTransitionResult::failure(
                             LayerTransitionError{
                                 atStage(side.error(),11)});
+                    if (!hasStrictlyPositiveTemplateVolumes(
+                            side.value(),points))
+                    {
+                        provisional.forced_rollback_high_faces.insert(
+                            provisional.forced_rollback_high_faces.end(),
+                            dependencies.begin(),dependencies.end());
+                        continue;
+                    }
                     const LayerBoundaryOwner owner{
                         low_id,current.layer,
                         BoundaryOwnerRole::SideTransition,dependencies};
@@ -446,7 +624,96 @@ namespace boundary_mesh
                             dependencies.push_back(other_id);
                         }
                 }
-                if (neighbors.empty()) continue;
+                if (neighbors.empty())
+                {
+                    const auto chosen = chooseQuadDiagonal(
+                        oriented(low, points), 1e-12);
+                    if (!chosen.hasValue())
+                        return ProvisionalLayerTransitionResult::failure(
+                            LayerTransitionError{
+                                TransitionTemplateError{chosen.error()}});
+                    const QuadDiagonal diagonal = chosen.value().diagonal;
+                    ResolvedTransitionTopology resolved{
+                        low_id,current.layer,TransitionTemplateKind::QuadTopCap,
+                        diagonal,{}};
+                    std::optional<Point3> internal_center;
+                    if (terminal_hexa_points)
+                        if (const auto hexa = terminal_hexa_points(low_id))
+                        {
+                            std::array<Point3,4> bottom{};
+                            std::array<Point3,4> top{};
+                            std::copy_n(hexa->begin(),4,bottom.begin());
+                            std::copy_n(hexa->begin()+4,4,top.begin());
+                            resolved.aspect_ratio = quadTopCapAspectRatio(
+                                {bottom,top});
+                            internal_center = findPositiveQuadTopCapCenter(
+                                {bottom,top,diagonal,Scalar{1e-12}});
+                            resolved.terminal_quad_decision =
+                                chooseTerminalQuadDecision(
+                                    resolved.aspect_ratio,internal_center,
+                                    !external_controls.keepHexa(low_id));
+                            if (resolved.terminal_quad_decision ==
+                                TerminalQuadDecision::InternalSplit)
+                                resolved.generated_point = internal_center;
+                        }
+                    if (resolved.terminal_quad_decision ==
+                        TerminalQuadDecision::ExternalPatch)
+                    {
+                        const auto patch = buildExternalQuadPatch({
+                            low_id,current.layer,low,high,{},&points,8,
+                            external_controls.distanceScale(low_id),
+                            Scalar{1e-12}});
+                        if (resolved.terminal_quad_decision ==
+                                TerminalQuadDecision::KeepHexa ||
+                            !patch.hasValue())
+                        {
+                            resolved.terminal_quad_decision =
+                                chooseTerminalQuadDecision(
+                                    resolved.aspect_ratio,internal_center,
+                                    false);
+                            resolved.generated_point =
+                                resolved.terminal_quad_decision ==
+                                    TerminalQuadDecision::InternalSplit
+                                ? internal_center : std::nullopt;
+                        }
+                        else
+                        {
+                            resolved.generated_point =
+                                patch.value().created_vertices.front();
+                            points.push_back(*resolved.generated_point);
+                            keys.push_back({static_cast<VertexId>(low_id),
+                                current.layer,
+                                std::numeric_limits<std::uint32_t>::max()});
+                            regions.push_back({});
+                            const LayerBoundaryOwner owner{
+                                low_id,current.layer,
+                                BoundaryOwnerRole::ExternalPatch,{}};
+                            for (const Triangle &triangle :
+                                 patch.value().top_faces)
+                                appendOwnedTriangle(
+                                    provisional.boundary,triangle,
+                                    points,keys,owner,regions,
+                                    physicalEdgeMask(triangle,4),{},nullptr);
+                        }
+                    }
+                    else
+                    {
+                        const auto &triangles = chosen.value().triangles;
+                        const LayerBoundaryOwner owner{
+                            low_id,current.layer,
+                            BoundaryOwnerRole::TopCap,{}};
+                        for (const Triangle &triangle : triangles)
+                            appendOwnedTriangle(
+                                provisional.boundary,triangle,
+                                points,keys,owner,regions,
+                                physicalEdgeMask(triangle,4),{},
+                                columnContext(current,candidate,
+                                    low_source_ids,candidate_vertices));
+                    }
+                    provisional.resolved_topology.push_back(
+                        std::move(resolved));
+                    continue;
+                }
                 for (const auto &neighbor : neighbors)
                     for (const std::size_t local : {
                              neighbor.local_edge,
@@ -488,6 +755,86 @@ namespace boundary_mesh
                 }
                 provisional.boundary.diagonal_requirements.push_back(
                     {{low_id,current.layer},diagonal});
+                ResolvedTransitionTopology resolved{
+                    low_id,current.layer,
+                    selection.value().retained_local_edges.size() == 1
+                        ? TransitionTemplateKind::QuadSingleHighSide
+                        : TransitionTemplateKind::QuadAdjacentHighSide,
+                    diagonal,dependencies};
+                resolved.retained_local_edges =
+                    selection.value().retained_local_edges;
+                std::optional<Point3> internal_center;
+                if (terminal_hexa_points)
+                    if (const auto hexa = terminal_hexa_points(low_id))
+                    {
+                        std::array<Point3,4> bottom{};
+                        std::array<Point3,4> top{};
+                        std::copy_n(hexa->begin(),4,bottom.begin());
+                        std::copy_n(hexa->begin()+4,4,top.begin());
+                        resolved.aspect_ratio = quadTopCapAspectRatio(
+                            {bottom,top});
+                        internal_center = findPositiveQuadTopCapCenter(
+                            {bottom,top,diagonal,Scalar{1e-12}});
+                        resolved.terminal_quad_decision =
+                            chooseTerminalQuadDecision(
+                                resolved.aspect_ratio,internal_center,
+                                !external_controls.keepHexa(low_id));
+                        if (resolved.terminal_quad_decision ==
+                            TerminalQuadDecision::InternalSplit)
+                            resolved.generated_point = internal_center;
+                    }
+                if (resolved.terminal_quad_decision ==
+                    TerminalQuadDecision::ExternalPatch)
+                {
+                    const auto patch = buildExternalQuadPatch({
+                        low_id,current.layer,low,high,
+                        resolved.retained_local_edges,&points,8,
+                        external_controls.distanceScale(low_id),
+                        Scalar{1e-12}});
+                    if (!patch.hasValue())
+                    {
+                        resolved.terminal_quad_decision =
+                            chooseTerminalQuadDecision(
+                                resolved.aspect_ratio,internal_center,false);
+                        resolved.generated_point =
+                            resolved.terminal_quad_decision ==
+                                TerminalQuadDecision::InternalSplit
+                            ? internal_center : std::nullopt;
+                        if (resolved.terminal_quad_decision ==
+                                TerminalQuadDecision::KeepHexa &&
+                            !dependencies.empty())
+                        {
+                            provisional.forced_rollback_high_faces.insert(
+                                provisional.forced_rollback_high_faces.end(),
+                                dependencies.begin(), dependencies.end());
+                        }
+                    }
+                    else
+                    {
+                        resolved.generated_point =
+                            patch.value().created_vertices.front();
+                        points.push_back(*resolved.generated_point);
+                        keys.push_back({static_cast<VertexId>(low_id),
+                            current.layer,
+                            std::numeric_limits<std::uint32_t>::max()});
+                        regions.push_back({});
+                        const LayerBoundaryOwner owner{
+                            low_id,current.layer,
+                            BoundaryOwnerRole::ExternalPatch,dependencies};
+                        for (const Triangle &triangle :
+                             patch.value().top_faces)
+                            appendOwnedTriangle(
+                                provisional.boundary,triangle,
+                                points,keys,owner,regions,
+                                physicalEdgeMask(triangle,4),
+                                commonRegions(triangle,regions),
+                                columnContext(current,candidate,
+                                    low_source_ids,candidate_vertices));
+                    }
+                    provisional.resolved_topology.push_back(
+                        std::move(resolved));
+                    continue;
+                }
                 std::vector<Triangle> low_cap = diagonal ==
                         QuadDiagonal::ZeroTwo
                     ? std::vector<Triangle>{
@@ -519,6 +866,14 @@ namespace boundary_mesh
                     return ProvisionalLayerTransitionResult::failure(
                         LayerTransitionError{
                             atStage(side.error(),13)});
+                if (!hasStrictlyPositiveTemplateVolumes(
+                        side.value(),points))
+                {
+                    provisional.forced_rollback_high_faces.insert(
+                        provisional.forced_rollback_high_faces.end(),
+                        dependencies.begin(),dependencies.end());
+                    continue;
+                }
                 const LayerBoundaryOwner side_owner{
                     low_id, current.layer,
                     BoundaryOwnerRole::SideTransition, dependencies};
@@ -528,8 +883,10 @@ namespace boundary_mesh
                         points, keys, side_owner, regions,
                         physicalEdgeMask(triangle, 4),
                         commonRegions(triangle, regions),
-                        columnContext(current, candidate,
-                            low_source_ids, candidate_vertices));
+                            columnContext(current, candidate,
+                                low_source_ids, candidate_vertices));
+                provisional.resolved_topology.push_back(
+                    std::move(resolved));
             }
             return ProvisionalLayerTransitionResult::success(
                 std::move(provisional));

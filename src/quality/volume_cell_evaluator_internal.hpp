@@ -34,4 +34,26 @@ namespace boundary_mesh::quality_internal
         std::size_t point_count,
         VolumeCellKind cell_kind,
         const VolumeCellQualityOptions &options) noexcept;
+
+    std::optional<Scalar> integratedJacobianVolume(
+        const PyramidPoints &points) noexcept;
+
+    std::optional<Scalar> integratedJacobianVolume(
+        const PrismPoints &points) noexcept;
+
+    std::optional<Scalar> integratedJacobianVolume(
+        const HexaPoints &points) noexcept;
+
+    VolumeCellValidity combinedValidity(
+        VolumeCellValidity subtet_validity,
+        Scalar integrated_volume) noexcept;
+
+    std::optional<Scalar> minimumLocalJacobian(
+        const TetraPoints &points) noexcept;
+    std::optional<Scalar> minimumLocalJacobian(
+        const PyramidPoints &points) noexcept;
+    std::optional<Scalar> minimumLocalJacobian(
+        const PrismPoints &points) noexcept;
+    std::optional<Scalar> minimumLocalJacobian(
+        const HexaPoints &points) noexcept;
 }

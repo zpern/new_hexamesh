@@ -1,6 +1,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <cmath>
 #include <variant>
 #include <vector>
 
@@ -66,6 +67,19 @@ int main()
         {0, 1, 2, 3},
         {points[0], points[1], points[2], points[3]}};
 
+    const auto regular_center = findPositiveQuadTopCapCenter({
+        {points[0], points[1], points[2], points[3]},
+        {points[4], points[5], points[6], points[7]},
+        QuadDiagonal::ZeroTwo, Scalar{1e-12}});
+    if (!regular_center.has_value() ||
+        ((*regular_center - Point3{0.5, 0.5, 0.5}).norm() > 1e-10))
+        return 1;
+    const Scalar regular_ratio = quadTopCapAspectRatio({
+        {points[0], points[1], points[2], points[3]},
+        {points[4], points[5], points[6], points[7]}});
+    if (std::abs(regular_ratio - Scalar{1}) > Scalar{1e-12})
+        return 2;
+
     LayerQuadDiagonalTable diagonals;
     const auto selected = diagonals.resolve(
         {7, 0}, bottom, QuadDiagonal::OneThree, 1e-12);
@@ -115,6 +129,40 @@ int main()
     if (!cap_positive) return 10;
     if (!side_positive) return 11;
     if (!adjacent_positive) return 12;
+
+    const auto no_high_external = buildExternalQuadPatch({
+        9, 1, {0,1,2,3}, {0,1,2,3}, {}, &points, 8,
+        Scalar{0.25}, Scalar{1e-12}});
+    if (!no_high_external.hasValue() ||
+        no_high_external.value().volume_cells.size() != 1 ||
+        no_high_external.value().created_vertices.size() != 1)
+        return 13;
+    std::vector<Point3> no_high_points = points;
+    no_high_points.push_back(no_high_external.value().created_vertices[0]);
+    if (!allPositive(no_high_external.value().volume_cells, no_high_points))
+        return 14;
+
+    const auto one_high_external = buildExternalQuadPatch({
+        9, 1, {0,1,2,3}, {4,5,2,3}, {0}, &points, 8,
+        Scalar{0.25}, Scalar{1e-12}});
+    if (!one_high_external.hasValue() ||
+        one_high_external.value().volume_cells.size() != 2)
+        return 15;
+    std::vector<Point3> one_high_points = points;
+    one_high_points.push_back(one_high_external.value().created_vertices[0]);
+    if (!allPositive(one_high_external.value().volume_cells, one_high_points))
+        return 16;
+
+    const auto two_high_external = buildExternalQuadPatch({
+        9, 1, {0,1,2,3}, {4,5,6,3}, {0,1}, &points, 8,
+        Scalar{0.25}, Scalar{1e-12}});
+    if (!two_high_external.hasValue() ||
+        two_high_external.value().volume_cells.size() != 3)
+        return 17;
+    std::vector<Point3> two_high_points = points;
+    two_high_points.push_back(two_high_external.value().created_vertices[0]);
+    if (!allPositive(two_high_external.value().volume_cells, two_high_points))
+        return 18;
 
     for (const QuadDiagonal diagonal : {
              QuadDiagonal::ZeroTwo, QuadDiagonal::OneThree})

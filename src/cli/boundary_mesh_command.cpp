@@ -292,6 +292,14 @@ namespace boundary_mesh
                       << stopReasonName(face.stop_reason)
                       << " accepted_layers=" << face.accepted_layer_count
                       << " stop_layer=" << face.stop_layer << '\n';
+            for (const auto &diagnostic :
+                 growth.terminal_transition_diagnostics)
+                debug << "error terminal_quad_transition source_face="
+                      << diagnostic.source_face_id
+                      << " layer=" << diagnostic.layer
+                      << " cell=" << diagnostic.cell_id
+                      << " aspect_ratio=" << diagnostic.aspect_ratio
+                      << " reason=" << diagnostic.reason << '\n';
             return static_cast<bool>(debug);
         }
     }
@@ -404,6 +412,14 @@ namespace boundary_mesh
             return 6;
         }
 
+        for (const auto &diagnostic :
+             growth.value().regular.terminal_transition_diagnostics)
+            error << "error: terminal quad transition failed"
+                  << " source_face=" << diagnostic.source_face_id
+                  << " layer=" << diagnostic.layer
+                  << " cell=" << diagnostic.cell_id
+                  << " reason=" << diagnostic.reason << '\n';
+
         const auto parent = command_options.output_prefix.parent_path();
         std::error_code directory_error;
         if (!parent.empty())
@@ -441,7 +457,20 @@ namespace boundary_mesh
             !farfield_status.hasValue() ||
             !top_status.hasValue())
         {
-            error << "failed to write VTK output\n";
+            const auto report = [&](const char *label,
+                                    const VtkWriteStatus &status)
+            {
+                if (status.hasValue()) return;
+                const auto &detail = status.error();
+                error << "failed to write " << label << " VTK output: path="
+                      << detail.path.string() << " code="
+                      << static_cast<int>(detail.code)
+                      << " cell_index=" << detail.cell_index
+                      << " vertex_id=" << detail.vertex_id << '\n';
+            };
+            report("volume", volume_status);
+            report("farfield", farfield_status);
+            report("top", top_status);
             return 7;
         }
 

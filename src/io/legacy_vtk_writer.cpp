@@ -44,7 +44,14 @@ namespace boundary_mesh
                     else if constexpr (std::is_same_v<Cell, Pyramid>)
                         type = 14;
                     else if constexpr (std::is_same_v<Cell, Prism>)
+                    {
                         type = 13;
+                        return CellView{
+                            {value.vertex_ids[0], value.vertex_ids[2],
+                             value.vertex_ids[1], value.vertex_ids[3],
+                             value.vertex_ids[5], value.vertex_ids[4]},
+                            type};
+                    }
                     return CellView{
                         {value.vertex_ids.begin(), value.vertex_ids.end()},
                         type};

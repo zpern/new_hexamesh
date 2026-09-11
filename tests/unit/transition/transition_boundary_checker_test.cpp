@@ -76,6 +76,16 @@ int main()
     assert(side.hasValue());
     assert((side.value() == std::vector<SurfaceFaceId>{21,22}));
 
+    TransitionBoundaryInput owner_input;
+    owner_input.candidate_triangles.push_back(triangle(
+        flat, candidate_keys, 44, {}));
+    owner_input.original_surface = &obstacle_index.value();
+    const auto colliding_owners = checker.findCollidingOwners(owner_input);
+    assert(colliding_owners.hasValue());
+    assert(colliding_owners.value().size() == 1);
+    assert(colliding_owners.value().front().source_face_id == 44);
+    assert(colliding_owners.value().front().rollback_high_faces.empty());
+
     TransitionBoundaryInput cap_input;
     cap_input.candidate_triangles.push_back(triangle(
         flat, candidate_keys, 30, {30}, BoundaryOwnerRole::TopCap));
@@ -312,6 +322,38 @@ int main()
     if (side_triangles != 4) return 34;
     if (attached_sides != 0) return 35;
     if (associated_vertices == 0) return 36;
+
+    // A thin terminal Hexa prefers the external patch, but rejection of that
+    // candidate must still fall back to a feasible positive-volume internal
+    // split before KeepHexa is selected.
+    ExternalPatchControls rejected_external;
+    rejected_external.keep_hexa_faces = {0};
+    const auto thin_hexa = [](SurfaceFaceId id)
+        -> std::optional<HexaPoints>
+    {
+        if (id != 0) return std::nullopt;
+        return HexaPoints{{
+            Point3{0,0,-0.01}, Point3{1,0,-0.01},
+            Point3{1,1,-0.01}, Point3{0,1,-0.01},
+            Point3{0,0,0}, Point3{1,0,0},
+            Point3{1,1,0}, Point3{0,1,0}}};
+    };
+    const auto internal_after_external_rejection =
+        buildProvisionalTransition(
+            transition_low, transition_high, {1}, transition_sets,
+            thin_hexa, rejected_external);
+    if (!internal_after_external_rejection.hasValue()) return 40;
+    const auto terminal = std::find_if(
+        internal_after_external_rejection.value().resolved_topology.begin(),
+        internal_after_external_rejection.value().resolved_topology.end(),
+        [](const ResolvedTransitionTopology &value)
+        { return value.source_face_id == 0; });
+    if (terminal ==
+            internal_after_external_rejection.value().resolved_topology.end() ||
+        terminal->terminal_quad_decision !=
+            TerminalQuadDecision::InternalSplit ||
+        !terminal->generated_point.has_value())
+        return 41;
 
     std::vector<OwnedBoundaryTriangle> prior_transition_boundary = {
         triangle(

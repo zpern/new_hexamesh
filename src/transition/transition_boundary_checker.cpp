@@ -47,11 +47,22 @@ namespace boundary_mesh
 
         void appendOwner(
             std::vector<SurfaceFaceId> &rollback,
-            const LayerBoundaryOwner &owner)
+            const LayerBoundaryOwner &owner,
+            std::vector<LayerBoundaryOwner> *colliding_owners)
         {
             rollback.insert(rollback.end(),
                 owner.rollback_high_faces.begin(),
                 owner.rollback_high_faces.end());
+            if (colliding_owners == nullptr) return;
+            const auto same = [&](const LayerBoundaryOwner &other)
+            {
+                return other.source_face_id == owner.source_face_id &&
+                       other.layer == owner.layer &&
+                       other.role == owner.role;
+            };
+            if (std::none_of(
+                    colliding_owners->begin(), colliding_owners->end(), same))
+                colliding_owners->push_back(owner);
         }
 
         bool sameKey(
@@ -193,6 +204,27 @@ namespace boundary_mesh
     Result<std::vector<SurfaceFaceId>, TransitionBoundaryError>
     TransitionBoundaryChecker::findRollbackFaces(
         const TransitionBoundaryInput &input) const
+    {
+        return findRollbackFacesImpl(input, nullptr);
+    }
+
+    Result<std::vector<LayerBoundaryOwner>, TransitionBoundaryError>
+    TransitionBoundaryChecker::findCollidingOwners(
+        const TransitionBoundaryInput &input) const
+    {
+        using OwnerResult = Result<
+            std::vector<LayerBoundaryOwner>, TransitionBoundaryError>;
+        std::vector<LayerBoundaryOwner> owners;
+        const auto rollback = findRollbackFacesImpl(input, &owners);
+        if (!rollback.hasValue())
+            return OwnerResult::failure(rollback.error());
+        return OwnerResult::success(std::move(owners));
+    }
+
+    Result<std::vector<SurfaceFaceId>, TransitionBoundaryError>
+    TransitionBoundaryChecker::findRollbackFacesImpl(
+        const TransitionBoundaryInput &input,
+        std::vector<LayerBoundaryOwner> *colliding_owners) const
     {
         using RollbackResult = Result<
             std::vector<SurfaceFaceId>, TransitionBoundaryError>;
@@ -339,7 +371,8 @@ namespace boundary_mesh
                     ignored.insert(sliding_hit.value().region_id);
                 }
             }
-            if (hit) appendOwner(rollback, owned[index].owner);
+            if (hit) appendOwner(
+                rollback, owned[index].owner, colliding_owners);
         }
 
         if (!collisions.empty())
@@ -354,8 +387,10 @@ namespace boundary_mesh
                          collisions[first]))
                     if (first < second)
                     {
-                        appendOwner(rollback, owned[first].owner);
-                        appendOwner(rollback, owned[second].owner);
+                        appendOwner(
+                            rollback, owned[first].owner, colliding_owners);
+                        appendOwner(
+                            rollback, owned[second].owner, colliding_owners);
                     }
         }
         std::sort(rollback.begin(), rollback.end());

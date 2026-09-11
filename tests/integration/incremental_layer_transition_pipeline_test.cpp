@@ -135,10 +135,11 @@ namespace
 int main()
 {
     const auto one = generate(1);
-    assert(count(one.mesh, CellType::Hexa) == 0);
-    assert(count(one.mesh, CellType::Pyramid) == 5);
-    assert(count(one.mesh, CellType::Tetra) == 2);
-    assert(one.top_surface.faces.size() == 2);
+    if (count(one.mesh, CellType::Hexa) != 1 ||
+        count(one.mesh, CellType::Pyramid) != 1 ||
+        count(one.mesh, CellType::Tetra) != 0 ||
+        one.top_surface.faces.size() != 4)
+        return 61;
     for (const auto &face : one.top_surface.faces)
         assert(std::holds_alternative<Triangle>(face));
     for (std::size_t index = 0;
@@ -147,6 +148,12 @@ int main()
             SurfaceBoundaryKind::BoundaryLayerInterface)
             assert(std::holds_alternative<Triangle>(
                 one.farfield_boundary.faces[index]));
+    std::size_t farfield_face_corners{};
+    for (const SurfaceFace &face : one.farfield_boundary.faces)
+        std::visit([&](const auto &value)
+        { farfield_face_corners += value.vertex_ids.size(); }, face);
+    if (one.farfield_boundary.vertices.size() >= farfield_face_corners)
+        return 60;
 
     const auto two = generate(2);
     assert(count(two.mesh, CellType::Hexa) == 1);
@@ -205,6 +212,47 @@ int main()
                       strip.value().top_surface.faces.end(),
         [](const SurfaceFace &face)
         { return std::holds_alternative<Triangle>(face); }));
+
+    SurfaceMesh external_surface;
+    external_surface.vertices = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0}};
+    external_surface.faces = {Quad{{0,1,2,3}}};
+    external_surface.face_tags = {
+        {SurfaceBoundaryKind::Wall,13}};
+    GrowthFront external_front;
+    external_front.layer = 0;
+    external_front.vertices = {
+        {{0,0,0},0},{{1,0,0},1},{{1,1,0},2},{{0,1,0},3}};
+    external_front.faces = external_surface.faces;
+    external_front.source_face_ids = {0};
+    RegularLayerGrowthResult external_regular;
+    external_regular.mesh.vertices = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0},
+        {0,0,1},{1,0,1},{1,1,1},{0,1,1}};
+    external_regular.mesh.cells = {
+        Hexa{{0,1,2,3,4,5,6,7}}};
+    external_regular.mesh.metadata = {
+        {CellRole::RegularLayer,0,1}};
+    external_regular.faces = {{
+        0,1,FaceGrowthStatus::Completed,
+        FaceStopReason::VertexLayerLimit,2}};
+    external_regular.layer_vertices = {
+        {0,{0,4},0},{1,{1,5},0},{2,{2,6},0},{3,{3,7},0}};
+    ResolvedTransitionTopology external_topology;
+    external_topology.source_face_id = 0;
+    external_topology.layer = 1;
+    external_topology.template_kind = TransitionTemplateKind::QuadTopCap;
+    external_topology.low_diagonal = QuadDiagonal::ZeroTwo;
+    external_topology.terminal_quad_decision =
+        TerminalQuadDecision::ExternalPatch;
+    external_topology.generated_point = Point3{0.5,0.5,1.5};
+    const auto external_final = finalizeIncrementalLayerTopology(
+        external_surface, external_front, std::move(external_regular),
+        {external_topology});
+    assert(external_final.hasValue());
+    assert(count(external_final.value().mesh, CellType::Hexa) == 1);
+    assert(count(external_final.value().mesh, CellType::Pyramid) == 1);
+    assert(count(external_final.value().mesh, CellType::Tetra) == 0);
 
     SurfaceMesh triangle_surface;
     triangle_surface.vertices = {

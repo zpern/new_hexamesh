@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <string>
 #include <vector>
 
 #include <boundary_mesh/growth/growth_front.hpp>
@@ -94,6 +95,7 @@ namespace boundary_mesh
         std::function<std::vector<SurfaceFaceId>(
             const GrowthFront &, const LayerStepResult &,
             const std::vector<VertexId> &,
+            const VolumeMesh &, const LayerVertexTable &,
             const CollisionIndex &,
             const ExposedBoundaryTracker &)>
             candidate_rejections;
@@ -108,5 +110,17 @@ namespace boundary_mesh
         SurfaceMesh farfield_boundary;                         // 原始 Farfield 与边界层最终外露接口组成的远场边界
         SurfaceMesh top_surface;                               // 边界层最终真实外露顶面
         GrowthFieldSmoothingDiagnostics smoothing_diagnostics; // 全部规则层的法向优化统计
+        struct TerminalTransitionDiagnostic
+        {
+            SurfaceFaceId source_face_id{};
+            std::uint32_t layer{};
+            std::size_t cell_id{};
+            Scalar aspect_ratio{};
+            std::vector<SurfaceFaceId> high_faces;
+            std::vector<SurfaceFaceId> rollback_high_faces;
+            std::string reason;
+        };
+        std::vector<TerminalTransitionDiagnostic>
+            terminal_transition_diagnostics;
     };
 }
