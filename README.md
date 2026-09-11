@@ -43,7 +43,7 @@ CGNS + .bc.txt + CLI 参数
 | tiger_geom | `third/geom`，空间相交私有依赖 |
 | HDF5 | `third/hdf5`，当前子模块 1.14.6；CGNS IO 开启时使用 |
 | CGNS | `third/cgns`，当前子模块 4.5.2 |
-| BLMesh 多法向代码 | `third/blmesh_mnormal`，源码直接编入边界层库 |
+|  |                                                     |
 
 CMake 优先复用父工程提供的 `BoundaryMesh::CGNS`、CGNS target 或 `tiger_geom`；独立构建则使用 `third/`。内置 HDF5/CGNS 为静态库，并关闭工具、示例、Fortran、Java及依赖自身测试。
 

@@ -2,9 +2,9 @@
 
 ## 1. 目标
 
-阶段 04 为阶段 05 的预推出流程提供独立的候选体单元评价函数。阶段 05 在正式提交 Prism 或 Hexa 前，将候选顶点坐标传入本模块；本模块使用固定子四面体有向体积判断退化、整体反转和局部翻转，并使用组成面的 equiangular skewness 判断质量是否合格。
+本模块为规则生长和过渡生成提供独立的候选体单元评价函数。在正式提交 Prism、Hexa、Pyramid 或 Tetra 前，将候选顶点坐标传入本模块；本模块使用有向体积判断退化、整体反转和局部翻转，并使用组成面的 equiangular skewness 判断质量是否合格。
 
-本阶段只支持 Prism 和 Hexa。Tetra 与 Pyramid 延后到阶段 09，并根据实际过渡模板单独设计。
+当前规则生长主要使用 Prism 和 Hexa；Pyramid 与 Tetra 由过渡路径按具体模板进行额外检查。
 
 本设计明确不使用 Jacobian、归一化 Jacobian、形函数采样或高斯积分。
 
@@ -274,7 +274,7 @@ Release benchmark 对固定 Prism/Hexa 重复评价至少一百万次并输出�
 
 ## 14. 完成边界
 
-阶段 04 完成时：
+本模块当前应满足：
 
 - `BoundaryMesh::Quality` 只用固定子四面体有向体积评价 Prism/Hexa 几何有效性；
 - 不存在任何 Jacobian、归一化 Jacobian、形函数采样或高斯积分接口与实现；

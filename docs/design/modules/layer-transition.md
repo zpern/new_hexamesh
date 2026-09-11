@@ -3,7 +3,7 @@
 > 本文首先描述 `generateBoundaryLayers()` 当前使用的逐层增量过渡路径。原来的
 > “额外试生长两层、结束后一次性协调”算法保留在本文后半部分，作为旧 API 和
 > 兼容测试的参考。设计依据见
-> `docs/superpowers/specs/2026-09-03-incremental-layer-transition-design.md`。
+本文件描述当前代码中的逐层边界层过渡路径；历史实施计划不属于发布文档。
 
 ## A. 当前生产路径：逐层固定点过渡
 

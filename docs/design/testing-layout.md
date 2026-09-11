@@ -54,7 +54,7 @@ add_executable(
 
 - 现有 8 个测试全部移动到 `unit/core` 或 `unit/mesh`；
 - Task 2 的新测试位于 `unit/surface`；
-- 后续阶段 03 单元测试全部位于 `unit/growth`；
+- 生长相关单元测试位于 `unit/growth`；
 - `tests/unit` 根目录不再直接存放 `.cpp`；
 - CMake 重新配置、Debug 构建和全部 CTest 通过；
 - 文件移动在 Git 中识别为 rename，测试 target 名称保持不变。

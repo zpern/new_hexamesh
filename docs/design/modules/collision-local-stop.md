@@ -2,7 +2,7 @@
 
 ## 1. 文档目的
 
-本文定义 BoundaryMesh 阶段 06 的空间查询、碰撞检测和逐源面局部停止模型。本阶段插入阶段 05 的“质量检查通过”和“候选单元提交”之间，检测候选 Prism/Hexa 是否接触原始障碍、历史外露边界或同层其他候选。
+本文定义当前 BoundaryMesh 的空间查询、碰撞检测和逐源面局部停止模型。检查发生在候选质量验证和正式提交之间，用于判断候选 Prism/Hexa 是否接触原始障碍、历史外露边界或同层其他候选。
 
 本文只描述模块边界、空间索引、接触语义、逐层事务和错误处理，不负责相邻面停止传播、层数协调及 Pyramid/Tetra 过渡。
 
@@ -497,4 +497,4 @@ O(n²) 路径。实现改为以规范 `BoundaryFaceKey` 为键的有序容器，
 
 最终验证结果：Debug 45/45、Release 45/45，均为 0 failed；关闭
 `BOUNDARY_MESH_ENABLE_CGNS_IO` 后 `boundary_mesh_boundary_layer` Debug 构建通过。
-阶段 08、09仍未实施。
+层数协调和过渡处理由 `transition` 与 `boundary_layer` 模块负责，具体行为以当前实现和对应测试为准。
