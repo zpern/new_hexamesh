@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <utility>
 
+#include <boundary_mesh/spatial/batch_self_collision_detector.hpp>
+
 namespace boundary_mesh
 {
     namespace
@@ -591,28 +593,23 @@ namespace boundary_mesh
                 triangles.value().begin(),
                 triangles.value().end());
         }
-        const auto index = CollisionIndex::build(all);
-        if (!index.hasValue())
+        const auto collisions = BatchSelfCollisionDetector::detect(all);
+        if (!collisions.hasValue())
         {
             return Result<LayerStepResult, SpatialError>::failure(
-                index.error());
+                collisions.error());
         }
 
         std::vector<bool> stopped(candidates.value().size(), false);
-        for (std::size_t primitive = 0; primitive < all.size(); ++primitive)
+        for (const std::uint32_t owner :
+             collisions.value().illegal_owner_ids)
         {
-            const std::uint32_t owner = all[primitive].owner_id;
-            for (const std::size_t hit :
-                 index.value().queryIllegalContacts(all[primitive]))
+            if (owner >= stopped.size())
             {
-                const std::uint32_t other =
-                    index.value().primitive(hit).owner_id;
-                if (owner != other)
-                {
-                    stopped[owner] = true;
-                    stopped[other] = true;
-                }
+                return Result<LayerStepResult, SpatialError>::failure(
+                    SpatialError::InvalidTopologyReference);
             }
+            stopped[owner] = true;
         }
         return Result<LayerStepResult, SpatialError>::success(
             compactStep(current_front, obstacle_step, stopped));
