@@ -108,6 +108,7 @@ add_library(
         src/spatial/sliding_intersection_index.cpp
         src/spatial/collision_boundary_policy.cpp
         src/spatial/collision_index.cpp
+        src/spatial/batch_self_collision_detector.cpp
         src/spatial/incremental_collision_index.cpp
 )
 add_library(BoundaryMesh::Spatial ALIAS boundary_mesh_spatial)
