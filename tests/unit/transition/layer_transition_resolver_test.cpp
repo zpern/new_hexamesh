@@ -256,4 +256,68 @@ int main()
         narrow_result.value().resolved_topology.front()
              .generated_point.has_value())
         return 56;
+
+    LayerTransitionInput multiple_external;
+    multiple_external.completed_layer = 1;
+    std::size_t multiple_builds{};
+    multiple_external.build_provisional = [&multiple_builds](
+        const std::vector<SurfaceFaceId> &,
+        const LayerFaceSets &,
+        const ExternalPatchControls &controls)
+    {
+        ++multiple_builds;
+        ProvisionalLayerTransition value;
+        for (const SurfaceFaceId id : {SurfaceFaceId{80}, SurfaceFaceId{81}})
+        {
+            const Scalar offset = id == 80 ? Scalar{0} : Scalar{10};
+            const Scalar scale = controls.distanceScale(id);
+            value.boundary.candidate_triangles.push_back({
+                {{{offset-1,-1,0},{offset+1,-1,0},{offset,1,scale}}},
+                {{{id*10+0,1,0},{id*10+1,1,0},{id*10+2,1,0}}},
+                {id,1,BoundaryOwnerRole::ExternalPatch,{}}});
+            ResolvedTransitionTopology topology;
+            topology.source_face_id = id;
+            topology.layer = 1;
+            topology.template_kind = TransitionTemplateKind::QuadTopCap;
+            topology.terminal_quad_decision =
+                TerminalQuadDecision::ExternalPatch;
+            topology.generated_point = Point3{offset,0,scale};
+            value.resolved_topology.push_back(std::move(topology));
+        }
+        value.all_top_faces_are_triangles = true;
+        return ProvisionalLayerTransitionResult::success(std::move(value));
+    };
+    std::vector<CollisionTriangle> multiple_ceilings;
+    for (const SurfaceFaceId id : {SurfaceFaceId{80}, SurfaceFaceId{81}})
+    {
+        const Scalar offset = id == 80 ? Scalar{0} : Scalar{10};
+        CollisionTriangle value;
+        value.points = {{{offset-2,-2,0.1},
+                         {offset+2,-2,0.1},
+                         {offset,2,0.1}}};
+        value.vertex_keys = {{{id*10+3,0,0},
+                              {id*10+4,0,0},
+                              {id*10+5,0,0}}};
+        value.owner_kind = CollisionOwnerKind::OriginalSurface;
+        value.owner_id = id;
+        value.boundary_vertex_count = 3;
+        std::copy(value.points.begin(), value.points.end(),
+                  value.boundary_points.begin());
+        std::copy(value.vertex_keys.begin(), value.vertex_keys.end(),
+                  value.boundary_vertex_keys.begin());
+        multiple_ceilings.push_back(std::move(value));
+    }
+    auto multiple_index = CollisionIndex::build(
+        std::move(multiple_ceilings));
+    if (!multiple_index.hasValue()) return 57;
+    multiple_external.original_surface = std::move(multiple_index.value());
+    const auto multiple_result = resolver.resolve(multiple_external);
+    if (!multiple_result.hasValue() ||
+        multiple_result.value().resolved_topology.size() != 2)
+        return 58;
+    for (const auto &topology : multiple_result.value().resolved_topology)
+        if (!topology.generated_point.has_value() ||
+            topology.generated_point->z() >= Scalar{0.1})
+            return 59;
+    if (multiple_builds >= 25) return 60;
 }

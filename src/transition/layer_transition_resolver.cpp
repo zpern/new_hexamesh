@@ -150,24 +150,6 @@ namespace boundary_mesh
                       << face_sets.transition_low_faces.size()
                       << " external=" << external_faces.size() << '\n';
 
-            const auto collides = [&](const ProvisionalLayerTransition &value,
-                                      SurfaceFaceId id)
-                -> Result<bool, TransitionBoundaryError>
-            {
-                const auto owners = checker.findCollidingOwners(value.boundary);
-                if (!owners.hasValue())
-                    return Result<bool, TransitionBoundaryError>::failure(
-                        owners.error());
-                return Result<bool, TransitionBoundaryError>::success(
-                    std::any_of(owners.value().begin(), owners.value().end(),
-                        [&](const LayerBoundaryOwner &owner)
-                        {
-                            return owner.role ==
-                                       BoundaryOwnerRole::ExternalPatch &&
-                                   owner.source_face_id == id;
-                        }));
-            };
-
             // One global scan identifies which external patches need any
             // further work.  Safe patches must not each rebuild this index.
             const auto initial_scan_started =
@@ -187,121 +169,141 @@ namespace boundary_mesh
 
             bool external_changed = false;
 
-            for (const SurfaceFaceId id : external_faces)
+            struct ExternalSearch
             {
-                const auto external_started = std::chrono::steady_clock::now();
                 Scalar low{};
                 Scalar high{};
+                Scalar probe{};
                 bool bracketed = false;
-                const Scalar initial = external_controls.distanceScale(id);
-                const bool initial_collision = std::any_of(
-                    initial_report.value().colliding_owners.begin(),
-                    initial_report.value().colliding_owners.end(),
+                bool exhausted = false;
+            };
+            std::map<SurfaceFaceId, ExternalSearch> searches;
+            const auto isColliding = [](const auto &owners, SurfaceFaceId id)
+            {
+                return std::any_of(
+                    owners.begin(), owners.end(),
                     [&](const LayerBoundaryOwner &owner)
                     {
                         return owner.role == BoundaryOwnerRole::ExternalPatch &&
                                owner.source_face_id == id;
                     });
-                if (initial_collision)
+            };
+            for (const SurfaceFaceId id : external_faces)
+            {
+                if (!isColliding(
+                    initial_report.value().colliding_owners,
+                    id))
                 {
-                    external_changed = true;
-                    high = initial;
-                    Scalar probe = initial;
-                    std::optional<ProvisionalLayerTransition> safe;
-                    while (probe > minimum_external_distance_scale)
-                    {
-                        probe = std::max(
-                            probe * Scalar{0.5},
-                            minimum_external_distance_scale);
-                        external_controls.distance_scales[id] = probe;
-                        auto trial = build();
-                        if (!trial.hasValue())
-                            return ResolveResult::failure(trial.error());
-                        const auto hit = collides(trial.value(), id);
-                        if (!hit.hasValue())
-                            return ResolveResult::failure(
-                                LayerTransitionError{hit.error()});
-                        if (!hit.value())
-                        {
-                            low = probe;
-                            safe = std::move(trial.value());
-                            bracketed = true;
-                            break;
-                        }
-                        high = probe;
-                        provisional = std::move(trial);
-                        if (probe == minimum_external_distance_scale) break;
-                    }
-                    if (!safe.has_value())
-                    {
-                        auto topology = std::find_if(
-                            provisional.value().resolved_topology.begin(),
-                            provisional.value().resolved_topology.end(),
-                            [&](const ResolvedTransitionTopology &value)
-                            { return value.source_face_id == id; });
-                        if (topology !=
-                                provisional.value().resolved_topology.end() &&
-                            !topology->dependent_high_faces.empty())
-                            break;
-                        external_controls.keep_hexa_faces.push_back(id);
-                        std::sort(external_controls.keep_hexa_faces.begin(),
-                                  external_controls.keep_hexa_faces.end());
-                        external_controls.keep_hexa_faces.erase(std::unique(
-                            external_controls.keep_hexa_faces.begin(),
-                            external_controls.keep_hexa_faces.end()),
-                            external_controls.keep_hexa_faces.end());
-                        provisional = build();
-                        if (!provisional.hasValue())
-                            return ResolveResult::failure(provisional.error());
-                        continue;
-                    }
-                    provisional = ProvisionalLayerTransitionResult::success(
-                        std::move(*safe));
-                }
-                else
-                {
-                    // The default outward distance is already a valid
-                    // non-intersecting candidate.  Do not spend a global
-                    // boundary rebuild expanding every safe patch; the
-                    // binary search below is reserved for candidates that
-                    // actually intersect at their initial distance.
-                    low = initial;
-                    external_controls.distance_scales[id] = low;
+                    external_controls.distance_scales[id] =
+                        external_controls.distanceScale(id);
                     continue;
                 }
-                if (!bracketed)
+                const Scalar initial = external_controls.distanceScale(id);
+                searches.emplace(
+                    id, ExternalSearch{Scalar{}, initial, initial, false, false});
+                external_changed = true;
+            }
+
+            while (std::any_of(
+                searches.begin(), searches.end(), [](const auto &entry)
+                { return !entry.second.bracketed && !entry.second.exhausted; }))
+            {
+                for (auto &[id, search] : searches)
                 {
-                    external_controls.distance_scales[id] = low;
-                    continue;
+                    if (search.bracketed || search.exhausted) continue;
+                    search.probe = std::max(
+                        search.probe * Scalar{0.5},
+                        minimum_external_distance_scale);
+                    external_controls.distance_scales[id] = search.probe;
                 }
-                for (std::uint32_t step = 0; step < 12; ++step)
+                auto trial = build();
+                if (!trial.hasValue())
+                    return ResolveResult::failure(trial.error());
+                const auto report = checker.inspect(trial.value().boundary);
+                if (!report.hasValue())
+                    return ResolveResult::failure(
+                        LayerTransitionError{report.error()});
+                for (auto &[id, search] : searches)
                 {
-                    const Scalar middle = (low + high) * Scalar{0.5};
-                    external_controls.distance_scales[id] = middle;
-                    auto trial = build();
-                    if (!trial.hasValue())
-                        return ResolveResult::failure(trial.error());
-                    const auto hit = collides(trial.value(), id);
-                    if (!hit.hasValue())
-                        return ResolveResult::failure(LayerTransitionError{
-                            hit.error()});
-                    if (hit.value()) high = middle;
+                    if (search.bracketed || search.exhausted) continue;
+                    if (!isColliding(report.value().colliding_owners, id))
+                    {
+                        search.low = search.probe;
+                        search.bracketed = true;
+                    }
                     else
                     {
-                        low = middle;
-                        provisional = std::move(trial);
+                        search.high = search.probe;
+                        search.exhausted =
+                            search.probe == minimum_external_distance_scale;
                     }
                 }
-                external_controls.distance_scales[id] = low;
+                provisional = std::move(trial);
+            }
+
+            bool keep_hexa_changed = false;
+            for (const auto &[id, search] : searches)
+            {
+                if (search.bracketed) continue;
+                const auto topology = std::find_if(
+                    provisional.value().resolved_topology.begin(),
+                    provisional.value().resolved_topology.end(),
+                    [&](const ResolvedTransitionTopology &value)
+                    { return value.source_face_id == id; });
+                if (topology != provisional.value().resolved_topology.end() &&
+                    !topology->dependent_high_faces.empty())
+                    continue;
+                external_controls.keep_hexa_faces.push_back(id);
+                keep_hexa_changed = true;
+            }
+            if (keep_hexa_changed)
+            {
+                std::sort(external_controls.keep_hexa_faces.begin(),
+                          external_controls.keep_hexa_faces.end());
+                external_controls.keep_hexa_faces.erase(std::unique(
+                    external_controls.keep_hexa_faces.begin(),
+                    external_controls.keep_hexa_faces.end()),
+                    external_controls.keep_hexa_faces.end());
+            }
+
+            for (std::uint32_t step = 0; step < 12; ++step)
+            {
+                bool active = false;
+                for (auto &[id, search] : searches)
+                {
+                    if (!search.bracketed) continue;
+                    active = true;
+                    external_controls.distance_scales[id] =
+                        (search.low + search.high) * Scalar{0.5};
+                }
+                if (!active) break;
+                auto trial = build();
+                if (!trial.hasValue())
+                    return ResolveResult::failure(trial.error());
+                const auto report = checker.inspect(trial.value().boundary);
+                if (!report.hasValue())
+                    return ResolveResult::failure(
+                        LayerTransitionError{report.error()});
+                for (auto &[id, search] : searches)
+                {
+                    if (!search.bracketed) continue;
+                    const Scalar middle =
+                        external_controls.distance_scales[id];
+                    if (isColliding(report.value().colliding_owners, id))
+                        search.high = middle;
+                    else
+                        search.low = middle;
+                }
+                provisional = std::move(trial);
+            }
+            for (const auto &[id, search] : searches)
+                if (search.bracketed)
+                    external_controls.distance_scales[id] = search.low;
+            if (!searches.empty() || keep_hexa_changed)
+            {
                 provisional = build();
                 if (!provisional.hasValue())
                     return ResolveResult::failure(provisional.error());
-                const auto external_ms =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - external_started).count();
-                if (external_ms > 1000)
-                    std::cerr << "temporary resolver external id=" << id
-                              << " ms=" << external_ms << '\n';
             }
 
             std::vector<SurfaceFaceId> rollback;
