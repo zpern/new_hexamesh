@@ -48,6 +48,7 @@ int main()
     const auto first_update = tracker.prepare({first});
     assert(first_update.hasValue());
     assert(tracker.apply(first_update.value()).hasValue());
+    assert(tracker.collisionIndex().diagnostics().root_expansions == 0);
     assert(tracker.faceCount() == 4);
     assert(std::any_of(
         tracker.faces().begin(), tracker.faces().end(),

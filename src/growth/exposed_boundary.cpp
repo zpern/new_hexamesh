@@ -362,6 +362,31 @@ namespace boundary_mesh
         }
 
         BoundaryFaceMap working = makeFaceMap(faces_);
+        if (faces_.empty() && update.erase_faces.empty())
+        {
+            std::vector<CollisionPrimitiveGroup> groups;
+            std::vector<std::pair<BoundaryFaceKey, CollisionGroupId>> mappings;
+            for (PendingInsert &entry : pending)
+            {
+                CollisionGroupId group{};
+                if (entry.indexed)
+                {
+                    group = next_collision_group_id_++;
+                    groups.push_back({group, std::move(entry.triangles)});
+                }
+                mappings.push_back({entry.key, group});
+                working[entry.key] = std::move(entry.face);
+            }
+            auto built = IncrementalCollisionIndex::build(std::move(groups));
+            if (!built.hasValue())
+                return Result<std::monostate, SpatialError>::failure(
+                    built.error());
+            collision_index_ = std::move(built.value());
+            collision_groups_ = std::move(mappings);
+            faces_ = mapFaces(working);
+            return Result<std::monostate, SpatialError>::success({});
+        }
+
         for (const BoundaryFaceKey &key : update.erase_faces)
         {
             const auto found = std::find_if(
