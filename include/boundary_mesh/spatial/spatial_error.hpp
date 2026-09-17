@@ -4,6 +4,7 @@ namespace boundary_mesh
 {
     enum class SpatialError
     {
+        MissingPrimitiveGroup,
         NonFiniteCoordinate,      // 碰撞图元包含 NaN 或无穷坐标
         DegenerateTriangle,       // 碰撞三角形面积严格等于零
         InvalidAabb,              // 包围盒下界大于上界
