@@ -418,6 +418,11 @@ namespace boundary_mesh
             working[entry.key] = std::move(entry.face);
         }
         faces_ = mapFaces(working);
+        collision_index_.compactInactive();
+        const auto rebuilt = collision_index_.rebuildIfDegraded();
+        if (!rebuilt.hasValue())
+            return Result<std::monostate, SpatialError>::failure(
+                rebuilt.error());
         return Result<std::monostate, SpatialError>::success({});
     }
 

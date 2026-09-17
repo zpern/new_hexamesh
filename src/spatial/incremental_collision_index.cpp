@@ -157,6 +157,28 @@ namespace boundary_mesh
         return diagnostics_;
     }
 
+    void IncrementalCollisionIndex::compactInactive()
+    {
+        for (Node &node : nodes_)
+        {
+            if (!node.leaf) continue;
+            node.primitives.erase(
+                std::remove_if(
+                    node.primitives.begin(), node.primitives.end(),
+                    [&](CollisionPrimitiveId id)
+                    {
+                        return !primitives_[static_cast<std::size_t>(id)].active;
+                    }),
+                node.primitives.end());
+        }
+        diagnostics_.inactive_primitives = 0;
+        diagnostics_.maximum_leaf_load = 0;
+        for (const Node &node : nodes_)
+            if (node.leaf)
+                diagnostics_.maximum_leaf_load = std::max(
+                    diagnostics_.maximum_leaf_load, node.primitives.size());
+    }
+
     Result<bool, SpatialError>
     IncrementalCollisionIndex::rebuildIfDegraded()
     {

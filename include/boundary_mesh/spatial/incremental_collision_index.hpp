@@ -59,6 +59,7 @@ namespace boundary_mesh
             std::optional<CollisionGroupId> ignored_group = {}) const;
         const CollisionTriangle &primitive(CollisionPrimitiveId id) const;
         const CollisionIndexDiagnostics &diagnostics() const noexcept;
+        void compactInactive();
         Result<bool, SpatialError> rebuildIfDegraded();
 
     private:

@@ -62,6 +62,7 @@ int main()
     assert(second_update.hasValue());
     assert(tracker.apply(second_update.value()).hasValue());
     assert(tracker.faceCount() == 6);
+    assert(tracker.collisionIndex().diagnostics().inactive_primitives == 0);
 
     const auto triangles = tracker.collisionTriangles();
     assert(triangles.hasValue());
