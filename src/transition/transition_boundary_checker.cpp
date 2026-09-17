@@ -429,20 +429,23 @@ namespace boundary_mesh
 
         if (!collisions.empty())
         {
-            const auto candidate_index = CollisionIndex::build(collisions);
+            const auto candidate_index = IncrementalCollisionIndex::build(
+                {{CollisionGroupId{1}, collisions}});
             if (!candidate_index.hasValue())
                 return RollbackResult::failure(
                     TransitionBoundaryError{candidate_index.error()});
             for (std::size_t first = 0; first < collisions.size(); ++first)
-                for (const std::size_t second :
+                for (const CollisionPrimitiveId second :
                      candidate_index.value().queryIllegalContacts(
                          collisions[first]))
-                    if (first < second)
+                    if (first < static_cast<std::size_t>(second))
                     {
                         appendOwner(
                             rollback, owned[first].owner, colliding_owners);
                         appendOwner(
-                            rollback, owned[second].owner, colliding_owners);
+                            rollback,
+                            owned[static_cast<std::size_t>(second)].owner,
+                            colliding_owners);
                     }
         }
         std::sort(rollback.begin(), rollback.end());

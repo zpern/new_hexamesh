@@ -124,9 +124,16 @@ namespace boundary_mesh
                 return value;
             };
 
+            const auto provisional_build_started =
+                std::chrono::steady_clock::now();
             auto provisional = build();
             if (!provisional.hasValue())
                 return ResolveResult::failure(provisional.error());
+            std::cerr << "temporary resolver build_ms="
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() -
+                             provisional_build_started).count()
+                      << '\n';
 
             std::vector<SurfaceFaceId> external_faces;
             for (const auto &topology : provisional.value().resolved_topology)
@@ -163,6 +170,8 @@ namespace boundary_mesh
 
             // One global scan identifies which external patches need any
             // further work.  Safe patches must not each rebuild this index.
+            const auto initial_scan_started =
+                std::chrono::steady_clock::now();
             const auto initial_report =
                 checker.inspect(provisional.value().boundary);
             if (!initial_report.hasValue())
@@ -170,7 +179,8 @@ namespace boundary_mesh
                     initial_report.error()});
             std::cerr << "temporary resolver initial_scan_ms="
                       << std::chrono::duration_cast<std::chrono::milliseconds>(
-                             std::chrono::steady_clock::now() - iteration_started).count()
+                             std::chrono::steady_clock::now() -
+                             initial_scan_started).count()
                       << " colliding_owners="
                       << initial_report.value().colliding_owners.size()
                       << '\n';

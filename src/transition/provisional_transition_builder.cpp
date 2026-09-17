@@ -412,14 +412,26 @@ namespace boundary_mesh
                 resolved.aspect_ratio = quadTopCapAspectRatio({
                     {hexa[0],hexa[1],hexa[2],hexa[3]},
                     {hexa[4],hexa[5],hexa[6],hexa[7]}});
-                const auto internal_center = findPositiveQuadTopCapCenter({
-                    {hexa[0],hexa[1],hexa[2],hexa[3]},
-                    {hexa[4],hexa[5],hexa[6],hexa[7]},
-                    chosen.value().diagonal,Scalar{1e-12}});
+                const std::array<Point3,4> bottom{{
+                    hexa[0],hexa[1],hexa[2],hexa[3]}};
+                const std::array<Point3,4> top_points{{
+                    hexa[4],hexa[5],hexa[6],hexa[7]}};
+                std::optional<Point3> internal_center;
+                const bool external_available =
+                    !external_controls.keepHexa(id);
+                const bool prefer_external =
+                    chooseTerminalQuadDecision(
+                        resolved.aspect_ratio, Point3::Zero(),
+                        external_available) ==
+                    TerminalQuadDecision::ExternalPatch;
+                if (!prefer_external)
+                    internal_center = findPositiveQuadTopCapCenter({
+                        bottom,top_points,chosen.value().diagonal,
+                        Scalar{1e-12}});
                 resolved.terminal_quad_decision =
                     chooseTerminalQuadDecision(
                         resolved.aspect_ratio,internal_center,
-                        !external_controls.keepHexa(id));
+                        external_available);
 
                 if (resolved.terminal_quad_decision ==
                     TerminalQuadDecision::ExternalPatch)
@@ -428,9 +440,15 @@ namespace boundary_mesh
                         id,candidate.layer,top,top,{},&points,8,
                         external_controls.distanceScale(id),Scalar{1e-12}});
                     if (!patch.hasValue())
+                    {
+                        if (!internal_center.has_value())
+                            internal_center = findPositiveQuadTopCapCenter({
+                                bottom,top_points,
+                                chosen.value().diagonal,Scalar{1e-12}});
                         resolved.terminal_quad_decision =
                             chooseTerminalQuadDecision(
                                 resolved.aspect_ratio,internal_center,false);
+                    }
                     else
                     {
                         resolved.generated_point =
