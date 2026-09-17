@@ -4,7 +4,7 @@
 
 **Goal:** Replace per-triangle self-collision queries with one deterministic batch pass that tests each unordered `CollisionTriangle` pair at most once and reports profiling counters.
 
-**Architecture:** Add a focused `BatchSelfCollisionDetector` in the spatial module. It caches triangle AABBs, sorts primitives on the longest overall axis, performs a one-dimensional sweep followed by full AABB and existing exact-contact checks, and returns sorted illegal owner IDs. This is the pair-once and interval-pruning core of the `blmesh` approach without importing its legacy classes; a later octree refinement is warranted only if diagnostics show excessive sweep candidates.
+**Architecture:** Add a focused `BatchSelfCollisionDetector` in the spatial module. It caches triangle AABBs, builds a `BinaryAabbTree`, queries true AABB-overlap candidates, processes only candidates with a greater stable primitive ID, and returns sorted illegal owner IDs. This preserves the pair-once core of the `blmesh` approach without importing its legacy classes or paying for a global pair-deduplication set.
 
 **Tech Stack:** C++17, Eigen geometry types, existing `Result`, `Aabb`, `CollisionTriangle`, and `hasIllegalTriangleContact` APIs, CMake/CTest.
 
@@ -56,7 +56,7 @@ Declare:
 
 ```cpp
 struct BatchSelfCollisionDiagnostics {
-    std::uint64_t triangle_count{}, sweep_pairs{}, unique_pairs{};
+    std::uint64_t triangle_count{}, broad_phase_visits{}, unique_pairs{};
     std::uint64_t same_owner_skips{}, aabb_rejections{};
     std::uint64_t topology_rejections{}, exact_tests{};
     std::uint64_t illegal_owner_pairs{};
@@ -81,7 +81,7 @@ git add include/boundary_mesh/spatial/batch_self_collision_detector.hpp tests/un
 git commit -m "test: specify batch self collision detection"
 ```
 
-### Task 2: Implement pair-once sweep and preserve contact semantics
+### Task 2: Implement pair-once BVH traversal and preserve contact semantics
 
 **Files:**
 - Create: `src/spatial/batch_self_collision_detector.cpp`
@@ -102,19 +102,18 @@ produce two owner IDs only, and a non-finite coordinate returns
 
 Expected: link failure for the unimplemented `detect()` method.
 
-- [ ] **Step 3: Implement cached bounds and longest-axis ordering**
+- [ ] **Step 3: Implement cached bounds and BVH construction**
 
 For every triangle, call `makeAabb`, reject zero-area triangles consistently
-with `CollisionIndex::build`, cache `{primitive, bounds}`, select the axis with
-the greatest overall extent, and stable-sort by `bounds.minimum[axis]` then
-primitive ID.
+with `CollisionIndex::build`, cache the bound, and bulk-build a
+`BinaryAabbTree`.
 
-- [ ] **Step 4: Implement pair-once sweep and cheap filters**
+- [ ] **Step 4: Implement pair-once traversal and cheap filters**
 
-For each sorted primitive `i`, visit only later primitives `j`; break when
-`min[j][axis] > max[i][axis]`. Count the pair once, skip equal owner IDs before
-the exact predicate, reject non-overlapping three-axis AABBs, and call
-`hasIllegalTriangleContact()` for the remainder. Propagate predicate errors.
+For each primitive `i`, query its cached bound and process only returned
+primitive IDs `j > i`. Count the pair once, skip equal owner IDs before the
+exact predicate, and call `hasIllegalTriangleContact()` for the remainder.
+Propagate predicate errors.
 
 - [ ] **Step 5: Produce deterministic owner output and diagnostics**
 
@@ -227,8 +226,9 @@ Parameters: first height `0.1`, growth ratio `1.2`, layer count `20`.
 
 Confirm all 20 per-layer cell counts equal the previous optimized run. Report
 total time, self-collision time, worst layer, and detector counters. If
-`sweep_pairs` remains much larger than `exact_tests`, propose an octree-local
-sweep as a measured second phase; otherwise keep the simpler global sweep.
+`broad_phase_visits` remains much larger than `exact_tests`, profile a direct
+BVH pair traversal as a measured second phase; otherwise keep the query-based
+batch traversal.
 
 - [ ] **Step 4: Run final repository checks**
 

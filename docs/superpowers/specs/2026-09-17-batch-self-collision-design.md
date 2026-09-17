@@ -44,15 +44,11 @@ participating in illegal contacts and optionally fills diagnostic counters.
 `LayerCollisionChecker::filterSelfCollisions()` remains responsible for
 turning those owner IDs into the `stopped` mask.
 
-The component owns only per-call data. It caches each triangle AABB during
-construction and builds a leaf-based spatial partition for the current layer.
-Within each leaf it sorts primitive references along the leaf's longest axis
-and uses interval sweep-and-prune before checking the other two AABB axes.
-
-Because a triangle may overlap more than one leaf, primitive pairs are
-canonicalized as `(min_id, max_id)` and globally deduplicated before exact
-testing. Pair identity uses primitive indices, not owner IDs, because different
-triangles belonging to the same two owners may encode different contacts.
+The component owns only per-call data. It caches each triangle AABB and builds
+a `BinaryAabbTree` for the current layer. Each primitive queries overlapping
+AABBs, but a candidate is processed only when its stable primitive ID is
+greater than the query ID. This enumerates each unordered primitive pair once
+without the global pair set that an overlapping-leaf Octree would require.
 
 ## Pair Processing Order
 
@@ -76,8 +72,7 @@ needed by tests or profiling.
 Expose counters that do not affect decisions:
 
 - triangle count;
-- leaf count and maximum leaf load;
-- raw leaf-local pair count;
+- broad-phase candidate visits;
 - unique primitive pair count;
 - same-owner skip count;
 - AABB-rejected pair count;

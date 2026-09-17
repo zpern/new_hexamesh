@@ -12,7 +12,7 @@ namespace boundary_mesh
     struct BatchSelfCollisionDiagnostics
     {
         std::uint64_t triangle_count{};
-        std::uint64_t sweep_pairs{};
+        std::uint64_t broad_phase_visits{};
         std::uint64_t unique_pairs{};
         std::uint64_t same_owner_skips{};
         std::uint64_t aabb_rejections{};
