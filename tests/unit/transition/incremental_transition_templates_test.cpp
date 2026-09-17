@@ -67,13 +67,16 @@ int main()
         {0, 1, 2, 3},
         {points[0], points[1], points[2], points[3]}};
 
+    QuadTopCapCenterDiagnostics center_diagnostics;
     const auto regular_center = findPositiveQuadTopCapCenter({
         {points[0], points[1], points[2], points[3]},
         {points[4], points[5], points[6], points[7]},
-        QuadDiagonal::ZeroTwo, Scalar{1e-12}});
+        QuadDiagonal::ZeroTwo, Scalar{1e-12}, &center_diagnostics});
     if (!regular_center.has_value() ||
         ((*regular_center - Point3{0.5, 0.5, 0.5}).norm() > 1e-10))
         return 1;
+    if (center_diagnostics.exhaustive_candidates_tested != 0)
+        return 3;
     const Scalar regular_ratio = quadTopCapAspectRatio({
         {points[0], points[1], points[2], points[3]},
         {points[4], points[5], points[6], points[7]}});

@@ -9,12 +9,18 @@
 
 namespace boundary_mesh
 {
+    struct QuadTopCapCenterDiagnostics
+    {
+        std::size_t exhaustive_candidates_tested{};
+    };
+
     struct PositiveQuadTopCapCenterInput
     {
         std::array<Point3, 4> bottom{};
         std::array<Point3, 4> top{};
         QuadDiagonal diagonal{};
         Scalar volume_tolerance{1e-12};
+        QuadTopCapCenterDiagnostics *diagnostics{};
     };
 
     struct QuadTopCapAspectRatioInput

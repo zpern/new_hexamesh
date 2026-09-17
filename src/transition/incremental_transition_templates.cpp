@@ -141,6 +141,8 @@ namespace boundary_mesh
     std::optional<Point3> findPositiveQuadTopCapCenter(
         const PositiveQuadTopCapCenterInput &input)
     {
+        if (input.diagnostics != nullptr)
+            input.diagnostics->exhaustive_candidates_tested = 0;
         Point3 minimum = input.bottom[0];
         Point3 maximum = input.bottom[0];
         for (const auto &face : {input.bottom, input.top})
@@ -184,12 +186,17 @@ namespace boundary_mesh
         if (const auto validity = quadTopCapValidityMargin(
                 input.bottom, input.top, input.diagonal, best))
             best_margin = *validity;
+        if (std::isfinite(best_margin) &&
+            best_margin > input.volume_tolerance)
+            return best;
 
         for (std::size_t i = 0; i + 3 < constraints.size(); ++i)
             for (std::size_t j = i + 1; j + 2 < constraints.size(); ++j)
                 for (std::size_t k = j + 1; k + 1 < constraints.size(); ++k)
                     for (std::size_t l = k + 1; l < constraints.size(); ++l)
                     {
+                        if (input.diagnostics != nullptr)
+                            ++input.diagnostics->exhaustive_candidates_tested;
                         Eigen::Matrix<Scalar, 4, 4> matrix;
                         Eigen::Matrix<Scalar, 4, 1> right;
                         const std::array<std::size_t, 4> active{{i,j,k,l}};
