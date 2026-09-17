@@ -8,6 +8,24 @@
 
 namespace boundary_mesh
 {
+    CollisionTriangle makeTransitionCollisionTriangle(
+        const OwnedBoundaryTriangle &owned,
+        std::uint32_t owner_id)
+    {
+        CollisionTriangle result;
+        result.points = owned.points;
+        result.vertex_keys = owned.vertex_keys;
+        result.owner_kind = CollisionOwnerKind::LayerCandidate;
+        result.owner_id = owner_id;
+        result.boundary_vertex_count = 3;
+        for (std::size_t index = 0; index < 3; ++index)
+        {
+            result.boundary_points[index] = owned.points[index];
+            result.boundary_vertex_keys[index] = owned.vertex_keys[index];
+        }
+        return result;
+    }
+
     namespace
     {
         using VertexTuple = std::tuple<VertexId, std::uint32_t, std::uint32_t>;
@@ -24,24 +42,6 @@ namespace boundary_mesh
                                 tuple(triangle.vertex_keys[1]),
                                 tuple(triangle.vertex_keys[2])}};
             std::sort(result.begin(), result.end());
-            return result;
-        }
-
-        CollisionTriangle collisionTriangle(
-            const OwnedBoundaryTriangle &owned,
-            std::uint32_t owner_id)
-        {
-            CollisionTriangle result;
-            result.points = owned.points;
-            result.vertex_keys = owned.vertex_keys;
-            result.owner_kind = CollisionOwnerKind::LayerCandidate;
-            result.owner_id = owner_id;
-            result.boundary_vertex_count = 3;
-            for (std::size_t index = 0; index < 3; ++index)
-            {
-                result.boundary_points[index] = owned.points[index];
-                result.boundary_vertex_keys[index] = owned.vertex_keys[index];
-            }
             return result;
         }
 
@@ -273,7 +273,7 @@ namespace boundary_mesh
         std::vector<CollisionTriangle> collisions;
         collisions.reserve(owned.size());
         for (std::size_t index = 0; index < owned.size(); ++index)
-            collisions.push_back(collisionTriangle(
+            collisions.push_back(makeTransitionCollisionTriangle(
                 owned[index], static_cast<std::uint32_t>(index)));
 
         std::optional<CollisionIndex> immutable_historical_index;
@@ -304,7 +304,7 @@ namespace boundary_mesh
             prior.reserve(input.prior_transition_boundary->size());
             for (std::size_t index = 0;
                  index < input.prior_transition_boundary->size(); ++index)
-                prior.push_back(collisionTriangle(
+                prior.push_back(makeTransitionCollisionTriangle(
                     (*input.prior_transition_boundary)[index],
                     static_cast<std::uint32_t>(index)));
             auto built = CollisionIndex::build(prior);

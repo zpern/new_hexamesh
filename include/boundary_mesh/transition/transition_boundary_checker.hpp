@@ -77,6 +77,10 @@ namespace boundary_mesh
         std::vector<SurfaceFaceId> rollback_faces;
     };
 
+    CollisionTriangle makeTransitionCollisionTriangle(
+        const OwnedBoundaryTriangle &owned,
+        std::uint32_t owner_id);
+
     class TransitionBoundaryChecker
     {
     public:

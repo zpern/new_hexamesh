@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <set>
 #include <utility>
 
 #include <boundary_mesh/transition/layer_transition_resolver.hpp>
@@ -204,6 +205,104 @@ namespace boundary_mesh
                 external_changed = true;
             }
 
+            std::optional<IncrementalCollisionIndex> search_index;
+            if (!searches.empty())
+            {
+                const auto assembled = checker.assembleExposedBoundary(
+                    provisional.value().boundary);
+                if (!assembled.hasValue())
+                    return ResolveResult::failure(
+                        LayerTransitionError{assembled.error()});
+                std::map<CollisionGroupId, std::vector<CollisionTriangle>>
+                    grouped;
+                for (const OwnedBoundaryTriangle &owned : assembled.value())
+                {
+                    const CollisionGroupId group =
+                        owned.owner.role == BoundaryOwnerRole::ExternalPatch
+                        ? static_cast<CollisionGroupId>(
+                              owned.owner.source_face_id) + 2
+                        : CollisionGroupId{1};
+                    grouped[group].push_back(makeTransitionCollisionTriangle(
+                        owned, owned.owner.source_face_id));
+                }
+                std::vector<CollisionPrimitiveGroup> groups;
+                for (auto &[group, triangles] : grouped)
+                    groups.push_back({group, std::move(triangles)});
+                auto built = IncrementalCollisionIndex::build(
+                    std::move(groups));
+                if (!built.hasValue())
+                    return ResolveResult::failure(LayerTransitionError{
+                        TransitionBoundaryError{built.error()}});
+                search_index = std::move(built.value());
+            }
+
+            using ExternalCollisionResult = Result<
+                std::set<SurfaceFaceId>, LayerTransitionError>;
+            const auto inspectExternalChanges =
+                [&](const ProvisionalLayerTransition &trial)
+                -> ExternalCollisionResult
+            {
+                std::map<SurfaceFaceId,
+                         std::vector<OwnedBoundaryTriangle>> replacements;
+                for (const OwnedBoundaryTriangle &owned :
+                     trial.boundary.candidate_triangles)
+                    if (owned.owner.role ==
+                            BoundaryOwnerRole::ExternalPatch &&
+                        searches.find(owned.owner.source_face_id) !=
+                            searches.end())
+                        replacements[owned.owner.source_face_id].push_back(
+                            owned);
+
+                TransitionBoundaryInput changed = trial.boundary;
+                changed.diagonal_requirements.clear();
+                changed.candidate_triangles.clear();
+                for (const auto &[id, triangles] : replacements)
+                    changed.candidate_triangles.insert(
+                        changed.candidate_triangles.end(),
+                        triangles.begin(), triangles.end());
+                const auto obstacle_report = checker.inspect(changed);
+                if (!obstacle_report.hasValue())
+                    return ExternalCollisionResult::failure(
+                        LayerTransitionError{obstacle_report.error()});
+
+                std::set<SurfaceFaceId> colliding;
+                for (const LayerBoundaryOwner &owner :
+                     obstacle_report.value().colliding_owners)
+                    if (owner.role == BoundaryOwnerRole::ExternalPatch)
+                        colliding.insert(owner.source_face_id);
+
+                for (const auto &[id, triangles] : replacements)
+                {
+                    const CollisionGroupId group =
+                        static_cast<CollisionGroupId>(id) + 2;
+                    const auto erased = search_index->eraseGroup(group);
+                    if (!erased.hasValue())
+                        return ExternalCollisionResult::failure(
+                            LayerTransitionError{
+                                TransitionBoundaryError{erased.error()}});
+                    std::vector<CollisionTriangle> converted;
+                    converted.reserve(triangles.size());
+                    for (const OwnedBoundaryTriangle &owned : triangles)
+                        converted.push_back(makeTransitionCollisionTriangle(
+                            owned, id));
+                    const auto inserted = search_index->insertGroup(
+                        {group, converted});
+                    if (!inserted.hasValue())
+                        return ExternalCollisionResult::failure(
+                            LayerTransitionError{
+                                TransitionBoundaryError{inserted.error()}});
+                    for (const CollisionTriangle &triangle : converted)
+                        if (!search_index->queryIllegalContacts(
+                                triangle, group).empty())
+                        {
+                            colliding.insert(id);
+                            break;
+                        }
+                }
+                return ExternalCollisionResult::success(
+                    std::move(colliding));
+            };
+
             while (std::any_of(
                 searches.begin(), searches.end(), [](const auto &entry)
                 { return !entry.second.bracketed && !entry.second.exhausted; }))
@@ -219,14 +318,14 @@ namespace boundary_mesh
                 auto trial = build();
                 if (!trial.hasValue())
                     return ResolveResult::failure(trial.error());
-                const auto report = checker.inspect(trial.value().boundary);
-                if (!report.hasValue())
-                    return ResolveResult::failure(
-                        LayerTransitionError{report.error()});
+                const auto collisions = inspectExternalChanges(trial.value());
+                if (!collisions.hasValue())
+                    return ResolveResult::failure(collisions.error());
                 for (auto &[id, search] : searches)
                 {
                     if (search.bracketed || search.exhausted) continue;
-                    if (!isColliding(report.value().colliding_owners, id))
+                    if (collisions.value().find(id) ==
+                        collisions.value().end())
                     {
                         search.low = search.probe;
                         search.bracketed = true;
@@ -280,16 +379,16 @@ namespace boundary_mesh
                 auto trial = build();
                 if (!trial.hasValue())
                     return ResolveResult::failure(trial.error());
-                const auto report = checker.inspect(trial.value().boundary);
-                if (!report.hasValue())
-                    return ResolveResult::failure(
-                        LayerTransitionError{report.error()});
+                const auto collisions = inspectExternalChanges(trial.value());
+                if (!collisions.hasValue())
+                    return ResolveResult::failure(collisions.error());
                 for (auto &[id, search] : searches)
                 {
                     if (!search.bracketed) continue;
                     const Scalar middle =
                         external_controls.distance_scales[id];
-                    if (isColliding(report.value().colliding_owners, id))
+                    if (collisions.value().find(id) !=
+                        collisions.value().end())
                         search.high = middle;
                     else
                         search.low = middle;

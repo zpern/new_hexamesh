@@ -4,7 +4,7 @@
 
 **Goal:** Resolve all colliding external patches with shared global provisional builds.
 
-**Architecture:** Track per-owner search intervals in a sorted map and advance all active owners once per global build/inspection round. Preserve the current exact collision checker and fallback rules.
+**Architecture:** Track per-owner search intervals in a sorted map and advance all active owners once per round. Keep an incremental collision index grouped by external owner; each round erases and reinserts only changed groups, then queries only their triangles. Preserve the current exact collision checker and fallback rules.
 
 **Tech Stack:** C++17, existing transition resolver and CTest.
 
@@ -32,6 +32,8 @@
 - [ ] Batch the halving phase into one build and inspect per round.
 - [ ] Apply existing KeepHexa/dependent-high fallback for unbracketed owners.
 - [ ] Batch all 12 binary-search rounds.
+- [ ] Build the candidate collision index once and replace active owner groups with `eraseGroup`/`insertGroup`.
+- [ ] Check replacement patches against fixed obstacles and unchanged candidate groups without a global candidate-index rebuild.
 - [ ] Perform one final global build and retain existing final rollback inspection.
 - [ ] Run focused and complete affected test groups.
 

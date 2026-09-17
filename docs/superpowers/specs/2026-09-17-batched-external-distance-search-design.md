@@ -23,6 +23,14 @@ parallel. A final global build uses every owner's accepted low scale.
 Safe external patches identified by the initial scan remain unchanged and do
 not enter the search.
 
+The collision broad phase is retained across search rounds. The initially
+assembled boundary is grouped by external `source_face_id` in an
+`IncrementalCollisionIndex`; non-external triangles share an immutable base
+group. After a trial geometry build, each active external group is erased and
+reinserted, and only its replacement triangles are queried against the index
+and fixed obstacle sources. This avoids rebuilding and rescanning unaffected
+collision geometry.
+
 ## Alternatives
 
 - Per-owner search is behaviorally simple but causes hundreds of global builds
