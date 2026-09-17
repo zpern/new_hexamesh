@@ -772,6 +772,15 @@ add_test(
     COMMAND boundary_mesh_incremental_collision_index_test
 )
 
+add_executable(
+    boundary_mesh_incremental_collision_index_benchmark
+    ../benchmarks/incremental_collision_index_benchmark.cpp
+)
+target_link_libraries(
+    boundary_mesh_incremental_collision_index_benchmark
+    PRIVATE BoundaryMesh::Spatial
+)
+
 # 32：已提交边界层顶面/侧面的增量外露集合
 add_executable(
     boundary_mesh_exposed_boundary_test
