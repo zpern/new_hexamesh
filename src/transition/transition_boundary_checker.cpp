@@ -100,6 +100,25 @@ namespace boundary_mesh
             return true;
         }
 
+        bool belongsToHistoricalTop(
+            const OwnedBoundaryTriangle &candidate,
+            const CollisionTriangle &historical)
+        {
+            if (candidate.owner.role != BoundaryOwnerRole::TopCap ||
+                candidate.owner.source_face_id != historical.owner_id)
+                return false;
+            for (const CollisionVertexKey &key : candidate.vertex_keys)
+            {
+                bool found = false;
+                for (std::size_t index = 0;
+                     index < historical.boundary_vertex_count; ++index)
+                    found = found || sameVertexKey(
+                        key, historical.boundary_vertex_keys[index]);
+                if (!found) return false;
+            }
+            return true;
+        }
+
         bool containsRegion(
             const std::vector<std::uint32_t> &ids, std::uint32_t region)
         {
@@ -205,7 +224,12 @@ namespace boundary_mesh
     TransitionBoundaryChecker::findRollbackFaces(
         const TransitionBoundaryInput &input) const
     {
-        return findRollbackFacesImpl(input, nullptr);
+        const auto report = inspect(input);
+        if (!report.hasValue())
+            return Result<std::vector<SurfaceFaceId>, TransitionBoundaryError>::failure(
+                report.error());
+        return Result<std::vector<SurfaceFaceId>, TransitionBoundaryError>::success(
+            report.value().rollback_faces);
     }
 
     Result<std::vector<LayerBoundaryOwner>, TransitionBoundaryError>
@@ -214,11 +238,25 @@ namespace boundary_mesh
     {
         using OwnerResult = Result<
             std::vector<LayerBoundaryOwner>, TransitionBoundaryError>;
-        std::vector<LayerBoundaryOwner> owners;
-        const auto rollback = findRollbackFacesImpl(input, &owners);
+        const auto report = inspect(input);
+        if (!report.hasValue())
+            return OwnerResult::failure(report.error());
+        return OwnerResult::success(report.value().colliding_owners);
+    }
+
+    Result<TransitionCollisionReport, TransitionBoundaryError>
+    TransitionBoundaryChecker::inspect(
+        const TransitionBoundaryInput &input) const
+    {
+        using ReportResult = Result<
+            TransitionCollisionReport, TransitionBoundaryError>;
+        TransitionCollisionReport report;
+        const auto rollback = findRollbackFacesImpl(
+            input, &report.colliding_owners);
         if (!rollback.hasValue())
-            return OwnerResult::failure(rollback.error());
-        return OwnerResult::success(std::move(owners));
+            return ReportResult::failure(rollback.error());
+        report.rollback_faces = rollback.value();
+        return ReportResult::success(std::move(report));
     }
 
     Result<std::vector<SurfaceFaceId>, TransitionBoundaryError>
@@ -238,8 +276,9 @@ namespace boundary_mesh
             collisions.push_back(collisionTriangle(
                 owned[index], static_cast<std::uint32_t>(index)));
 
-        std::optional<CollisionIndex> historical_index;
-        if (input.historical_boundary != nullptr)
+        std::optional<CollisionIndex> immutable_historical_index;
+        if (input.historical_index == nullptr &&
+            input.historical_boundary != nullptr)
         {
             const auto history_triangles =
                 input.historical_boundary->collisionTriangles();
@@ -253,7 +292,7 @@ namespace boundary_mesh
                 if (!history.hasValue())
                     return RollbackResult::failure(
                         TransitionBoundaryError{history.error()});
-                historical_index = std::move(history.value());
+                immutable_historical_index = std::move(history.value());
             }
         }
 
@@ -307,13 +346,26 @@ namespace boundary_mesh
                         break;
                     }
                 }
-            if (historical_index.has_value())
-                for (const std::size_t contact :
-                     historical_index->queryIllegalContacts(
+            if (input.historical_index != nullptr)
+                for (const CollisionPrimitiveId contact :
+                     input.historical_index->queryIllegalContacts(
                          collisions[index]))
                 {
                     const CollisionTriangle &obstacle =
-                        historical_index->primitive(contact);
+                        input.historical_index->primitive(contact);
+                    if (!belongsToHistoricalTop(owned[index], obstacle))
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
+            if (immutable_historical_index.has_value())
+                for (const std::size_t contact :
+                     immutable_historical_index->queryIllegalContacts(
+                         collisions[index]))
+                {
+                    const CollisionTriangle &obstacle =
+                        immutable_historical_index->primitive(contact);
                     const auto &history_faces =
                         input.historical_boundary->faces();
                     const bool own_historical_top =

@@ -61,6 +61,7 @@ namespace boundary_mesh
         std::vector<LayerDiagonalRequirement> diagonal_requirements;
         const CollisionIndex *original_surface{};
         const ExposedBoundaryTracker *historical_boundary{};
+        const IncrementalCollisionIndex *historical_index{};
         const std::vector<OwnedBoundaryTriangle>
             *prior_transition_boundary{};
         const SlidingIntersectionIndex *sliding_surface{};
@@ -70,9 +71,18 @@ namespace boundary_mesh
         SpatialError,
         ConflictingLayerQuadDiagonal>;
 
+    struct TransitionCollisionReport
+    {
+        std::vector<LayerBoundaryOwner> colliding_owners;
+        std::vector<SurfaceFaceId> rollback_faces;
+    };
+
     class TransitionBoundaryChecker
     {
     public:
+        Result<TransitionCollisionReport, TransitionBoundaryError>
+        inspect(const TransitionBoundaryInput &input) const;
+
         Result<std::vector<OwnedBoundaryTriangle>, TransitionBoundaryError>
         assembleExposedBoundary(const TransitionBoundaryInput &input) const;
 

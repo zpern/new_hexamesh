@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <chrono>
+#include <iostream>
 #include <utility>
 
 #include <boundary_mesh/transition/layer_transition_resolver.hpp>
@@ -86,6 +88,7 @@ namespace boundary_mesh
 
         while (true)
         {
+            const auto iteration_started = std::chrono::steady_clock::now();
             const auto suppression = applyCornerSuppression({
                 input.current_front,
                 retainFaces(input.candidate_front, retained),
@@ -106,6 +109,9 @@ namespace boundary_mesh
                         : nullptr;
                 value.boundary.historical_boundary =
                     input.historical_boundary;
+                value.boundary.historical_index = input.historical_boundary
+                    ? &input.historical_boundary->collisionIndex()
+                    : nullptr;
                 value.boundary.prior_transition_boundary =
                     input.prior_transition_boundary;
                 value.boundary.sliding_surface = input.sliding_surface;
@@ -131,6 +137,11 @@ namespace boundary_mesh
             external_faces.erase(std::unique(
                 external_faces.begin(), external_faces.end()),
                 external_faces.end());
+            std::cerr << "temporary resolver iteration=" << iterations
+                      << " retained=" << retained.size()
+                      << " transition_low="
+                      << face_sets.transition_low_faces.size()
+                      << " external=" << external_faces.size() << '\n';
 
             const auto collides = [&](const ProvisionalLayerTransition &value,
                                       SurfaceFaceId id)
@@ -152,20 +163,30 @@ namespace boundary_mesh
 
             // One global scan identifies which external patches need any
             // further work.  Safe patches must not each rebuild this index.
-            const auto initial_owners =
-                checker.findCollidingOwners(provisional.value().boundary);
-            if (!initial_owners.hasValue())
+            const auto initial_report =
+                checker.inspect(provisional.value().boundary);
+            if (!initial_report.hasValue())
                 return ResolveResult::failure(LayerTransitionError{
-                    initial_owners.error()});
+                    initial_report.error()});
+            std::cerr << "temporary resolver initial_scan_ms="
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - iteration_started).count()
+                      << " colliding_owners="
+                      << initial_report.value().colliding_owners.size()
+                      << '\n';
+
+            bool external_changed = false;
 
             for (const SurfaceFaceId id : external_faces)
             {
+                const auto external_started = std::chrono::steady_clock::now();
                 Scalar low{};
                 Scalar high{};
                 bool bracketed = false;
                 const Scalar initial = external_controls.distanceScale(id);
                 const bool initial_collision = std::any_of(
-                    initial_owners.value().begin(), initial_owners.value().end(),
+                    initial_report.value().colliding_owners.begin(),
+                    initial_report.value().colliding_owners.end(),
                     [&](const LayerBoundaryOwner &owner)
                     {
                         return owner.role == BoundaryOwnerRole::ExternalPatch &&
@@ -173,6 +194,7 @@ namespace boundary_mesh
                     });
                 if (initial_collision)
                 {
+                    external_changed = true;
                     high = initial;
                     Scalar probe = initial;
                     std::optional<ProvisionalLayerTransition> safe;
@@ -264,15 +286,26 @@ namespace boundary_mesh
                 provisional = build();
                 if (!provisional.hasValue())
                     return ResolveResult::failure(provisional.error());
+                const auto external_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - external_started).count();
+                if (external_ms > 1000)
+                    std::cerr << "temporary resolver external id=" << id
+                              << " ms=" << external_ms << '\n';
             }
 
-            const auto checked_rollback = checker.findRollbackFaces(
-                provisional.value().boundary);
-            if (!checked_rollback.hasValue())
-                return ResolveResult::failure(LayerTransitionError{
-                    checked_rollback.error()});
-            std::vector<SurfaceFaceId> rollback =
-                checked_rollback.value();
+            std::vector<SurfaceFaceId> rollback;
+            if (external_changed)
+            {
+                const auto final_report = checker.inspect(
+                    provisional.value().boundary);
+                if (!final_report.hasValue())
+                    return ResolveResult::failure(LayerTransitionError{
+                        final_report.error()});
+                rollback = final_report.value().rollback_faces;
+            }
+            else
+                rollback = initial_report.value().rollback_faces;
             rollback.insert(rollback.end(),
                 provisional.value().forced_rollback_high_faces.begin(),
                 provisional.value().forced_rollback_high_faces.end());

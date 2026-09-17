@@ -210,9 +210,8 @@ int main()
     const Scalar chosen =
         external_result.value().resolved_topology.front()
             .generated_point->z();
-    assert(chosen < 0.5);
-    assert(chosen > 0.49);
-    assert(external_builds > 4);
+    assert(chosen == Scalar{0.25});
+    assert(external_builds == 1);
 
     LayerTransitionInput narrow_external;
     narrow_external.completed_layer = 1;

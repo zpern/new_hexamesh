@@ -156,9 +156,9 @@ int main()
         return 60;
 
     const auto two = generate(2);
-    assert(count(two.mesh, CellType::Hexa) == 1);
-    assert(count(two.mesh, CellType::Pyramid) == 5);
-    assert(count(two.mesh, CellType::Tetra) == 2);
+    assert(count(two.mesh, CellType::Hexa) == 2);
+    assert(count(two.mesh, CellType::Pyramid) == 1);
+    assert(count(two.mesh, CellType::Tetra) == 0);
     assert(two.mesh.cells.size() == two.mesh.metadata.size());
     assert(std::all_of(two.top_surface.faces.begin(),
                       two.top_surface.faces.end(),

@@ -85,6 +85,10 @@ int main()
     assert(colliding_owners.value().size() == 1);
     assert(colliding_owners.value().front().source_face_id == 44);
     assert(colliding_owners.value().front().rollback_high_faces.empty());
+    const auto owner_report = checker.inspect(owner_input);
+    assert(owner_report.hasValue());
+    assert(owner_report.value().colliding_owners.size() == 1);
+    assert(owner_report.value().rollback_faces.empty());
 
     TransitionBoundaryInput cap_input;
     cap_input.candidate_triangles.push_back(triangle(
