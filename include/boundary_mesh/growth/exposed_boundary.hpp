@@ -3,11 +3,13 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include <boundary_mesh/core/result.hpp>
 #include <boundary_mesh/core/types.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
+#include <boundary_mesh/spatial/incremental_collision_index.hpp>
 #include <boundary_mesh/spatial/spatial_error.hpp>
 #include <boundary_mesh/spatial/triangle_contact.hpp>
 
@@ -46,10 +48,15 @@ namespace boundary_mesh
     class ExposedBoundaryTracker
     {
     public:
+        ExposedBoundaryTracker();
+
         Result<ExposedBoundaryUpdate, SpatialError> prepare(
             const std::vector<LayerBoundaryCandidate> &candidates) const;
 
-        void apply(const ExposedBoundaryUpdate &update);
+        Result<std::monostate, SpatialError> apply(
+            const ExposedBoundaryUpdate &update);
+
+        const IncrementalCollisionIndex &collisionIndex() const noexcept;
 
         std::size_t faceCount() const noexcept;
 
@@ -62,6 +69,10 @@ namespace boundary_mesh
             const CollisionBoundaryPolicy &policy = {}) const;
 
     private:
+        IncrementalCollisionIndex collision_index_;
+        std::vector<std::pair<BoundaryFaceKey, CollisionGroupId>>
+            collision_groups_;
+        CollisionGroupId next_collision_group_id_{1};
         std::vector<BoundaryFace> faces_; // 按规范面键排序的当前外露面
     };
 

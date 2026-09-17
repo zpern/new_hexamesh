@@ -47,7 +47,7 @@ int main()
     ExposedBoundaryTracker tracker;
     const auto first_update = tracker.prepare({first});
     assert(first_update.hasValue());
-    tracker.apply(first_update.value());
+    assert(tracker.apply(first_update.value()).hasValue());
     assert(tracker.faceCount() == 4);
     assert(std::any_of(
         tracker.faces().begin(), tracker.faces().end(),
@@ -59,10 +59,35 @@ int main()
 
     const auto second_update = tracker.prepare({second});
     assert(second_update.hasValue());
-    tracker.apply(second_update.value());
+    assert(tracker.apply(second_update.value()).hasValue());
     assert(tracker.faceCount() == 6);
 
     const auto triangles = tracker.collisionTriangles();
     assert(triangles.hasValue());
     assert(triangles.value().size() == 8);
+
+    CollisionTriangle probe;
+    probe.points = {{{0.5, -0.5, 0.5},
+                     {0.5, 1.5, 0.5},
+                     {0.5, 0.5, 1.5}}};
+    probe.vertex_keys = {{{100, 0}, {101, 0}, {102, 0}}};
+    const auto fresh = CollisionIndex::build(triangles.value());
+    assert(fresh.hasValue());
+    assert(tracker.collisionIndex().queryIllegalContacts(probe).size() ==
+           fresh.value().queryIllegalContacts(probe).size());
+
+    const std::size_t faces_before = tracker.faceCount();
+    const std::size_t primitives_before =
+        tracker.collisionIndex().diagnostics().active_primitives;
+    BoundaryFace degenerate = triangleFace(
+        {{0, 0, 0}, {1, 0, 0}, {1, 0, 0}},
+        {{20, 0}, {21, 0}, {22, 0}}, 20);
+    ExposedBoundaryUpdate invalid;
+    invalid.insert_faces.push_back(std::move(degenerate));
+    const auto rejected = tracker.apply(invalid);
+    assert(!rejected.hasValue());
+    assert(rejected.error() == SpatialError::DegenerateTriangle);
+    assert(tracker.faceCount() == faces_before);
+    assert(tracker.collisionIndex().diagnostics().active_primitives ==
+           primitives_before);
 }

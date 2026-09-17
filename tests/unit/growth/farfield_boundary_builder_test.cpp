@@ -38,7 +38,7 @@ int main()
          {SurfaceBoundaryKind::Internal, 40},
          {SurfaceBoundaryKind::BoundaryLayerInterface, 9}}}});
     assert(update.hasValue());
-    tracker.apply(update.value());
+    assert(tracker.apply(update.value()).hasValue());
 
     const auto result = buildFarfieldBoundary(original, tracker, {});
     assert(result.hasValue());

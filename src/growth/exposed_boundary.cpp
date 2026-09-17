@@ -181,6 +181,52 @@ namespace boundary_mesh
             }
             return result;
         }
+
+        Result<std::vector<CollisionTriangle>, SpatialError>
+        collisionTrianglesForFace(
+            const BoundaryFace &face,
+            std::uint32_t owner_id)
+        {
+            std::vector<CollisionTriangle> triangles;
+            const std::array<std::array<std::size_t, 3>, 2> splits{{
+                {{0, 1, 2}}, {{0, 2, 3}}}};
+            const std::size_t split_count = face.points.size() == 3 ? 1 : 2;
+            for (std::size_t split = 0; split < split_count; ++split)
+            {
+                CollisionTriangle triangle;
+                triangle.owner_kind = CollisionOwnerKind::ExposedBoundary;
+                triangle.owner_id = owner_id;
+                triangle.boundary_vertex_count =
+                    static_cast<std::uint8_t>(face.points.size());
+                for (std::size_t boundary = 0;
+                     boundary < face.points.size(); ++boundary)
+                {
+                    triangle.boundary_points[boundary] = face.points[boundary];
+                    triangle.boundary_vertex_keys[boundary] =
+                        face.vertex_keys[boundary];
+                }
+                for (std::size_t corner = 0; corner < 3; ++corner)
+                {
+                    const std::size_t index = splits[split][corner];
+                    triangle.points[corner] = face.points[index];
+                    triangle.vertex_keys[corner] = face.vertex_keys[index];
+                }
+                if ((triangle.points[1] - triangle.points[0])
+                        .cross(triangle.points[2] - triangle.points[0])
+                        .squaredNorm() == Scalar{0})
+                    return Result<std::vector<CollisionTriangle>, SpatialError>::failure(
+                        SpatialError::DegenerateTriangle);
+                triangles.push_back(std::move(triangle));
+            }
+            return Result<std::vector<CollisionTriangle>, SpatialError>::success(
+                std::move(triangles));
+        }
+    }
+
+    ExposedBoundaryTracker::ExposedBoundaryTracker()
+        : collision_index_(
+              std::move(IncrementalCollisionIndex::build({}).value()))
+    {
     }
 
     Result<BoundaryFaceKey, SpatialError> makeBoundaryFaceKey(
@@ -273,19 +319,87 @@ namespace boundary_mesh
             std::move(update));
     }
 
-    void ExposedBoundaryTracker::apply(
+    Result<std::monostate, SpatialError> ExposedBoundaryTracker::apply(
         const ExposedBoundaryUpdate &update)
     {
+        struct PendingInsert
+        {
+            BoundaryFaceKey key;
+            BoundaryFace face;
+            std::vector<CollisionTriangle> triangles;
+            bool indexed{};
+        };
+        std::vector<PendingInsert> pending;
+        for (const BoundaryFace &face : update.insert_faces)
+        {
+            const auto key = makeBoundaryFaceKey(face);
+            if (!key.hasValue())
+                return Result<std::monostate, SpatialError>::failure(key.error());
+            const bool indexed = CollisionBoundaryPolicy{}.isObstacle(
+                face.boundary_kind,
+                CollisionSurfaceOrigin::GeneratedBoundary);
+            std::vector<CollisionTriangle> triangles;
+            if (indexed)
+            {
+                const auto built = collisionTrianglesForFace(
+                    face, face.source_face_id);
+                if (!built.hasValue())
+                    return Result<std::monostate, SpatialError>::failure(
+                        built.error());
+                triangles = built.value();
+            }
+            pending.push_back(
+                {key.value(), face, std::move(triangles), indexed});
+        }
+        for (const BoundaryFaceKey &key : update.erase_faces)
+        {
+            const auto found = std::find_if(
+                collision_groups_.begin(), collision_groups_.end(),
+                [&](const auto &entry) { return faceKeyEqual(entry.first, key); });
+            if (found == collision_groups_.end())
+                return Result<std::monostate, SpatialError>::failure(
+                    SpatialError::MissingPrimitiveGroup);
+        }
+
         BoundaryFaceMap working = makeFaceMap(faces_);
         for (const BoundaryFaceKey &key : update.erase_faces)
         {
+            const auto found = std::find_if(
+                collision_groups_.begin(), collision_groups_.end(),
+                [&](const auto &entry) { return faceKeyEqual(entry.first, key); });
+            if (found->second != CollisionGroupId{})
+            {
+                const auto erased = collision_index_.eraseGroup(found->second);
+                if (!erased.hasValue())
+                    return Result<std::monostate, SpatialError>::failure(
+                        erased.error());
+            }
+            collision_groups_.erase(found);
             working.erase(key);
         }
-        for (const BoundaryFace &face : update.insert_faces)
+        for (PendingInsert &entry : pending)
         {
-            working[makeBoundaryFaceKey(face).value()] = face;
+            CollisionGroupId group{};
+            if (entry.indexed)
+            {
+                group = next_collision_group_id_++;
+                const auto inserted = collision_index_.insertGroup(
+                    {group, std::move(entry.triangles)});
+                if (!inserted.hasValue())
+                    return Result<std::monostate, SpatialError>::failure(
+                        inserted.error());
+            }
+            collision_groups_.push_back({entry.key, group});
+            working[entry.key] = std::move(entry.face);
         }
         faces_ = mapFaces(working);
+        return Result<std::monostate, SpatialError>::success({});
+    }
+
+    const IncrementalCollisionIndex &
+    ExposedBoundaryTracker::collisionIndex() const noexcept
+    {
+        return collision_index_;
     }
 
     std::size_t ExposedBoundaryTracker::faceCount() const noexcept
