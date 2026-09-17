@@ -760,6 +760,19 @@ add_test(
 )
 
 add_executable(
+    boundary_mesh_batch_self_collision_detector_test
+    unit/spatial/batch_self_collision_detector_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_batch_self_collision_detector_test
+    PRIVATE BoundaryMesh::Spatial
+)
+add_test(
+    NAME boundary_mesh_batch_self_collision_detector_test
+    COMMAND boundary_mesh_batch_self_collision_detector_test
+)
+
+add_executable(
     boundary_mesh_incremental_collision_index_test
     unit/spatial/incremental_collision_index_test.cpp
 )
