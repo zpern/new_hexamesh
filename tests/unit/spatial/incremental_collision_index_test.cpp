@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 
 #include <boundary_mesh/spatial/incremental_collision_index.hpp>
@@ -28,6 +29,18 @@ namespace
     {
         CollisionTriangle triangle = horizontalTriangle();
         for (Point3 &point : triangle.points) point.x() += offset;
+        for (std::size_t index = 0; index < 3; ++index)
+            triangle.boundary_points[index] = triangle.points[index];
+        triangle.owner_id = owner;
+        return triangle;
+    }
+
+    CollisionTriangle tinyTriangle(Point3 center, std::uint32_t owner)
+    {
+        CollisionTriangle triangle = horizontalTriangle();
+        triangle.points = {{{center.x() - 0.05, center.y() - 0.05, center.z()},
+                            {center.x() + 0.05, center.y() - 0.05, center.z()},
+                            {center.x(), center.y() + 0.05, center.z()}}};
         for (std::size_t index = 0; index < 3; ++index)
             triangle.boundary_points[index] = triangle.points[index];
         triangle.owner_id = owner;
@@ -105,4 +118,21 @@ int main()
     assert(!rejected.hasValue());
     assert(rejected.error() == SpatialError::DegenerateTriangle);
     assert(tree.diagnostics().active_primitives == active_before);
+
+    IncrementalCollisionIndexOptions sparse_options;
+    sparse_options.target_leaf_capacity = 1;
+    const auto sparse_result = IncrementalCollisionIndex::build(
+        {{1, {tinyTriangle({-1, -1, -1}, 1)}},
+         {2, {tinyTriangle({1, 1, 1}, 2)}}}, sparse_options);
+    assert(sparse_result.hasValue());
+    auto sparse = std::move(sparse_result.value());
+    const CollisionTriangle new_octant = tinyTriangle({1, -1, -1}, 3);
+    assert(sparse.insertGroup({3, {new_octant}}).hasValue());
+    const auto new_octant_bounds = makeAabb(
+        new_octant.points[0], new_octant.points[1], new_octant.points[2]);
+    assert(new_octant_bounds.hasValue());
+    const auto candidates = sparse.queryCandidates(new_octant_bounds.value());
+    assert(std::any_of(
+        candidates.begin(), candidates.end(),
+        [&](CollisionPrimitiveId id) { return sparse.primitive(id).owner_id == 3; }));
 }

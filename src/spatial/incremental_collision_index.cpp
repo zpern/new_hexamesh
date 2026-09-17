@@ -275,9 +275,8 @@ namespace boundary_mesh
         }
         nodes_[node_index].leaf = false;
         for (std::size_t child = 0; child < 8; ++child)
-            if (!child_ids[child].empty())
-                nodes_[node_index].children[child] = appendNode(
-                    child_bounds[child], child_ids[child], depth + 1);
+            nodes_[node_index].children[child] = appendNode(
+                child_bounds[child], child_ids[child], depth + 1);
         return node_index;
     }
 
