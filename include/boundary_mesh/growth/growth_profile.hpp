@@ -12,7 +12,7 @@ namespace boundary_mesh
     struct VertexGrowthProfile
     {
         Scalar first_height{};       // 第一层生长步长
-        Scalar growth_ratio{1};      // 相邻层生长步长的倍率
+        Scalar growth_ratio{1.2};    // 相邻层生长步长的默认倍率
         std::uint32_t layer_count{}; // 外部请求的最大生长层数
     };
 

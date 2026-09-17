@@ -26,7 +26,7 @@ int main()
 
     const VertexGrowthRecord vertex;
     if (vertex.accepted_layer_count != 0 ||
-        vertex.profile.growth_ratio != Scalar{1})
+        vertex.profile.growth_ratio != Scalar{1.2})
     {
         return 2;
     }
