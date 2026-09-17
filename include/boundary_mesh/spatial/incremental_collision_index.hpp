@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <map>
 #include <optional>
 #include <variant>
@@ -68,9 +69,32 @@ namespace boundary_mesh
             CollisionGroupId group{};
             bool active{};
         };
+        struct Node
+        {
+            Aabb bounds;
+            std::array<std::size_t, 8> children{};
+            std::vector<CollisionPrimitiveId> primitives;
+            bool leaf{true};
+        };
+
+        void rebuildTree();
+        std::size_t appendNode(
+            const Aabb &bounds,
+            const std::vector<CollisionPrimitiveId> &ids,
+            std::size_t depth);
+        void insertIntoNode(
+            std::size_t node,
+            CollisionPrimitiveId id);
+        void queryNode(
+            std::size_t node,
+            const Aabb &bounds,
+            std::vector<CollisionPrimitiveId> &result) const;
+        bool rootContains(const Aabb &bounds) const;
+
         IncrementalCollisionIndexOptions options_;
         std::vector<StoredPrimitive> primitives_;
         std::map<CollisionGroupId, std::vector<CollisionPrimitiveId>> groups_;
+        std::vector<Node> nodes_;
         mutable CollisionIndexDiagnostics diagnostics_;
     };
 }
