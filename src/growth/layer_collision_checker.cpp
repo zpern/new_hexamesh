@@ -207,6 +207,18 @@ namespace boundary_mesh
                 });
         }
 
+        bool hitsIndex(
+            const std::vector<CollisionTriangle> &triangles,
+            const IncrementalCollisionIndex &index)
+        {
+            return std::any_of(
+                triangles.begin(), triangles.end(),
+                [&](const CollisionTriangle &triangle)
+                {
+                    return !index.queryIllegalContacts(triangle).empty();
+                });
+        }
+
         Result<bool, SpatialError> hitsSlidingIndex(
             const LayerBoundaryCandidate &candidate,
             const SlidingIntersectionIndex &index)
@@ -496,19 +508,6 @@ namespace boundary_mesh
             return Result<LayerStepResult, SpatialError>::failure(
                 candidates.error());
         }
-        const auto history_triangles = exposed_boundary.collisionTriangles();
-        if (!history_triangles.hasValue())
-        {
-            return Result<LayerStepResult, SpatialError>::failure(
-                history_triangles.error());
-        }
-        const auto history = CollisionIndex::build(history_triangles.value());
-        if (!history.hasValue())
-        {
-            return Result<LayerStepResult, SpatialError>::failure(
-                history.error());
-        }
-
         std::vector<bool> stopped(candidates.value().size(), false);
         for (std::size_t index = 0; index < candidates.value().size(); ++index)
         {
@@ -521,7 +520,8 @@ namespace boundary_mesh
                     triangles.error());
             }
             stopped[index] = hitsIndex(triangles.value(), original_surface) ||
-                             hitsIndex(triangles.value(), history.value());
+                             hitsIndex(triangles.value(),
+                                       exposed_boundary.collisionIndex());
         }
         return Result<LayerStepResult, SpatialError>::success(
             compactStep(current_front, quality_step, stopped));
@@ -541,14 +541,6 @@ namespace boundary_mesh
         if (!candidates.hasValue())
             return Result<LayerStepResult, SpatialError>::failure(
                 candidates.error());
-        const auto history_triangles = exposed_boundary.collisionTriangles();
-        if (!history_triangles.hasValue())
-            return Result<LayerStepResult, SpatialError>::failure(
-                history_triangles.error());
-        const auto history = CollisionIndex::build(history_triangles.value());
-        if (!history.hasValue())
-            return Result<LayerStepResult, SpatialError>::failure(history.error());
-
         std::vector<bool> stopped(candidates.value().size(), false);
         for (std::size_t index = 0; index < candidates.value().size(); ++index)
         {
@@ -563,7 +555,7 @@ namespace boundary_mesh
                 return Result<LayerStepResult, SpatialError>::failure(
                     sliding_hit.error());
             stopped[index] = hitsIndex(triangles.value(), original_surface) ||
-                hitsIndex(triangles.value(), history.value()) ||
+                hitsIndex(triangles.value(), exposed_boundary.collisionIndex()) ||
                 sliding_hit.value();
         }
         return Result<LayerStepResult, SpatialError>::success(

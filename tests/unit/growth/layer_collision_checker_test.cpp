@@ -107,6 +107,15 @@ int main()
     assert(obstacle_index.hasValue());
 
     const ExposedBoundaryTracker empty_history;
+    const auto history_queries_before =
+        empty_history.collisionIndex().diagnostics().queries;
+    const auto history_rebuilds_before =
+        empty_history.collisionIndex().diagnostics().rebuilds;
+    const auto no_obstacles = CollisionIndex::build({});
+    assert(no_obstacles.hasValue());
+    const auto history_probe = LayerCollisionChecker{}.filterAgainstObstacles(
+        no_obstacles.value(), empty_history, current, quality);
+    assert(history_probe.hasValue());
     const auto filtered = LayerCollisionChecker{}.filterAgainstObstacles(
         obstacle_index.value(),
         empty_history,
@@ -117,6 +126,10 @@ int main()
     assert(filtered.value().stopped_faces.size() == 1);
     assert(filtered.value().stopped_faces.front().reason ==
            FaceStopReason::Collision);
+    assert(empty_history.collisionIndex().diagnostics().queries >
+           history_queries_before);
+    assert(empty_history.collisionIndex().diagnostics().rebuilds ==
+           history_rebuilds_before);
 
     GrowthFront double_current = current;
     double_current.vertices.insert(
