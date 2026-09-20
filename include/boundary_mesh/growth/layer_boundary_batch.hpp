@@ -7,17 +7,13 @@
 #include <boundary_mesh/core/result.hpp>
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 #include <boundary_mesh/spatial/aabb.hpp>
+#include <boundary_mesh/spatial/batch_self_collision_detector.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
 #include <boundary_mesh/spatial/spatial_error.hpp>
 
 namespace boundary_mesh
 {
-    struct LayerBoundaryOwner
-    {
-        std::uint32_t owner_id{};
-        Aabb bounds;
-        std::vector<CollisionTriangle> triangles;
-    };
+    using LayerBoundaryOwner = CollisionOwnerTriangles;
 
     struct LayerBoundaryBatchDiagnostics
     {

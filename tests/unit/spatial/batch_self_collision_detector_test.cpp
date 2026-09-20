@@ -30,6 +30,26 @@ namespace
         value.boundary_vertex_count = 3;
         return value;
     }
+
+    CollisionOwnerTriangles owner(
+        std::uint32_t id,
+        std::initializer_list<CollisionTriangle> triangles)
+    {
+        CollisionOwnerTriangles result;
+        result.owner_id = id;
+        result.triangles.assign(triangles);
+        const CollisionTriangle &first = result.triangles.front();
+        result.bounds = makeAabb(
+            first.points[0], first.points[1], first.points[2]).value();
+        for (const CollisionTriangle &value : result.triangles)
+        {
+            const Aabb box = makeAabb(
+                value.points[0], value.points[1], value.points[2]).value();
+            result.bounds.minimum = result.bounds.minimum.cwiseMin(box.minimum);
+            result.bounds.maximum = result.bounds.maximum.cwiseMax(box.maximum);
+        }
+        return result;
+    }
 }
 
 int main()
@@ -101,4 +121,31 @@ int main()
     const auto invalid_result = BatchSelfCollisionDetector::detect({invalid});
     assert(!invalid_result.hasValue());
     assert(invalid_result.error() == SpatialError::NonFiniteCoordinate);
+
+    const auto owner_separated = BatchSelfCollisionDetector::detectOwners({
+        owner(4, {horizontal}), owner(9, {distant})});
+    assert(owner_separated.hasValue());
+    assert(owner_separated.value().diagnostics.exact_tests == 0);
+
+    const auto owner_intersecting = BatchSelfCollisionDetector::detectOwners({
+        owner(4, {horizontal, horizontal}), owner(2, {vertical, vertical})});
+    assert(owner_intersecting.hasValue());
+    assert((owner_intersecting.value().illegal_owner_ids ==
+            std::vector<std::uint32_t>{2, 4}));
+    assert(owner_intersecting.value().diagnostics.owner_pairs == 1);
+
+    const auto reverse_order = BatchSelfCollisionDetector::detectOwners({
+        owner(2, {vertical}), owner(4, {horizontal})});
+    assert(reverse_order.hasValue());
+    assert(reverse_order.value().illegal_owner_ids ==
+           owner_intersecting.value().illegal_owner_ids);
+    assert(reverse_order.value().diagnostics.owner_pairs == 1);
+
+    CollisionOwnerTriangles invalid_owner = owner(4, {horizontal});
+    invalid_owner.bounds.minimum.x() =
+        std::numeric_limits<Scalar>::quiet_NaN();
+    const auto invalid_owner_result =
+        BatchSelfCollisionDetector::detectOwners({invalid_owner});
+    assert(!invalid_owner_result.hasValue());
+    assert(invalid_owner_result.error() == SpatialError::InvalidAabb);
 }
