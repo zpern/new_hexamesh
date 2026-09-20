@@ -5,6 +5,7 @@
 #include <boundary_mesh/core/result.hpp>
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 #include <boundary_mesh/growth/growth_front.hpp>
+#include <boundary_mesh/growth/layer_boundary_batch.hpp>
 #include <boundary_mesh/growth/regular_layer_growth.hpp>
 #include <boundary_mesh/growth/sliding_surface.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
@@ -37,6 +38,14 @@ namespace boundary_mesh
         Result<LayerStepResult, SpatialError>
         filterAgainstObstacles(
             const CollisionIndex &original_surface,
+            const ExposedBoundaryTracker &exposed_boundary,
+            const GrowthFront &current_front,
+            const LayerStepResult &quality_step,
+            const LayerBoundaryBatch &batch) const;
+
+        Result<LayerStepResult, SpatialError>
+        filterAgainstObstacles(
+            const CollisionIndex &original_surface,
             const SlidingIntersectionIndex &sliding_surface,
             const SlidingSurfaceSet &sliding_surfaces,
             const ExposedBoundaryTracker &exposed_boundary,
@@ -44,8 +53,24 @@ namespace boundary_mesh
             const LayerStepResult &quality_step) const;
 
         Result<LayerStepResult, SpatialError>
+        filterAgainstObstacles(
+            const CollisionIndex &original_surface,
+            const SlidingIntersectionIndex &sliding_surface,
+            const SlidingSurfaceSet &sliding_surfaces,
+            const ExposedBoundaryTracker &exposed_boundary,
+            const GrowthFront &current_front,
+            const LayerStepResult &quality_step,
+            const LayerBoundaryBatch &batch) const;
+
+        Result<LayerStepResult, SpatialError>
         filterSelfCollisions(
             const GrowthFront &current_front,
             const LayerStepResult &obstacle_step) const;
+
+        Result<LayerStepResult, SpatialError>
+        filterSelfCollisions(
+            const GrowthFront &current_front,
+            const LayerStepResult &obstacle_step,
+            const LayerBoundaryBatch &batch) const;
     };
 }

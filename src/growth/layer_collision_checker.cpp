@@ -23,80 +23,6 @@ namespace boundary_mesh
                 face);
         }
 
-        Result<std::vector<CollisionTriangle>, SpatialError>
-        candidateTriangles(
-            const LayerBoundaryCandidate &candidate,
-            std::uint32_t owner_id)
-        {
-            std::vector<BoundaryFace> faces{candidate.top};
-            const std::size_t count = candidate.bottom.points.size();
-            for (std::size_t index = 0; index < count; ++index)
-            {
-                const std::size_t next = (index + 1) % count;
-                faces.push_back(BoundaryFace{
-                    {candidate.bottom.points[index],
-                     candidate.bottom.points[next],
-                     candidate.top.points[next],
-                     candidate.top.points[index]},
-                    {candidate.bottom.vertex_keys[index],
-                     candidate.bottom.vertex_keys[next],
-                     candidate.top.vertex_keys[next],
-                     candidate.top.vertex_keys[index]},
-                    candidate.top.source_face_id,
-                    candidate.top.region_id});
-            }
-
-            std::vector<CollisionTriangle> triangles;
-            for (const BoundaryFace &face : faces)
-            {
-                if (face.points.size() != face.vertex_keys.size() ||
-                    (face.points.size() != 3 && face.points.size() != 4))
-                {
-                    return Result<std::vector<CollisionTriangle>, SpatialError>::failure(
-                        SpatialError::InvalidTopologyReference);
-                }
-                const std::array<std::array<std::size_t, 3>, 2> splits{{
-                    {{0, 1, 2}}, {{0, 2, 3}}}};
-                const std::size_t split_count =
-                    face.points.size() == 3 ? 1 : 2;
-                for (std::size_t split = 0; split < split_count; ++split)
-                {
-                    CollisionTriangle triangle;
-                    triangle.owner_kind = CollisionOwnerKind::LayerCandidate;
-                    triangle.owner_id = owner_id;
-                    triangle.boundary_vertex_count =
-                        static_cast<std::uint8_t>(face.points.size());
-                    for (std::size_t boundary = 0;
-                         boundary < face.points.size();
-                         ++boundary)
-                    {
-                        triangle.boundary_points[boundary] =
-                            face.points[boundary];
-                        triangle.boundary_vertex_keys[boundary] =
-                            face.vertex_keys[boundary];
-                    }
-                    for (std::size_t corner = 0; corner < 3; ++corner)
-                    {
-                        const std::size_t index = splits[split][corner];
-                        triangle.points[corner] = face.points[index];
-                        triangle.vertex_keys[corner] = face.vertex_keys[index];
-                    }
-                    const auto bounds = makeAabb(
-                        triangle.points[0],
-                        triangle.points[1],
-                        triangle.points[2]);
-                    if (!bounds.hasValue())
-                    {
-                        return Result<std::vector<CollisionTriangle>, SpatialError>::failure(
-                            bounds.error());
-                    }
-                    triangles.push_back(triangle);
-                }
-            }
-            return Result<std::vector<CollisionTriangle>, SpatialError>::success(
-                std::move(triangles));
-        }
-
         LayerStepResult compactStep(
             const GrowthFront &current_front,
             const LayerStepResult &input,
@@ -510,19 +436,31 @@ namespace boundary_mesh
             return Result<LayerStepResult, SpatialError>::failure(
                 candidates.error());
         }
-        std::vector<bool> stopped(candidates.value().size(), false);
-        for (std::size_t index = 0; index < candidates.value().size(); ++index)
+        const auto batch = LayerBoundaryBatch::build(candidates.value());
+        if (!batch.hasValue())
+            return Result<LayerStepResult, SpatialError>::failure(batch.error());
+        return filterAgainstObstacles(
+            original_surface, exposed_boundary, current_front, quality_step,
+            batch.value());
+    }
+
+    Result<LayerStepResult, SpatialError>
+    LayerCollisionChecker::filterAgainstObstacles(
+        const CollisionIndex &original_surface,
+        const ExposedBoundaryTracker &exposed_boundary,
+        const GrowthFront &current_front,
+        const LayerStepResult &quality_step,
+        const LayerBoundaryBatch &batch) const
+    {
+        if (batch.owners().size() != quality_step.next_front.faces.size())
+            return Result<LayerStepResult, SpatialError>::failure(
+                SpatialError::InvalidTopologyReference);
+        std::vector<bool> stopped(batch.owners().size(), false);
+        for (std::size_t index = 0; index < batch.owners().size(); ++index)
         {
-            const auto triangles = candidateTriangles(
-                candidates.value()[index],
-                static_cast<std::uint32_t>(index));
-            if (!triangles.hasValue())
-            {
-                return Result<LayerStepResult, SpatialError>::failure(
-                    triangles.error());
-            }
-            stopped[index] = hitsIndex(triangles.value(), original_surface) ||
-                             hitsIndex(triangles.value(),
+            const auto &triangles = batch.owners()[index].triangles;
+            stopped[index] = hitsIndex(triangles, original_surface) ||
+                             hitsIndex(triangles,
                                        exposed_boundary.collisionIndex());
         }
         return Result<LayerStepResult, SpatialError>::success(
@@ -543,22 +481,45 @@ namespace boundary_mesh
         if (!candidates.hasValue())
             return Result<LayerStepResult, SpatialError>::failure(
                 candidates.error());
-        std::vector<bool> stopped(candidates.value().size(), false);
-        for (std::size_t index = 0; index < candidates.value().size(); ++index)
+        const auto batch = LayerBoundaryBatch::build(candidates.value());
+        if (!batch.hasValue())
+            return Result<LayerStepResult, SpatialError>::failure(batch.error());
+        return filterAgainstObstacles(
+            original_surface, sliding_surface, sliding_surfaces,
+            exposed_boundary, current_front, quality_step, batch.value());
+    }
+
+    Result<LayerStepResult, SpatialError>
+    LayerCollisionChecker::filterAgainstObstacles(
+        const CollisionIndex &original_surface,
+        const SlidingIntersectionIndex &sliding_surface,
+        const SlidingSurfaceSet &sliding_surfaces,
+        const ExposedBoundaryTracker &exposed_boundary,
+        const GrowthFront &current_front,
+        const LayerStepResult &quality_step,
+        const LayerBoundaryBatch &batch) const
+    {
+        if (batch.owners().size() != quality_step.next_front.faces.size() ||
+            batch.candidates().size() != batch.owners().size())
+            return Result<LayerStepResult, SpatialError>::failure(
+                SpatialError::InvalidTopologyReference);
+        std::vector<bool> stopped(batch.owners().size(), false);
+        for (std::size_t index = 0; index < batch.owners().size(); ++index)
         {
-            const auto triangles = candidateTriangles(
-                candidates.value()[index], static_cast<std::uint32_t>(index));
-            if (!triangles.hasValue())
-                return Result<LayerStepResult, SpatialError>::failure(
-                    triangles.error());
-            const auto sliding_hit = hitsSlidingIndex(
-                candidates.value()[index], sliding_surface);
-            if (!sliding_hit.hasValue())
-                return Result<LayerStepResult, SpatialError>::failure(
-                    sliding_hit.error());
-            stopped[index] = hitsIndex(triangles.value(), original_surface) ||
-                hitsIndex(triangles.value(), exposed_boundary.collisionIndex()) ||
-                sliding_hit.value();
+            bool sliding_intersection = false;
+            if (!sliding_surface.empty())
+            {
+                const auto sliding_hit = hitsSlidingIndex(
+                    batch.candidates()[index], sliding_surface);
+                if (!sliding_hit.hasValue())
+                    return Result<LayerStepResult, SpatialError>::failure(
+                        sliding_hit.error());
+                sliding_intersection = sliding_hit.value();
+            }
+            const auto &triangles = batch.owners()[index].triangles;
+            stopped[index] = hitsIndex(triangles, original_surface) ||
+                hitsIndex(triangles, exposed_boundary.collisionIndex()) ||
+                sliding_intersection;
         }
         return Result<LayerStepResult, SpatialError>::success(
             compactStep(current_front, quality_step, stopped));
@@ -576,31 +537,31 @@ namespace boundary_mesh
             return Result<LayerStepResult, SpatialError>::failure(
                 candidates.error());
         }
+        const auto batch = LayerBoundaryBatch::build(candidates.value());
+        if (!batch.hasValue())
+            return Result<LayerStepResult, SpatialError>::failure(batch.error());
+        return filterSelfCollisions(
+            current_front, obstacle_step, batch.value());
+    }
 
-        std::vector<CollisionTriangle> all;
-        for (std::size_t index = 0; index < candidates.value().size(); ++index)
-        {
-            const auto triangles = candidateTriangles(
-                candidates.value()[index],
-                static_cast<std::uint32_t>(index));
-            if (!triangles.hasValue())
-            {
-                return Result<LayerStepResult, SpatialError>::failure(
-                    triangles.error());
-            }
-            all.insert(
-                all.end(),
-                triangles.value().begin(),
-                triangles.value().end());
-        }
-        const auto collisions = BatchSelfCollisionDetector::detect(all);
+    Result<LayerStepResult, SpatialError>
+    LayerCollisionChecker::filterSelfCollisions(
+        const GrowthFront &current_front,
+        const LayerStepResult &obstacle_step,
+        const LayerBoundaryBatch &batch) const
+    {
+        if (batch.owners().size() != obstacle_step.next_front.faces.size())
+            return Result<LayerStepResult, SpatialError>::failure(
+                SpatialError::InvalidTopologyReference);
+        const auto collisions =
+            BatchSelfCollisionDetector::detectOwners(batch.owners());
         if (!collisions.hasValue())
         {
             return Result<LayerStepResult, SpatialError>::failure(
                 collisions.error());
         }
 
-        std::vector<bool> stopped(candidates.value().size(), false);
+        std::vector<bool> stopped(batch.owners().size(), false);
         for (const std::uint32_t owner :
              collisions.value().illegal_owner_ids)
         {

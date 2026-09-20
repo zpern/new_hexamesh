@@ -225,6 +225,11 @@ namespace boundary_mesh
         return triangles_.size();
     }
 
+    bool SlidingIntersectionIndex::empty() const noexcept
+    {
+        return triangles_.empty();
+    }
+
     bool SlidingIntersectionIndex::hasRegion(
         std::uint32_t region_id) const noexcept
     {

@@ -49,6 +49,7 @@ namespace boundary_mesh
             const Vector3 &reference_normal) const;
 
         std::size_t primitiveCount() const noexcept;
+        bool empty() const noexcept;
         bool hasRegion(std::uint32_t region_id) const noexcept;
 
     private:

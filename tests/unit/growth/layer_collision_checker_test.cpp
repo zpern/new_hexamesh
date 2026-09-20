@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <boundary_mesh/growth/layer_collision_checker.hpp>
+#include <boundary_mesh/growth/layer_boundary_batch.hpp>
 #include <boundary_mesh/spatial/sliding_intersection_index.hpp>
 
 using namespace boundary_mesh;
@@ -116,6 +117,17 @@ int main()
     const auto history_probe = LayerCollisionChecker{}.filterAgainstObstacles(
         no_obstacles.value(), empty_history, current, quality);
     assert(history_probe.hasValue());
+    const auto candidate_values = buildLayerBoundaryCandidates(current, quality);
+    assert(candidate_values.hasValue());
+    const auto prepared_batch = LayerBoundaryBatch::build(candidate_values.value());
+    assert(prepared_batch.hasValue());
+    const auto batched_history_probe =
+        LayerCollisionChecker{}.filterAgainstObstacles(
+            no_obstacles.value(), empty_history, current, quality,
+            prepared_batch.value());
+    assert(batched_history_probe.hasValue());
+    assert(batched_history_probe.value().next_front.faces.size() ==
+           history_probe.value().next_front.faces.size());
     const auto filtered = LayerCollisionChecker{}.filterAgainstObstacles(
         obstacle_index.value(),
         empty_history,

@@ -5,6 +5,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -476,6 +477,15 @@ namespace boundary_mesh
                 hasLayerAttempt(current_front, constraints);
             const auto layer_started =
                 std::chrono::steady_clock::now();
+            auto diagnostic_stage_started = layer_started;
+            const auto diagnostic_stage = [&](const char *name)
+            {
+                const auto now = std::chrono::steady_clock::now();
+                std::cerr << "temporary layer stage " << name << " ms="
+                          << std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 now - diagnostic_stage_started).count() << '\n';
+                diagnostic_stage_started = now;
+            };
             if (report_layer)
             {
                 std::cout
@@ -492,6 +502,7 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(step_result.error());
             }
+            diagnostic_stage("stepper");
             result.smoothing_diagnostics.activated_vertices +=
                 step_result.value().smoothing_diagnostics.activated_vertices;
             result.smoothing_diagnostics.updated_vertices +=
@@ -538,6 +549,30 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(isotropic_step.error());
             }
+            diagnostic_stage("coordination-before-collision");
+            const auto obstacle_candidates = buildLayerBoundaryCandidates(
+                current_front, isotropic_step.value(), sliding_surfaces.value());
+            if (!obstacle_candidates.hasValue())
+                return GrowthResult::failure(
+                    CollisionStateFailure{
+                        step_result.value().layer,
+                        obstacle_candidates.error()});
+            const auto obstacle_batch =
+                LayerBoundaryBatch::build(obstacle_candidates.value());
+            if (!obstacle_batch.hasValue())
+                return GrowthResult::failure(
+                    CollisionStateFailure{
+                        step_result.value().layer,
+                        obstacle_batch.error()});
+            diagnostic_stage("boundary-batch");
+            std::cerr
+                << "temporary layer boundary batch owners="
+                << obstacle_batch.value().diagnostics().owner_count
+                << " triangles="
+                << obstacle_batch.value().diagnostics().triangle_count
+                << " omitted-shared-sides="
+                << obstacle_batch.value().diagnostics().omitted_shared_sides
+                << '\n';
             const auto obstacle_step =
                 LayerCollisionChecker{}.filterAgainstObstacles(
                     original_collision.value(),
@@ -545,7 +580,8 @@ namespace boundary_mesh
                     sliding_surfaces.value(),
                     exposed_boundary,
                     current_front,
-                    isotropic_step.value());
+                    isotropic_step.value(),
+                    obstacle_batch.value());
             if (!obstacle_step.hasValue())
             {
                 return GrowthResult::failure(
@@ -553,6 +589,7 @@ namespace boundary_mesh
                         step_result.value().layer,
                         obstacle_step.error()});
             }
+            diagnostic_stage("obstacle-collision");
             const auto obstacle_propagation = propagator.applyDirectStops(
                 constraints,
                 addedCollisionStops(
@@ -573,10 +610,36 @@ namespace boundary_mesh
                 return GrowthResult::failure(
                     propagated_obstacle_step.error());
             }
+            const LayerBoundaryBatch *self_batch = &obstacle_batch.value();
+            std::optional<LayerBoundaryBatch> reduced_self_batch;
+            if (propagated_obstacle_step.value()
+                    .previous_front_face_indices !=
+                isotropic_step.value().previous_front_face_indices)
+            {
+                const auto self_candidates = buildLayerBoundaryCandidates(
+                    current_front, propagated_obstacle_step.value());
+                if (!self_candidates.hasValue())
+                    return GrowthResult::failure(
+                        CollisionStateFailure{
+                            step_result.value().layer,
+                            self_candidates.error()});
+                auto built_self_batch =
+                    LayerBoundaryBatch::build(self_candidates.value());
+                if (!built_self_batch.hasValue())
+                    return GrowthResult::failure(
+                        CollisionStateFailure{
+                            step_result.value().layer,
+                            built_self_batch.error()});
+                reduced_self_batch.emplace(
+                    std::move(built_self_batch.value()));
+                self_batch = &*reduced_self_batch;
+                diagnostic_stage("reduced-boundary-batch");
+            }
             const auto collision_step =
                 LayerCollisionChecker{}.filterSelfCollisions(
                     current_front,
-                    propagated_obstacle_step.value());
+                    propagated_obstacle_step.value(),
+                    *self_batch);
             if (!collision_step.hasValue())
             {
                 return GrowthResult::failure(
@@ -584,6 +647,7 @@ namespace boundary_mesh
                         step_result.value().layer,
                         collision_step.error()});
             }
+            diagnostic_stage("self-collision");
             const auto self_propagation = propagator.applyDirectStops(
                 constraints,
                 addedCollisionStops(
@@ -609,6 +673,7 @@ namespace boundary_mesh
             {
                 return GrowthResult::failure(final_step.error());
             }
+            diagnostic_stage("coordination-after-collision");
             LayerStepResult coordinated_step = final_step.value();
             if (options.candidate_rejections)
             {
@@ -643,6 +708,7 @@ namespace boundary_mesh
                     return GrowthResult::failure(filtered.error());
                 coordinated_step = std::move(filtered.value());
             }
+            diagnostic_stage("candidate-rejections");
             const LayerStepResult &step = coordinated_step;
             if (step.next_front.vertices.size() !=
                     step.previous_front_vertex_indices.size() ||
@@ -742,6 +808,29 @@ namespace boundary_mesh
                         step.layer,
                         boundary_update.error()});
             }
+            diagnostic_stage("boundary-update-prepare");
+
+            const auto applied_boundary =
+                exposed_boundary.apply(boundary_update.value());
+            if (!applied_boundary.hasValue())
+                return GrowthResult::failure(
+                    CollisionStateFailure{
+                        step.layer,
+                        applied_boundary.error()});
+            diagnostic_stage("boundary-update-apply");
+            const auto &boundary_diagnostics =
+                exposed_boundary.lastApplyDiagnostics();
+            std::cerr
+                << "temporary exposed boundary erased="
+                << boundary_diagnostics.erased_groups
+                << " inserted=" << boundary_diagnostics.inserted_groups
+                << " mode="
+                << (boundary_diagnostics.bulk_rebuild ? "bulk" : "incremental")
+                << " prepare-ms="
+                << boundary_diagnostics.preparation_nanoseconds / 1000000
+                << " index-ms="
+                << boundary_diagnostics.index_update_nanoseconds / 1000000
+                << '\n';
 
             for (const GrowthFrontVertex &vertex : step.next_front.vertices)
             {
@@ -755,7 +844,6 @@ namespace boundary_mesh
                 result.mesh.metadata.end(),
                 new_metadata.begin(),
                 new_metadata.end());
-            exposed_boundary.apply(boundary_update.value());
 
             if (report_layer)
             {

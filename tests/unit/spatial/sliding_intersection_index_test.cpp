@@ -8,6 +8,10 @@ using namespace boundary_mesh;
 
 int main()
 {
+    const auto empty_built = SlidingIntersectionIndex::build(SurfaceMesh{});
+    assert(empty_built.hasValue());
+    assert(empty_built.value().empty());
+
     SurfaceMesh mesh;
     mesh.vertices = {
         {-1.0, -1.0, 0.0}, {1.0, -1.0, 0.0}, {0.0, 1.0, 0.0},
@@ -24,6 +28,7 @@ int main()
     assert(built.hasValue());
     const SlidingIntersectionIndex &index = built.value();
     assert(index.primitiveCount() == 2);
+    assert(!index.empty());
     assert(index.hasRegion(10));
     assert(index.hasRegion(11));
     assert(!index.hasRegion(12));
