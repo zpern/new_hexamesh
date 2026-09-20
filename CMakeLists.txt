@@ -175,6 +175,7 @@ add_library(
         src/growth/regular_layer_stepper.cpp
         src/growth/regular_layer_generator.cpp
         src/growth/exposed_boundary.cpp
+        src/growth/layer_boundary_batch.cpp
         src/growth/farfield_boundary_builder.cpp
         src/growth/layer_collision_checker.cpp
         src/growth/face_layer_constraint.cpp

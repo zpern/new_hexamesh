@@ -808,6 +808,19 @@ add_test(
     COMMAND boundary_mesh_exposed_boundary_test
 )
 
+add_executable(
+    boundary_mesh_layer_boundary_batch_test
+    unit/growth/layer_boundary_batch_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_layer_boundary_batch_test
+    PRIVATE BoundaryMesh::BoundaryLayer
+)
+add_test(
+    NAME boundary_mesh_layer_boundary_batch_test
+    COMMAND boundary_mesh_layer_boundary_batch_test
+)
+
 # 33：原始 Farfield 与最终边界层接口的紧凑表面输出
 add_executable(
     boundary_mesh_farfield_boundary_builder_test
