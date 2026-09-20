@@ -18,6 +18,15 @@ namespace
             source_face_id,
             1};
     }
+
+    BoundaryFace offsetTriangleFace(std::uint32_t id)
+    {
+        const Scalar x = static_cast<Scalar>(id) * Scalar{2};
+        return triangleFace(
+            {{x, 0, 0}, {x + 1, 0, 0}, {x, 1, 0}},
+            {{id * 3, 0}, {id * 3 + 1, 0}, {id * 3 + 2, 0}},
+            id);
+    }
 }
 
 int main()
@@ -92,4 +101,53 @@ int main()
     assert(tracker.faceCount() == faces_before);
     assert(tracker.collisionIndex().diagnostics().active_primitives ==
            primitives_before);
+
+    ExposedBoundaryTracker mode_tracker;
+    ExposedBoundaryUpdate seed;
+    for (std::uint32_t id = 1; id <= 5; ++id)
+        seed.insert_faces.push_back(offsetTriangleFace(id));
+    assert(mode_tracker.apply(seed).hasValue());
+    assert(mode_tracker.lastApplyDiagnostics().bulk_rebuild);
+    assert(mode_tracker.lastApplyDiagnostics().inserted_groups == 5);
+
+    const BoundaryFaceKey erased_key =
+        makeBoundaryFaceKey(offsetTriangleFace(1)).value();
+    ExposedBoundaryUpdate exact_twenty_percent;
+    exact_twenty_percent.erase_faces.push_back(erased_key);
+    exact_twenty_percent.insert_faces.push_back(offsetTriangleFace(10));
+    assert(mode_tracker.apply(exact_twenty_percent).hasValue());
+    assert(mode_tracker.lastApplyDiagnostics().bulk_rebuild);
+    assert(mode_tracker.lastApplyDiagnostics().erased_groups == 1);
+    assert(mode_tracker.lastApplyDiagnostics().inserted_groups == 1);
+
+    ExposedBoundaryUpdate add_sixth;
+    add_sixth.insert_faces.push_back(offsetTriangleFace(11));
+    assert(mode_tracker.apply(add_sixth).hasValue());
+    assert(mode_tracker.lastApplyDiagnostics().bulk_rebuild);
+    assert(mode_tracker.faceCount() == 6);
+    ExposedBoundaryUpdate below_twenty_percent;
+    below_twenty_percent.erase_faces.push_back(
+        makeBoundaryFaceKey(offsetTriangleFace(2)).value());
+    below_twenty_percent.insert_faces.push_back(offsetTriangleFace(12));
+    assert(mode_tracker.apply(below_twenty_percent).hasValue());
+    assert(!mode_tracker.lastApplyDiagnostics().bulk_rebuild);
+
+    const std::vector<BoundaryFace> before_missing = mode_tracker.faces();
+    ExposedBoundaryUpdate missing;
+    missing.erase_faces.push_back(
+        makeBoundaryFaceKey(offsetTriangleFace(99)).value());
+    const auto missing_result = mode_tracker.apply(missing);
+    assert(!missing_result.hasValue());
+    assert(missing_result.error() == SpatialError::MissingPrimitiveGroup);
+    assert(mode_tracker.faces().size() == before_missing.size());
+    for (const BoundaryFace &face : before_missing)
+        assert(mode_tracker.contains(makeBoundaryFaceKey(face).value()));
+
+    const std::size_t count_before_duplicate = mode_tracker.faceCount();
+    ExposedBoundaryUpdate duplicate;
+    duplicate.insert_faces.push_back(offsetTriangleFace(3));
+    const auto duplicate_result = mode_tracker.apply(duplicate);
+    assert(!duplicate_result.hasValue());
+    assert(duplicate_result.error() == SpatialError::InvalidTopologyReference);
+    assert(mode_tracker.faceCount() == count_before_duplicate);
 }

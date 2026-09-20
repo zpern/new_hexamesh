@@ -1,6 +1,7 @@
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <map>
 #include <utility>
 
@@ -69,16 +70,6 @@ namespace boundary_mesh
             }
             return true;
         }
-
-        struct BoundaryFaceKeyLess
-        {
-            bool operator()(
-                const BoundaryFaceKey &left,
-                const BoundaryFaceKey &right) const
-            {
-                return faceKeyLess(left, right);
-            }
-        };
 
         using BoundaryFaceMap = std::map<
             BoundaryFaceKey,
@@ -229,6 +220,13 @@ namespace boundary_mesh
     {
     }
 
+    bool BoundaryFaceKeyLess::operator()(
+        const BoundaryFaceKey &left,
+        const BoundaryFaceKey &right) const noexcept
+    {
+        return faceKeyLess(left, right);
+    }
+
     Result<BoundaryFaceKey, SpatialError> makeBoundaryFaceKey(
         const BoundaryFace &face)
     {
@@ -322,6 +320,7 @@ namespace boundary_mesh
     Result<std::monostate, SpatialError> ExposedBoundaryTracker::apply(
         const ExposedBoundaryUpdate &update)
     {
+        const auto preparation_start = std::chrono::steady_clock::now();
         struct PendingInsert
         {
             BoundaryFaceKey key;
@@ -330,6 +329,16 @@ namespace boundary_mesh
             bool indexed{};
         };
         std::vector<PendingInsert> pending;
+        BoundaryFaceMap working = makeFaceMap(faces_);
+        auto prospective_groups = collision_groups_;
+
+        for (const BoundaryFaceKey &key : update.erase_faces)
+        {
+            if (prospective_groups.erase(key) != 1 || working.erase(key) != 1)
+                return Result<std::monostate, SpatialError>::failure(
+                    SpatialError::MissingPrimitiveGroup);
+        }
+
         for (const BoundaryFace &face : update.insert_faces)
         {
             const auto key = makeBoundaryFaceKey(face);
@@ -348,81 +357,105 @@ namespace boundary_mesh
                         built.error());
                 triangles = built.value();
             }
+            if (prospective_groups.find(key.value()) != prospective_groups.end() ||
+                working.find(key.value()) != working.end())
+                return Result<std::monostate, SpatialError>::failure(
+                    SpatialError::InvalidTopologyReference);
+            prospective_groups.emplace(key.value(), CollisionGroupId{});
+            working.emplace(key.value(), face);
             pending.push_back(
                 {key.value(), face, std::move(triangles), indexed});
         }
-        for (const BoundaryFaceKey &key : update.erase_faces)
-        {
-            const auto found = std::find_if(
-                collision_groups_.begin(), collision_groups_.end(),
-                [&](const auto &entry) { return faceKeyEqual(entry.first, key); });
-            if (found == collision_groups_.end())
-                return Result<std::monostate, SpatialError>::failure(
-                    SpatialError::MissingPrimitiveGroup);
-        }
 
-        BoundaryFaceMap working = makeFaceMap(faces_);
-        if (faces_.empty() && update.erase_faces.empty())
+        const std::size_t changed_faces = std::max(
+            update.erase_faces.size(), update.insert_faces.size());
+        const bool bulk_rebuild = faces_.empty() ||
+            changed_faces * 5 >= faces_.size();
+        const auto preparation_end = std::chrono::steady_clock::now();
+        const auto index_start = preparation_end;
+
+        IncrementalCollisionIndex replacement_index = collision_index_;
+        auto replacement_groups = collision_groups_;
+        CollisionGroupId replacement_next_group_id = next_collision_group_id_;
+
+        if (bulk_rebuild)
         {
             std::vector<CollisionPrimitiveGroup> groups;
-            std::vector<std::pair<BoundaryFaceKey, CollisionGroupId>> mappings;
-            for (PendingInsert &entry : pending)
+            replacement_groups.clear();
+            groups.reserve(working.size());
+            for (const auto &[key, face] : working)
             {
                 CollisionGroupId group{};
-                if (entry.indexed)
+                if (CollisionBoundaryPolicy{}.isObstacle(
+                        face.boundary_kind,
+                        CollisionSurfaceOrigin::GeneratedBoundary))
                 {
-                    group = next_collision_group_id_++;
-                    groups.push_back({group, std::move(entry.triangles)});
+                    const auto triangles = collisionTrianglesForFace(
+                        face, face.source_face_id);
+                    if (!triangles.hasValue())
+                        return Result<std::monostate, SpatialError>::failure(
+                            triangles.error());
+                    group = replacement_next_group_id++;
+                    groups.push_back({group, triangles.value()});
                 }
-                mappings.push_back({entry.key, group});
-                working[entry.key] = std::move(entry.face);
+                replacement_groups.emplace(key, group);
             }
             auto built = IncrementalCollisionIndex::build(std::move(groups));
             if (!built.hasValue())
                 return Result<std::monostate, SpatialError>::failure(
                     built.error());
-            collision_index_ = std::move(built.value());
-            collision_groups_ = std::move(mappings);
-            faces_ = mapFaces(working);
-            return Result<std::monostate, SpatialError>::success({});
+            replacement_index = std::move(built.value());
+        }
+        else
+        {
+            for (const BoundaryFaceKey &key : update.erase_faces)
+            {
+                const auto found = replacement_groups.find(key);
+                if (found->second != CollisionGroupId{})
+                {
+                    const auto erased = replacement_index.eraseGroup(found->second);
+                    if (!erased.hasValue())
+                        return Result<std::monostate, SpatialError>::failure(
+                            erased.error());
+                }
+                replacement_groups.erase(found);
+            }
+            for (PendingInsert &entry : pending)
+            {
+                CollisionGroupId group{};
+                if (entry.indexed)
+                {
+                    group = replacement_next_group_id++;
+                    const auto inserted = replacement_index.insertGroup(
+                        {group, std::move(entry.triangles)});
+                    if (!inserted.hasValue())
+                        return Result<std::monostate, SpatialError>::failure(
+                            inserted.error());
+                }
+                replacement_groups.emplace(entry.key, group);
+            }
+            replacement_index.compactInactive();
+            const auto rebuilt = replacement_index.rebuildIfDegraded();
+            if (!rebuilt.hasValue())
+                return Result<std::monostate, SpatialError>::failure(
+                    rebuilt.error());
         }
 
-        for (const BoundaryFaceKey &key : update.erase_faces)
-        {
-            const auto found = std::find_if(
-                collision_groups_.begin(), collision_groups_.end(),
-                [&](const auto &entry) { return faceKeyEqual(entry.first, key); });
-            if (found->second != CollisionGroupId{})
-            {
-                const auto erased = collision_index_.eraseGroup(found->second);
-                if (!erased.hasValue())
-                    return Result<std::monostate, SpatialError>::failure(
-                        erased.error());
-            }
-            collision_groups_.erase(found);
-            working.erase(key);
-        }
-        for (PendingInsert &entry : pending)
-        {
-            CollisionGroupId group{};
-            if (entry.indexed)
-            {
-                group = next_collision_group_id_++;
-                const auto inserted = collision_index_.insertGroup(
-                    {group, std::move(entry.triangles)});
-                if (!inserted.hasValue())
-                    return Result<std::monostate, SpatialError>::failure(
-                        inserted.error());
-            }
-            collision_groups_.push_back({entry.key, group});
-            working[entry.key] = std::move(entry.face);
-        }
+        const auto index_end = std::chrono::steady_clock::now();
+        collision_index_ = std::move(replacement_index);
+        collision_groups_ = std::move(replacement_groups);
+        next_collision_group_id_ = replacement_next_group_id;
         faces_ = mapFaces(working);
-        collision_index_.compactInactive();
-        const auto rebuilt = collision_index_.rebuildIfDegraded();
-        if (!rebuilt.hasValue())
-            return Result<std::monostate, SpatialError>::failure(
-                rebuilt.error());
+        last_apply_diagnostics_ = {
+            update.erase_faces.size(),
+            update.insert_faces.size(),
+            bulk_rebuild,
+            static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    preparation_end - preparation_start).count()),
+            static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    index_end - index_start).count())};
         return Result<std::monostate, SpatialError>::success({});
     }
 
@@ -430,6 +463,12 @@ namespace boundary_mesh
     ExposedBoundaryTracker::collisionIndex() const noexcept
     {
         return collision_index_;
+    }
+
+    const ExposedBoundaryApplyDiagnostics &
+    ExposedBoundaryTracker::lastApplyDiagnostics() const noexcept
+    {
+        return last_apply_diagnostics_;
     }
 
     std::size_t ExposedBoundaryTracker::faceCount() const noexcept
@@ -440,7 +479,7 @@ namespace boundary_mesh
     bool ExposedBoundaryTracker::contains(
         const BoundaryFaceKey &key) const noexcept
     {
-        return findFace(faces_, key) != faces_.size();
+        return collision_groups_.find(key) != collision_groups_.end();
     }
 
     const std::vector<BoundaryFace> &

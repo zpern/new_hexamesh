@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -19,6 +20,22 @@ namespace boundary_mesh
     {
         std::array<CollisionVertexKey, 4> vertices{}; // 按拓扑键升序保存的顶点
         std::uint8_t vertex_count{}; // 当前面包含 3 或 4 个顶点
+    };
+
+    struct BoundaryFaceKeyLess
+    {
+        bool operator()(
+            const BoundaryFaceKey &left,
+            const BoundaryFaceKey &right) const noexcept;
+    };
+
+    struct ExposedBoundaryApplyDiagnostics
+    {
+        std::size_t erased_groups{};
+        std::size_t inserted_groups{};
+        bool bulk_rebuild{};
+        std::uint64_t preparation_nanoseconds{};
+        std::uint64_t index_update_nanoseconds{};
     };
 
     struct BoundaryFace
@@ -58,6 +75,8 @@ namespace boundary_mesh
 
         const IncrementalCollisionIndex &collisionIndex() const noexcept;
 
+        const ExposedBoundaryApplyDiagnostics &lastApplyDiagnostics() const noexcept;
+
         std::size_t faceCount() const noexcept;
 
         bool contains(const BoundaryFaceKey &key) const noexcept;
@@ -70,10 +89,11 @@ namespace boundary_mesh
 
     private:
         IncrementalCollisionIndex collision_index_;
-        std::vector<std::pair<BoundaryFaceKey, CollisionGroupId>>
+        std::map<BoundaryFaceKey, CollisionGroupId, BoundaryFaceKeyLess>
             collision_groups_;
         CollisionGroupId next_collision_group_id_{1};
         std::vector<BoundaryFace> faces_; // 按规范面键排序的当前外露面
+        ExposedBoundaryApplyDiagnostics last_apply_diagnostics_;
     };
 
     Result<BoundaryFaceKey, SpatialError> makeBoundaryFaceKey(
