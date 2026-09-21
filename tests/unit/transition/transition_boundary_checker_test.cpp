@@ -378,6 +378,8 @@ int main()
             Point3{0,0,0.01}, Point3{1,0,0.01},
             Point3{1,1,0.01}, Point3{0,1,0.01}}};
     };
+    const ProvisionalTransitionBuildContext transition_context{
+        terminal_current, terminal_candidate};
     for (const Scalar scale : {Scalar{0.25}, Scalar{0.125}, Scalar{0.0625}})
     {
         ExternalPatchControls controls;
@@ -388,7 +390,14 @@ int main()
         const auto local_external = buildProvisionalExternalPatches(
             terminal_current, terminal_candidate, {90}, {}, {90},
             terminal_hexa, controls, {90});
-        if (!full_external.hasValue() || !local_external.hasValue()) return 42;
+        const auto cached_full = buildProvisionalTransition(
+            transition_context, {90}, {}, terminal_hexa, controls, {90});
+        const auto cached_local = buildProvisionalExternalPatches(
+            transition_context, {90}, {}, {90}, terminal_hexa, controls,
+            {90});
+        if (!full_external.hasValue() || !local_external.hasValue() ||
+            !cached_full.hasValue() || !cached_local.hasValue())
+            return 42;
         const auto full_triangles = std::count_if(
             full_external.value().boundary.candidate_triangles.begin(),
             full_external.value().boundary.candidate_triangles.end(),
@@ -402,12 +411,29 @@ int main()
             local_external.value().resolved_topology.front().generated_point !=
                 full_external.value().resolved_topology.front().generated_point)
             return 43;
+        if (cached_full.value().boundary.candidate_triangles.size() !=
+                full_external.value().boundary.candidate_triangles.size() ||
+            cached_local.value().boundary.candidate_triangles.size() !=
+                local_external.value().boundary.candidate_triangles.size() ||
+            cached_full.value().resolved_topology.front().generated_point !=
+                full_external.value().resolved_topology.front().generated_point ||
+            cached_local.value().resolved_topology.front().generated_point !=
+                local_external.value().resolved_topology.front().generated_point ||
+            cached_local.value().forced_rollback_high_faces !=
+                local_external.value().forced_rollback_high_faces)
+            return 45;
         for (const auto &owned :
              local_external.value().boundary.candidate_triangles)
             if (owned.owner.role != BoundaryOwnerRole::ExternalPatch ||
                 owned.owner.source_face_id != 90)
                 return 44;
     }
+    const auto cached_without_retained = buildProvisionalExternalPatches(
+        transition_context, {}, {}, {90}, terminal_hexa, {}, {90});
+    if (!cached_without_retained.hasValue() ||
+        !cached_without_retained.value().boundary.candidate_triangles.empty() ||
+        !cached_without_retained.value().resolved_topology.empty())
+        return 46;
 
     std::vector<OwnedBoundaryTriangle> prior_transition_boundary = {
         triangle(

@@ -296,9 +296,41 @@ namespace boundary_mesh
         }
     }
 
+    ProvisionalTransitionBuildContext::ProvisionalTransitionBuildContext(
+        const GrowthFront &current,
+        const GrowthFront &candidate)
+        : current_(current), candidate_(candidate)
+    {
+        for (std::size_t index = 0; index < current.faces.size(); ++index)
+        {
+            const SurfaceFaceId id = current.source_face_ids[index];
+            current_faces_[id] = index;
+            const auto ids = faceIds(current.faces[index]);
+            for (std::size_t edge = 0; edge < ids.size(); ++edge)
+                current_edge_faces_[edgeKey(
+                    ids[edge], ids[(edge + 1) % ids.size()])]
+                    .push_back(id);
+        }
+        for (std::size_t index = 0; index < candidate.faces.size(); ++index)
+            candidate_faces_[candidate.source_face_ids[index]] = index;
+        for (std::size_t index = 0;
+             index < candidate.vertices.size(); ++index)
+        {
+            const auto &vertex = candidate.vertices[index];
+            candidate_vertices_[cellKey(
+                vertex.source_vertex_id, vertex.branch_id)] = index;
+        }
+        for (std::size_t index = 0;
+             index < current.vertices.size(); ++index)
+        {
+            const auto &vertex = current.vertices[index];
+            current_vertices_[cellKey(
+                vertex.source_vertex_id, vertex.branch_id)] = index;
+        }
+    }
+
         static ProvisionalLayerTransitionResult buildProvisionalTransitionImpl(
-            const GrowthFront &current,
-            const GrowthFront &candidate,
+            const ProvisionalTransitionBuildContext &context,
             const std::vector<SurfaceFaceId> &retained,
             const LayerFaceSets &face_sets,
             const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
@@ -307,48 +339,30 @@ namespace boundary_mesh
             const std::vector<SurfaceFaceId> &terminal_candidate_faces,
             const std::vector<SurfaceFaceId> *selected_external_faces)
         {
+            const GrowthFront &current = context.current();
+            const GrowthFront &candidate = context.candidate();
+            const auto &current_faces = context.currentFaces();
+            const auto &candidate_faces = context.candidateFaces();
+            const auto &current_edge_faces = context.currentEdgeFaces();
+            const auto &current_vertices = context.currentVertices();
+            const auto &candidate_vertices = context.candidateVertices();
             ProvisionalLayerTransition provisional;
             provisional.all_top_faces_are_triangles = true;
             const bool external_only = selected_external_faces != nullptr;
+            std::vector<SurfaceFaceId> selected;
+            if (selected_external_faces != nullptr)
+            {
+                selected = *selected_external_faces;
+                std::sort(selected.begin(), selected.end());
+                selected.erase(
+                    std::unique(selected.begin(), selected.end()),
+                    selected.end());
+            }
             const auto selectedExternal = [&](SurfaceFaceId id)
             {
-                return !external_only || std::find(
-                    selected_external_faces->begin(),
-                    selected_external_faces->end(), id) !=
-                    selected_external_faces->end();
+                return !external_only ||
+                    std::binary_search(selected.begin(), selected.end(), id);
             };
-            std::unordered_map<SurfaceFaceId, std::size_t> current_faces;
-            std::unordered_map<std::uint64_t, std::vector<SurfaceFaceId>>
-                current_edge_faces;
-            for (std::size_t index = 0;
-                 index < current.faces.size(); ++index)
-            {
-                const SurfaceFaceId id = current.source_face_ids[index];
-                current_faces[id] = index;
-                const auto ids = faceIds(current.faces[index]);
-                for (std::size_t edge = 0; edge < ids.size(); ++edge)
-                    current_edge_faces[edgeKey(
-                        ids[edge], ids[(edge+1)%ids.size()])]
-                        .push_back(id);
-            }
-            std::unordered_map<std::uint64_t, std::size_t>
-                candidate_vertices;
-            for (std::size_t index = 0;
-                 index < candidate.vertices.size(); ++index)
-            {
-                const auto &vertex = candidate.vertices[index];
-                candidate_vertices[cellKey(
-                    vertex.source_vertex_id, vertex.branch_id)] = index;
-            }
-            std::unordered_map<std::uint64_t, std::size_t>
-                current_vertices;
-            for (std::size_t index = 0;
-                 index < current.vertices.size(); ++index)
-            {
-                const auto &vertex = current.vertices[index];
-                current_vertices[cellKey(
-                    vertex.source_vertex_id, vertex.branch_id)] = index;
-            }
             for (std::size_t index = 0;
                  index < candidate.faces.size(); ++index)
             {
@@ -370,12 +384,9 @@ namespace boundary_mesh
             {
                 if (!selectedExternal(id)) continue;
                 if (!retainedFace(retained, id)) continue;
-                const auto position = std::find(
-                    candidate.source_face_ids.begin(),
-                    candidate.source_face_ids.end(), id);
-                if (position == candidate.source_face_ids.end()) continue;
-                const std::size_t face_index = static_cast<std::size_t>(
-                    std::distance(candidate.source_face_ids.begin(),position));
+                const auto position = candidate_faces.find(id);
+                if (position == candidate_faces.end()) continue;
+                const std::size_t face_index = position->second;
                 const auto *quad = std::get_if<Quad>(
                     &candidate.faces[face_index]);
                 if (quad == nullptr) continue;
@@ -923,6 +934,20 @@ namespace boundary_mesh
         }
 
     ProvisionalLayerTransitionResult buildProvisionalTransition(
+        const ProvisionalTransitionBuildContext &context,
+        const std::vector<SurfaceFaceId> &retained,
+        const LayerFaceSets &face_sets,
+        const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
+            terminal_hexa_points,
+        const ExternalPatchControls &external_controls,
+        const std::vector<SurfaceFaceId> &terminal_candidate_faces)
+    {
+        return buildProvisionalTransitionImpl(
+            context, retained, face_sets, terminal_hexa_points,
+            external_controls, terminal_candidate_faces, nullptr);
+    }
+
+    ProvisionalLayerTransitionResult buildProvisionalTransition(
         const GrowthFront &current,
         const GrowthFront &candidate,
         const std::vector<SurfaceFaceId> &retained,
@@ -932,9 +957,26 @@ namespace boundary_mesh
         const ExternalPatchControls &external_controls,
         const std::vector<SurfaceFaceId> &terminal_candidate_faces)
     {
+        const ProvisionalTransitionBuildContext context{current, candidate};
+        return buildProvisionalTransition(
+            context, retained, face_sets, terminal_hexa_points,
+            external_controls, terminal_candidate_faces);
+    }
+
+    ProvisionalLayerTransitionResult buildProvisionalExternalPatches(
+        const ProvisionalTransitionBuildContext &context,
+        const std::vector<SurfaceFaceId> &retained,
+        const LayerFaceSets &face_sets,
+        const std::vector<SurfaceFaceId> &selected_external_faces,
+        const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
+            terminal_hexa_points,
+        const ExternalPatchControls &external_controls,
+        const std::vector<SurfaceFaceId> &terminal_candidate_faces)
+    {
         return buildProvisionalTransitionImpl(
-            current, candidate, retained, face_sets, terminal_hexa_points,
-            external_controls, terminal_candidate_faces, nullptr);
+            context, retained, face_sets, terminal_hexa_points,
+            external_controls, terminal_candidate_faces,
+            &selected_external_faces);
     }
 
     ProvisionalLayerTransitionResult buildProvisionalExternalPatches(
@@ -948,9 +990,10 @@ namespace boundary_mesh
         const ExternalPatchControls &external_controls,
         const std::vector<SurfaceFaceId> &terminal_candidate_faces)
     {
-        return buildProvisionalTransitionImpl(
-            current, candidate, retained, face_sets, terminal_hexa_points,
-            external_controls, terminal_candidate_faces,
-            &selected_external_faces);
+        const ProvisionalTransitionBuildContext context{current, candidate};
+        return buildProvisionalExternalPatches(
+            context, retained, face_sets, selected_external_faces,
+            terminal_hexa_points, external_controls,
+            terminal_candidate_faces);
     }
 }
