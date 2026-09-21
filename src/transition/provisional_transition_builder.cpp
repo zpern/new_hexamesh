@@ -296,7 +296,7 @@ namespace boundary_mesh
         }
     }
 
-        ProvisionalLayerTransitionResult buildProvisionalTransition(
+        static ProvisionalLayerTransitionResult buildProvisionalTransitionImpl(
             const GrowthFront &current,
             const GrowthFront &candidate,
             const std::vector<SurfaceFaceId> &retained,
@@ -304,10 +304,19 @@ namespace boundary_mesh
             const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
                 terminal_hexa_points,
             const ExternalPatchControls &external_controls,
-            const std::vector<SurfaceFaceId> &terminal_candidate_faces)
+            const std::vector<SurfaceFaceId> &terminal_candidate_faces,
+            const std::vector<SurfaceFaceId> *selected_external_faces)
         {
             ProvisionalLayerTransition provisional;
             provisional.all_top_faces_are_triangles = true;
+            const bool external_only = selected_external_faces != nullptr;
+            const auto selectedExternal = [&](SurfaceFaceId id)
+            {
+                return !external_only || std::find(
+                    selected_external_faces->begin(),
+                    selected_external_faces->end(), id) !=
+                    selected_external_faces->end();
+            };
             std::unordered_map<SurfaceFaceId, std::size_t> current_faces;
             std::unordered_map<std::uint64_t, std::vector<SurfaceFaceId>>
                 current_edge_faces;
@@ -343,6 +352,7 @@ namespace boundary_mesh
             for (std::size_t index = 0;
                  index < candidate.faces.size(); ++index)
             {
+                if (external_only) break;
                 const SurfaceFaceId id = candidate.source_face_ids[index];
                 if (!retainedFace(retained, id)) continue;
                 if (std::binary_search(
@@ -358,6 +368,7 @@ namespace boundary_mesh
 
             for (const SurfaceFaceId id : terminal_candidate_faces)
             {
+                if (!selectedExternal(id)) continue;
                 if (!retainedFace(retained, id)) continue;
                 const auto position = std::find(
                     candidate.source_face_ids.begin(),
@@ -502,6 +513,7 @@ namespace boundary_mesh
             for (const SurfaceFaceId low_id :
                  face_sets.transition_low_faces)
             {
+                if (!selectedExternal(low_id)) continue;
                 const auto low_position = current_faces.find(low_id);
                 if (low_position == current_faces.end()) continue;
                 const SurfaceFace *low_face = &current.faces[
@@ -909,4 +921,36 @@ namespace boundary_mesh
             return ProvisionalLayerTransitionResult::success(
                 std::move(provisional));
         }
+
+    ProvisionalLayerTransitionResult buildProvisionalTransition(
+        const GrowthFront &current,
+        const GrowthFront &candidate,
+        const std::vector<SurfaceFaceId> &retained,
+        const LayerFaceSets &face_sets,
+        const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
+            terminal_hexa_points,
+        const ExternalPatchControls &external_controls,
+        const std::vector<SurfaceFaceId> &terminal_candidate_faces)
+    {
+        return buildProvisionalTransitionImpl(
+            current, candidate, retained, face_sets, terminal_hexa_points,
+            external_controls, terminal_candidate_faces, nullptr);
+    }
+
+    ProvisionalLayerTransitionResult buildProvisionalExternalPatches(
+        const GrowthFront &current,
+        const GrowthFront &candidate,
+        const std::vector<SurfaceFaceId> &retained,
+        const LayerFaceSets &face_sets,
+        const std::vector<SurfaceFaceId> &selected_external_faces,
+        const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
+            terminal_hexa_points,
+        const ExternalPatchControls &external_controls,
+        const std::vector<SurfaceFaceId> &terminal_candidate_faces)
+    {
+        return buildProvisionalTransitionImpl(
+            current, candidate, retained, face_sets, terminal_hexa_points,
+            external_controls, terminal_candidate_faces,
+            &selected_external_faces);
+    }
 }

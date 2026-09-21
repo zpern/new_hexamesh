@@ -359,6 +359,56 @@ int main()
         !terminal->generated_point.has_value())
         return 41;
 
+    GrowthFront terminal_current;
+    terminal_current.layer = 1;
+    terminal_current.vertices = {
+        {{0,0,0},0}, {{1,0,0},1}, {{1,1,0},2}, {{0,1,0},3}};
+    terminal_current.faces = {Quad{{0,1,2,3}}};
+    terminal_current.source_face_ids = {90};
+    GrowthFront terminal_candidate = terminal_current;
+    terminal_candidate.layer = 2;
+    for (auto &vertex : terminal_candidate.vertices)
+        vertex.position.z() = Scalar{0.01};
+    const auto terminal_hexa = [](SurfaceFaceId id)
+        -> std::optional<HexaPoints>
+    {
+        if (id != 90) return std::nullopt;
+        return HexaPoints{{
+            Point3{0,0,0}, Point3{1,0,0}, Point3{1,1,0}, Point3{0,1,0},
+            Point3{0,0,0.01}, Point3{1,0,0.01},
+            Point3{1,1,0.01}, Point3{0,1,0.01}}};
+    };
+    for (const Scalar scale : {Scalar{0.25}, Scalar{0.125}, Scalar{0.0625}})
+    {
+        ExternalPatchControls controls;
+        controls.distance_scales[90] = scale;
+        const auto full_external = buildProvisionalTransition(
+            terminal_current, terminal_candidate, {90}, {}, terminal_hexa,
+            controls, {90});
+        const auto local_external = buildProvisionalExternalPatches(
+            terminal_current, terminal_candidate, {90}, {}, {90},
+            terminal_hexa, controls, {90});
+        if (!full_external.hasValue() || !local_external.hasValue()) return 42;
+        const auto full_triangles = std::count_if(
+            full_external.value().boundary.candidate_triangles.begin(),
+            full_external.value().boundary.candidate_triangles.end(),
+            [](const OwnedBoundaryTriangle &value)
+            { return value.owner.role == BoundaryOwnerRole::ExternalPatch &&
+                     value.owner.source_face_id == 90; });
+        if (local_external.value().boundary.candidate_triangles.size() !=
+                static_cast<std::size_t>(full_triangles) ||
+            local_external.value().resolved_topology.size() != 1 ||
+            full_external.value().resolved_topology.size() != 1 ||
+            local_external.value().resolved_topology.front().generated_point !=
+                full_external.value().resolved_topology.front().generated_point)
+            return 43;
+        for (const auto &owned :
+             local_external.value().boundary.candidate_triangles)
+            if (owned.owner.role != BoundaryOwnerRole::ExternalPatch ||
+                owned.owner.source_face_id != 90)
+                return 44;
+    }
+
     std::vector<OwnedBoundaryTriangle> prior_transition_boundary = {
         triangle(
             {{{0,0,0},{1,0,0},{0,1,0}}},

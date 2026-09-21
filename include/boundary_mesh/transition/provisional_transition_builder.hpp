@@ -14,4 +14,15 @@ namespace boundary_mesh
             terminal_hexa_points = {},
         const ExternalPatchControls &external_controls = {},
         const std::vector<SurfaceFaceId> &terminal_candidate_faces = {});
+
+    ProvisionalLayerTransitionResult buildProvisionalExternalPatches(
+        const GrowthFront &current,
+        const GrowthFront &candidate,
+        const std::vector<SurfaceFaceId> &retained,
+        const LayerFaceSets &face_sets,
+        const std::vector<SurfaceFaceId> &selected_external_faces,
+        const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
+            terminal_hexa_points = {},
+        const ExternalPatchControls &external_controls = {},
+        const std::vector<SurfaceFaceId> &terminal_candidate_faces = {});
 }
