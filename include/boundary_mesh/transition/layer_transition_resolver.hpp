@@ -91,6 +91,11 @@ namespace boundary_mesh
             const std::vector<SurfaceFaceId> &,
             const LayerFaceSets &,
             const ExternalPatchControls &)> build_provisional;
+        std::function<ProvisionalLayerTransitionResult(
+            const std::vector<SurfaceFaceId> &,
+            const LayerFaceSets &,
+            const std::vector<SurfaceFaceId> &,
+            const ExternalPatchControls &)> build_external_patches;
     };
 
     struct StableLayerTransition

@@ -260,6 +260,7 @@ int main()
     LayerTransitionInput multiple_external;
     multiple_external.completed_layer = 1;
     std::size_t multiple_builds{};
+    std::size_t multiple_local_builds{};
     multiple_external.build_provisional = [&multiple_builds](
         const std::vector<SurfaceFaceId> &,
         const LayerFaceSets &,
@@ -268,6 +269,34 @@ int main()
         ++multiple_builds;
         ProvisionalLayerTransition value;
         for (const SurfaceFaceId id : {SurfaceFaceId{80}, SurfaceFaceId{81}})
+        {
+            const Scalar offset = id == 80 ? Scalar{0} : Scalar{10};
+            const Scalar scale = controls.distanceScale(id);
+            value.boundary.candidate_triangles.push_back({
+                {{{offset-1,-1,0},{offset+1,-1,0},{offset,1,scale}}},
+                {{{id*10+0,1,0},{id*10+1,1,0},{id*10+2,1,0}}},
+                {id,1,BoundaryOwnerRole::ExternalPatch,{}}});
+            ResolvedTransitionTopology topology;
+            topology.source_face_id = id;
+            topology.layer = 1;
+            topology.template_kind = TransitionTemplateKind::QuadTopCap;
+            topology.terminal_quad_decision =
+                TerminalQuadDecision::ExternalPatch;
+            topology.generated_point = Point3{offset,0,scale};
+            value.resolved_topology.push_back(std::move(topology));
+        }
+        value.all_top_faces_are_triangles = true;
+        return ProvisionalLayerTransitionResult::success(std::move(value));
+    };
+    multiple_external.build_external_patches = [&multiple_local_builds](
+        const std::vector<SurfaceFaceId> &,
+        const LayerFaceSets &,
+        const std::vector<SurfaceFaceId> &selected,
+        const ExternalPatchControls &controls)
+    {
+        ++multiple_local_builds;
+        ProvisionalLayerTransition value;
+        for (const SurfaceFaceId id : selected)
         {
             const Scalar offset = id == 80 ? Scalar{0} : Scalar{10};
             const Scalar scale = controls.distanceScale(id);
@@ -319,5 +348,5 @@ int main()
         if (!topology.generated_point.has_value() ||
             topology.generated_point->z() >= Scalar{0.1})
             return 59;
-    if (multiple_builds >= 25) return 60;
+    if (multiple_builds != 1 || multiple_local_builds == 0) return 60;
 }

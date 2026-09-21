@@ -64,6 +64,52 @@ namespace boundary_mesh
             }
             return result;
         }
+
+        ProvisionalLayerTransition replaceExternalPatches(
+            const ProvisionalLayerTransition &base,
+            const ProvisionalLayerTransition &replacement,
+            const std::vector<SurfaceFaceId> &selected)
+        {
+            const auto isSelected = [&](SurfaceFaceId id)
+            {
+                return std::find(selected.begin(), selected.end(), id) !=
+                    selected.end();
+            };
+            ProvisionalLayerTransition result = base;
+            auto &triangles = result.boundary.candidate_triangles;
+            triangles.erase(std::remove_if(
+                triangles.begin(), triangles.end(), [&](const auto &owned)
+                {
+                    return owned.owner.role ==
+                               BoundaryOwnerRole::ExternalPatch &&
+                           isSelected(owned.owner.source_face_id);
+                }), triangles.end());
+            auto &topology = result.resolved_topology;
+            topology.erase(std::remove_if(
+                topology.begin(), topology.end(), [&](const auto &entry)
+                { return isSelected(entry.source_face_id); }), topology.end());
+            triangles.insert(
+                triangles.end(),
+                replacement.boundary.candidate_triangles.begin(),
+                replacement.boundary.candidate_triangles.end());
+            topology.insert(
+                topology.end(), replacement.resolved_topology.begin(),
+                replacement.resolved_topology.end());
+            result.forced_rollback_high_faces.insert(
+                result.forced_rollback_high_faces.end(),
+                replacement.forced_rollback_high_faces.begin(),
+                replacement.forced_rollback_high_faces.end());
+            std::sort(result.forced_rollback_high_faces.begin(),
+                      result.forced_rollback_high_faces.end());
+            result.forced_rollback_high_faces.erase(std::unique(
+                result.forced_rollback_high_faces.begin(),
+                result.forced_rollback_high_faces.end()),
+                result.forced_rollback_high_faces.end());
+            result.all_top_faces_are_triangles =
+                base.all_top_faces_are_triangles &&
+                replacement.all_top_faces_are_triangles;
+            return result;
+        }
     }
 
     Result<StableLayerTransition, LayerTransitionError>
@@ -135,6 +181,21 @@ namespace boundary_mesh
                              std::chrono::steady_clock::now() -
                              provisional_build_started).count()
                       << '\n';
+
+            const auto buildProbe = [&](
+                const std::vector<SurfaceFaceId> &selected)
+                -> ProvisionalLayerTransitionResult
+            {
+                if (!input.build_external_patches) return build();
+                auto local = input.build_external_patches(
+                    retained, face_sets, selected, external_controls);
+                if (!local.hasValue()) return local;
+                auto merged = replaceExternalPatches(
+                    provisional.value(), local.value(), selected);
+                configure(merged);
+                return ProvisionalLayerTransitionResult::success(
+                    std::move(merged));
+            };
 
             std::vector<SurfaceFaceId> external_faces;
             for (const auto &topology : provisional.value().resolved_topology)
@@ -271,34 +332,49 @@ namespace boundary_mesh
                     if (owner.role == BoundaryOwnerRole::ExternalPatch)
                         colliding.insert(owner.source_face_id);
 
+                IncrementalCollisionIndex working_index = *search_index;
                 for (const auto &[id, triangles] : replacements)
                 {
                     const CollisionGroupId group =
                         static_cast<CollisionGroupId>(id) + 2;
-                    const auto erased = search_index->eraseGroup(group);
+                    const auto erased = working_index.eraseGroup(group);
                     if (!erased.hasValue())
                         return ExternalCollisionResult::failure(
                             LayerTransitionError{
                                 TransitionBoundaryError{erased.error()}});
+                }
+                std::map<SurfaceFaceId, std::vector<CollisionTriangle>>
+                    converted_replacements;
+                for (const auto &[id, triangles] : replacements)
+                {
+                    const CollisionGroupId group =
+                        static_cast<CollisionGroupId>(id) + 2;
                     std::vector<CollisionTriangle> converted;
                     converted.reserve(triangles.size());
                     for (const OwnedBoundaryTriangle &owned : triangles)
                         converted.push_back(makeTransitionCollisionTriangle(
                             owned, id));
-                    const auto inserted = search_index->insertGroup(
+                    const auto inserted = working_index.insertGroup(
                         {group, converted});
                     if (!inserted.hasValue())
                         return ExternalCollisionResult::failure(
                             LayerTransitionError{
                                 TransitionBoundaryError{inserted.error()}});
+                    converted_replacements.emplace(id, std::move(converted));
+                }
+                for (const auto &[id, converted] : converted_replacements)
+                {
+                    const CollisionGroupId group =
+                        static_cast<CollisionGroupId>(id) + 2;
                     for (const CollisionTriangle &triangle : converted)
-                        if (!search_index->queryIllegalContacts(
+                        if (!working_index.queryIllegalContacts(
                                 triangle, group).empty())
                         {
                             colliding.insert(id);
                             break;
                         }
                 }
+                search_index = std::move(working_index);
                 return ExternalCollisionResult::success(
                     std::move(colliding));
             };
@@ -307,6 +383,7 @@ namespace boundary_mesh
                 searches.begin(), searches.end(), [](const auto &entry)
                 { return !entry.second.bracketed && !entry.second.exhausted; }))
             {
+                std::vector<SurfaceFaceId> active_ids;
                 for (auto &[id, search] : searches)
                 {
                     if (search.bracketed || search.exhausted) continue;
@@ -314,8 +391,9 @@ namespace boundary_mesh
                         search.probe * Scalar{0.5},
                         minimum_external_distance_scale);
                     external_controls.distance_scales[id] = search.probe;
+                    active_ids.push_back(id);
                 }
-                auto trial = build();
+                auto trial = buildProbe(active_ids);
                 if (!trial.hasValue())
                     return ResolveResult::failure(trial.error());
                 const auto collisions = inspectExternalChanges(trial.value());
@@ -368,15 +446,17 @@ namespace boundary_mesh
             for (std::uint32_t step = 0; step < 12; ++step)
             {
                 bool active = false;
+                std::vector<SurfaceFaceId> active_ids;
                 for (auto &[id, search] : searches)
                 {
                     if (!search.bracketed) continue;
                     active = true;
                     external_controls.distance_scales[id] =
                         (search.low + search.high) * Scalar{0.5};
+                    active_ids.push_back(id);
                 }
                 if (!active) break;
-                auto trial = build();
+                auto trial = buildProbe(active_ids);
                 if (!trial.hasValue())
                     return ResolveResult::failure(trial.error());
                 const auto collisions = inspectExternalChanges(trial.value());
@@ -400,7 +480,10 @@ namespace boundary_mesh
                     external_controls.distance_scales[id] = search.low;
             if (!searches.empty() || keep_hexa_changed)
             {
-                provisional = build();
+                std::vector<SurfaceFaceId> selected;
+                for (const auto &[id, search] : searches)
+                    selected.push_back(id);
+                provisional = buildProbe(selected);
                 if (!provisional.hasValue())
                     return ResolveResult::failure(provisional.error());
             }
