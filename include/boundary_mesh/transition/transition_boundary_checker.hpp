@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -29,6 +30,34 @@ namespace boundary_mesh
         std::vector<SurfaceFaceId> rollback_high_faces;
     };
 
+    struct LayerBoundaryOwnerKey
+    {
+        SurfaceFaceId source_face_id{};
+        std::uint32_t layer{};
+        BoundaryOwnerRole role{};
+    };
+
+    inline bool operator==(
+        const LayerBoundaryOwnerKey &left,
+        const LayerBoundaryOwnerKey &right)
+    {
+        return left.source_face_id == right.source_face_id &&
+               left.layer == right.layer && left.role == right.role;
+    }
+
+    inline bool operator<(
+        const LayerBoundaryOwnerKey &left,
+        const LayerBoundaryOwnerKey &right)
+    {
+        return std::tie(left.source_face_id, left.layer, left.role) <
+               std::tie(right.source_face_id, right.layer, right.role);
+    }
+
+    using TransitionVertexTuple =
+        std::tuple<VertexId, std::uint32_t, std::uint32_t>;
+    using TransitionTriangleKey =
+        std::array<TransitionVertexTuple, 3>;
+
     struct SlidingColumnContext
     {
         std::vector<Point3> low_points;
@@ -48,6 +77,12 @@ namespace boundary_mesh
         std::vector<std::uint32_t> complete_face_exemption_regions;
         std::shared_ptr<const SlidingColumnContext> sliding_columns;
     };
+
+    LayerBoundaryOwnerKey layerBoundaryOwnerKey(
+        const LayerBoundaryOwner &owner);
+
+    TransitionTriangleKey transitionTriangleKey(
+        const OwnedBoundaryTriangle &triangle);
 
     struct LayerDiagonalRequirement
     {

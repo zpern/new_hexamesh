@@ -64,6 +64,27 @@ int main()
         {0,0,0}, {1,0,0}, {0,1,0}}};
     const std::array<CollisionVertexKey, 3> candidate_keys{{
         {0,2,0}, {1,2,0}, {2,2,0}}};
+    TransitionBoundaryInput representative_input;
+    representative_input.candidate_triangles = {
+        triangle(flat, candidate_keys, 101, {101}),
+        triangle(flat, candidate_keys, 102, {102}),
+        triangle(flat, candidate_keys, 103, {103})};
+    const auto representative =
+        TransitionBoundaryChecker{}.assembleExposedBoundary(
+            representative_input);
+    if (!representative.hasValue() || representative.value().size() != 1 ||
+        representative.value().front().owner.source_face_id != 101)
+        return 47;
+    const TransitionTriangleKey stable_triangle_key =
+        transitionTriangleKey(representative.value().front());
+    const LayerBoundaryOwnerKey stable_owner_key =
+        layerBoundaryOwnerKey(representative.value().front().owner);
+    if (stable_triangle_key !=
+            transitionTriangleKey(representative_input.candidate_triangles[1]) ||
+        stable_owner_key.source_face_id != 101 ||
+        stable_owner_key.layer != 2 ||
+        stable_owner_key.role != BoundaryOwnerRole::SideTransition)
+        return 48;
     const auto obstacle_index = CollisionIndex::build({obstacle(flat, 7)});
     assert(obstacle_index.hasValue());
 

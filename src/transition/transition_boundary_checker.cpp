@@ -8,6 +8,28 @@
 
 namespace boundary_mesh
 {
+    LayerBoundaryOwnerKey layerBoundaryOwnerKey(
+        const LayerBoundaryOwner &owner)
+    {
+        return {owner.source_face_id, owner.layer, owner.role};
+    }
+
+    TransitionTriangleKey transitionTriangleKey(
+        const OwnedBoundaryTriangle &triangle)
+    {
+        const auto tuple = [](const CollisionVertexKey &value)
+        {
+            return TransitionVertexTuple{
+                value.source_vertex_id, value.layer, value.branch_id};
+        };
+        TransitionTriangleKey result{{
+            tuple(triangle.vertex_keys[0]),
+            tuple(triangle.vertex_keys[1]),
+            tuple(triangle.vertex_keys[2])}};
+        std::sort(result.begin(), result.end());
+        return result;
+    }
+
     CollisionTriangle makeTransitionCollisionTriangle(
         const OwnedBoundaryTriangle &owned,
         std::uint32_t owner_id)
@@ -28,23 +50,6 @@ namespace boundary_mesh
 
     namespace
     {
-        using VertexTuple = std::tuple<VertexId, std::uint32_t, std::uint32_t>;
-        using TriangleKey = std::array<VertexTuple, 3>;
-
-        VertexTuple tuple(const CollisionVertexKey &key)
-        {
-            return {key.source_vertex_id, key.layer, key.branch_id};
-        }
-
-        TriangleKey key(const OwnedBoundaryTriangle &triangle)
-        {
-            TriangleKey result{{tuple(triangle.vertex_keys[0]),
-                                tuple(triangle.vertex_keys[1]),
-                                tuple(triangle.vertex_keys[2])}};
-            std::sort(result.begin(), result.end());
-            return result;
-        }
-
         void appendOwner(
             std::vector<SurfaceFaceId> &rollback,
             const LayerBoundaryOwner &owner,
@@ -54,12 +59,10 @@ namespace boundary_mesh
                 owner.rollback_high_faces.begin(),
                 owner.rollback_high_faces.end());
             if (colliding_owners == nullptr) return;
+            const LayerBoundaryOwnerKey owner_key =
+                layerBoundaryOwnerKey(owner);
             const auto same = [&](const LayerBoundaryOwner &other)
-            {
-                return other.source_face_id == owner.source_face_id &&
-                       other.layer == owner.layer &&
-                       other.role == owner.role;
-            };
+            { return layerBoundaryOwnerKey(other) == owner_key; };
             if (std::none_of(
                     colliding_owners->begin(), colliding_owners->end(), same))
                 colliding_owners->push_back(owner);
@@ -198,11 +201,12 @@ namespace boundary_mesh
                                 input.diagonal_requirements[first].diagonal,
                                 input.diagonal_requirements[second].diagonal}});
 
-        std::vector<std::pair<TriangleKey, OwnedBoundaryTriangle>> sorted;
+        std::vector<std::pair<
+            TransitionTriangleKey, OwnedBoundaryTriangle>> sorted;
         sorted.reserve(input.candidate_triangles.size());
         for (const auto &triangle : input.candidate_triangles)
-            sorted.push_back({key(triangle), triangle});
-        std::sort(sorted.begin(), sorted.end(),
+            sorted.push_back({transitionTriangleKey(triangle), triangle});
+        std::stable_sort(sorted.begin(), sorted.end(),
             [](const auto &left, const auto &right)
             { return left.first < right.first; });
 
@@ -388,7 +392,8 @@ namespace boundary_mesh
                 {
                     const auto &prior = (*input.prior_transition_boundary)[
                         prior_transition_index->primitive(contact).owner_id];
-                    if (key(owned[index]) != key(prior))
+                    if (transitionTriangleKey(owned[index]) !=
+                        transitionTriangleKey(prior))
                     {
                         hit = true;
                         break;
