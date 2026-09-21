@@ -73,9 +73,6 @@ namespace boundary_mesh
         void materializeExposed();
         Result<std::monostate, TransitionBoundaryError>
         initializeCollisions(const TransitionBoundaryInput &input);
-        Result<bool, TransitionBoundaryError> inspectStaticObstacle(
-            const OwnedBoundaryTriangle &triangle,
-            const TransitionBoundaryInput &environment) const;
         void materializeCollisionReport();
 
         BucketMap buckets_;
@@ -88,6 +85,8 @@ namespace boundary_mesh
         std::map<std::uint32_t, TransitionTriangleKey> primitive_keys_;
         std::set<std::pair<std::uint32_t, std::uint32_t>> contacts_;
         std::optional<IncrementalCollisionIndex> collision_index_;
+        std::optional<TransitionStaticObstacleContext>
+            static_obstacle_context_;
         std::uint32_t next_primitive_id_{};
         const CollisionIndex *original_surface_{};
         const ExposedBoundaryTracker *historical_boundary_{};

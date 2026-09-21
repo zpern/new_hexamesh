@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <variant>
 #include <vector>
@@ -117,6 +118,28 @@ namespace boundary_mesh
     {
         std::vector<LayerBoundaryOwner> colliding_owners;
         std::vector<SurfaceFaceId> rollback_faces;
+    };
+
+    class TransitionStaticObstacleContext
+    {
+    public:
+        using BuildResult = Result<TransitionStaticObstacleContext,
+            TransitionBoundaryError>;
+
+        static BuildResult build(const TransitionBoundaryInput &input);
+
+        Result<bool, TransitionBoundaryError> intersects(
+            const OwnedBoundaryTriangle &triangle) const;
+
+    private:
+        const CollisionIndex *original_surface_{};
+        const ExposedBoundaryTracker *historical_boundary_{};
+        const IncrementalCollisionIndex *historical_index_{};
+        const std::vector<OwnedBoundaryTriangle>
+            *prior_transition_boundary_{};
+        const SlidingIntersectionIndex *sliding_surface_{};
+        std::optional<CollisionIndex> immutable_historical_index_;
+        std::optional<CollisionIndex> prior_transition_index_;
     };
 
     CollisionTriangle makeTransitionCollisionTriangle(

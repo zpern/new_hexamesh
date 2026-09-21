@@ -180,6 +180,139 @@ namespace boundary_mesh
         }
     }
 
+    TransitionStaticObstacleContext::BuildResult
+    TransitionStaticObstacleContext::build(
+        const TransitionBoundaryInput &input)
+    {
+        TransitionStaticObstacleContext context;
+        context.original_surface_ = input.original_surface;
+        context.historical_boundary_ = input.historical_boundary;
+        context.historical_index_ = input.historical_index;
+        context.prior_transition_boundary_ =
+            input.prior_transition_boundary;
+        context.sliding_surface_ = input.sliding_surface;
+        if (input.historical_index == nullptr &&
+            input.historical_boundary != nullptr)
+        {
+            const auto triangles =
+                input.historical_boundary->collisionTriangles();
+            if (!triangles.hasValue())
+                return BuildResult::failure(
+                    TransitionBoundaryError{triangles.error()});
+            if (!triangles.value().empty())
+            {
+                auto built = CollisionIndex::build(triangles.value());
+                if (!built.hasValue())
+                    return BuildResult::failure(
+                        TransitionBoundaryError{built.error()});
+                context.immutable_historical_index_ =
+                    std::move(built.value());
+            }
+        }
+        if (input.prior_transition_boundary != nullptr &&
+            !input.prior_transition_boundary->empty())
+        {
+            std::vector<CollisionTriangle> prior;
+            prior.reserve(input.prior_transition_boundary->size());
+            for (std::size_t index = 0;
+                 index < input.prior_transition_boundary->size(); ++index)
+                prior.push_back(makeTransitionCollisionTriangle(
+                    (*input.prior_transition_boundary)[index],
+                    static_cast<std::uint32_t>(index)));
+            auto built = CollisionIndex::build(std::move(prior));
+            if (!built.hasValue())
+                return BuildResult::failure(
+                    TransitionBoundaryError{built.error()});
+            context.prior_transition_index_ = std::move(built.value());
+        }
+        return BuildResult::success(std::move(context));
+    }
+
+    Result<bool, TransitionBoundaryError>
+    TransitionStaticObstacleContext::intersects(
+        const OwnedBoundaryTriangle &owned) const
+    {
+        using HitResult = Result<bool, TransitionBoundaryError>;
+        const CollisionTriangle collision =
+            makeTransitionCollisionTriangle(owned, 0);
+        if (original_surface_ != nullptr)
+            for (const std::size_t contact :
+                 original_surface_->queryIllegalContacts(collision))
+            {
+                const CollisionTriangle &obstacle =
+                    original_surface_->primitive(contact);
+                const bool own_zero_layer_cap =
+                    owned.owner.role == BoundaryOwnerRole::TopCap &&
+                    owned.owner.layer == 0 &&
+                    obstacle.owner_kind ==
+                        CollisionOwnerKind::OriginalSurface &&
+                    obstacle.owner_id == owned.owner.source_face_id;
+                const bool own_regular_source =
+                    owned.owner.role ==
+                        BoundaryOwnerRole::RegularCandidate &&
+                    obstacle.owner_kind ==
+                        CollisionOwnerKind::OriginalSurface &&
+                    obstacle.owner_id == owned.owner.source_face_id;
+                if (!own_zero_layer_cap && !own_regular_source)
+                    return HitResult::success(true);
+            }
+        if (historical_index_ != nullptr)
+            for (const CollisionPrimitiveId contact :
+                 historical_index_->queryIllegalContacts(collision))
+                if (!belongsToHistoricalTop(
+                        owned, historical_index_->primitive(contact)))
+                    return HitResult::success(true);
+        if (immutable_historical_index_.has_value())
+            for (const std::size_t contact :
+                 immutable_historical_index_->queryIllegalContacts(collision))
+            {
+                const CollisionTriangle &obstacle =
+                    immutable_historical_index_->primitive(contact);
+                const auto &faces = historical_boundary_->faces();
+                const bool own_top =
+                    obstacle.owner_kind ==
+                        CollisionOwnerKind::ExposedBoundary &&
+                    obstacle.owner_id < faces.size() &&
+                    belongsToHistoricalTop(owned, faces[obstacle.owner_id]);
+                if (!own_top) return HitResult::success(true);
+            }
+        if (prior_transition_index_.has_value())
+            for (const std::size_t contact :
+                 prior_transition_index_->queryIllegalContacts(collision))
+            {
+                const auto &prior = (*prior_transition_boundary_)[
+                    prior_transition_index_->primitive(contact).owner_id];
+                if (transitionTriangleKey(owned) !=
+                    transitionTriangleKey(prior))
+                    return HitResult::success(true);
+            }
+        if (sliding_surface_ != nullptr)
+        {
+            const auto permissions = buildSlidingContactPermissions(
+                owned.vertex_sliding_region_ids,
+                owned.physical_edge_mask,
+                owned.complete_face_exemption_regions);
+            std::set<std::uint32_t> ignored;
+            while (true)
+            {
+                const auto hit = sliding_surface_->query(
+                    owned.points, permissions, ignored);
+                if (!hit.hasValue())
+                    return HitResult::failure(
+                        TransitionBoundaryError{hit.error()});
+                if (!hit.value().intersected) break;
+                const auto legal = canIgnoreOwnSlidingRegion(
+                    owned, *sliding_surface_, hit.value().region_id);
+                if (!legal.hasValue())
+                    return HitResult::failure(
+                        TransitionBoundaryError{legal.error()});
+                if (!legal.value()) return HitResult::success(true);
+                ignored.insert(hit.value().region_id);
+            }
+        }
+        return HitResult::success(false);
+    }
+
     Result<std::vector<OwnedBoundaryTriangle>, TransitionBoundaryError>
     TransitionBoundaryChecker::assembleExposedBoundary(
         const TransitionBoundaryInput &input) const

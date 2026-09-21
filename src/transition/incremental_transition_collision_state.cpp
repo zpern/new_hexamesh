@@ -271,8 +271,8 @@ namespace boundary_mesh
             if (!inserted.hasValue())
                 return UpdateResult::failure(
                     TransitionBoundaryError{inserted.error()});
-            const auto static_hit = working.inspectStaticObstacle(
-                triangle, next);
+            const auto static_hit =
+                working.static_obstacle_context_->intersects(triangle);
             if (!static_hit.hasValue())
                 return UpdateResult::failure(static_hit.error());
             const TransitionTriangleKey key =
@@ -304,27 +304,6 @@ namespace boundary_mesh
         return UpdateResult::success(std::monostate{});
     }
 
-    Result<bool, TransitionBoundaryError>
-    IncrementalTransitionCollisionState::inspectStaticObstacle(
-        const OwnedBoundaryTriangle &triangle,
-        const TransitionBoundaryInput &environment) const
-    {
-        TransitionBoundaryInput single;
-        single.candidate_triangles = {triangle};
-        single.original_surface = environment.original_surface;
-        single.historical_boundary = environment.historical_boundary;
-        single.historical_index = environment.historical_index;
-        single.prior_transition_boundary =
-            environment.prior_transition_boundary;
-        single.sliding_surface = environment.sliding_surface;
-        const auto report = TransitionBoundaryChecker{}.inspect(single);
-        if (!report.hasValue())
-            return Result<bool, TransitionBoundaryError>::failure(
-                report.error());
-        return Result<bool, TransitionBoundaryError>::success(
-            !report.value().colliding_owners.empty());
-    }
-
     Result<std::monostate, TransitionBoundaryError>
     IncrementalTransitionCollisionState::initializeCollisions(
         const TransitionBoundaryInput &input)
@@ -338,6 +317,11 @@ namespace boundary_mesh
         primitive_keys_.clear();
         contacts_.clear();
         next_primitive_id_ = 0;
+        auto static_context = TransitionStaticObstacleContext::build(input);
+        if (!static_context.hasValue())
+            return Result<std::monostate,
+                TransitionBoundaryError>::failure(static_context.error());
+        static_obstacle_context_ = std::move(static_context.value());
         std::vector<CollisionPrimitiveGroup> groups;
         for (const OwnedBoundaryTriangle &triangle : exposed_boundary_)
         {
@@ -345,7 +329,8 @@ namespace boundary_mesh
             groups.push_back({
                 static_cast<CollisionGroupId>(id) + 2,
                 {makeTransitionCollisionTriangle(triangle, id)}});
-            const auto static_hit = inspectStaticObstacle(triangle, input);
+            const auto static_hit =
+                static_obstacle_context_->intersects(triangle);
             if (!static_hit.hasValue())
                 return Result<std::monostate,
                     TransitionBoundaryError>::failure(static_hit.error());
