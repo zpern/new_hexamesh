@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <chrono>
+#include <iostream>
 #include <optional>
 #include <unordered_set>
 #include <utility>
@@ -208,8 +210,19 @@ namespace boundary_mesh
                 }
                 return points;
             };
+            const auto lookup_context_started =
+                std::chrono::steady_clock::now();
+            const ProvisionalTransitionBuildContext transition_build_context{
+                effective_current, candidate.next_front};
+            std::cerr
+                << "temporary resolver lookup_context_builds=1"
+                << " lookup_context_ms="
+                << std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() -
+                       lookup_context_started).count()
+                << '\n';
             input.build_provisional =
-                [&effective_current, &candidate,
+                [&transition_build_context,
                  &terminal_hexa_points = input.terminal_hexa_points,
                  terminal_candidate_faces](
                     const std::vector<SurfaceFaceId> &retained,
@@ -217,12 +230,12 @@ namespace boundary_mesh
                     const ExternalPatchControls &external_controls)
             {
                 return buildProvisionalTransition(
-                    effective_current, candidate.next_front,
-                    retained, sets, terminal_hexa_points,
+                    transition_build_context, retained, sets,
+                    terminal_hexa_points,
                     external_controls, terminal_candidate_faces);
             };
             input.build_external_patches =
-                [&effective_current, &candidate,
+                [&transition_build_context,
                  &terminal_hexa_points = input.terminal_hexa_points,
                  terminal_candidate_faces](
                     const std::vector<SurfaceFaceId> &retained,
@@ -231,8 +244,8 @@ namespace boundary_mesh
                     const ExternalPatchControls &external_controls)
             {
                 return buildProvisionalExternalPatches(
-                    effective_current, candidate.next_front,
-                    retained, sets, selected, terminal_hexa_points,
+                    transition_build_context, retained, sets, selected,
+                    terminal_hexa_points,
                     external_controls, terminal_candidate_faces);
             };
             const auto stable = LayerTransitionResolver{}.resolve(input);

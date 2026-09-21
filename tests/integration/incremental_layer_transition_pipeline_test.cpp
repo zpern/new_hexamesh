@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <cassert>
+#include <iostream>
+#include <sstream>
 #include <variant>
 
 #include <boundary_mesh/growth/growth_front_builder.hpp>
@@ -386,11 +388,24 @@ int main()
     RegularLayerGrowthOptions rollback_options;
     rollback_options.isotropic_height = 100;
     rollback_options.cell_quality.maximum_skewness = 1;
+    std::ostringstream rollback_diagnostics;
+    auto *previous_error_buffer = std::cerr.rdbuf(
+        rollback_diagnostics.rdbuf());
     const auto rollback = generateIncrementalBoundaryLayers(
         rollback_surface, rollback_topology.value(),
         rollback_patch.value(), rollback_front.value(),
         rollback_profiles, rollback_options);
+    std::cerr.rdbuf(previous_error_buffer);
     assert(rollback.hasValue());
+    const std::string lookup_marker =
+        "temporary resolver lookup_context_builds=1";
+    const std::size_t first_lookup =
+        rollback_diagnostics.str().find(lookup_marker);
+    if (first_lookup == std::string::npos ||
+        rollback_diagnostics.str().find(
+            lookup_marker, first_lookup + lookup_marker.size()) !=
+            std::string::npos)
+        return 62;
     assert(rollback.value().faces.size() == 2);
     assert(rollback.value().faces[0].accepted_layer_count == 0);
     assert(rollback.value().faces[1].accepted_layer_count == 0);
