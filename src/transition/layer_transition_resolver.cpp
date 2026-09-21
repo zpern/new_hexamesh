@@ -650,12 +650,22 @@ namespace boundary_mesh
             std::vector<SurfaceFaceId> rollback;
             if (external_changed)
             {
-                const auto final_report = checker.inspect(
-                    provisional.value().boundary);
-                if (!final_report.hasValue())
+                const auto changed = changedBoundaryOwners(
+                    *collision_boundary, provisional.value().boundary);
+                const auto updated = collision_state->update(
+                    provisional.value().boundary, changed);
+                if (!updated.hasValue())
                     return ResolveResult::failure(LayerTransitionError{
-                        final_report.error()});
-                rollback = final_report.value().rollback_faces;
+                        updated.error()});
+                collision_boundary = provisional.value().boundary;
+                ++collision_incremental_updates;
+                rollback = collision_state->collisionReport().rollback_faces;
+#ifndef NDEBUG
+                const auto full_final_report = checker.inspect(
+                    provisional.value().boundary);
+                assert(full_final_report.hasValue());
+                assert(full_final_report.value().rollback_faces == rollback);
+#endif
             }
             else
                 rollback = initial_report.rollback_faces;
@@ -680,17 +690,7 @@ namespace boundary_mesh
                 StableLayerTransition stable;
                 stable.face_sets = std::move(face_sets);
                 stable.retained_high_faces = std::move(retained);
-                if (!external_changed)
-                    stable.exposed_boundary = collision_state->exposedBoundary();
-                else
-                {
-                    const auto exposed = checker.assembleExposedBoundary(
-                        provisional.value().boundary);
-                    if (!exposed.hasValue())
-                        return ResolveResult::failure(LayerTransitionError{
-                            exposed.error()});
-                    stable.exposed_boundary = exposed.value();
-                }
+                stable.exposed_boundary = collision_state->exposedBoundary();
                 stable.resolved_topology = std::move(
                     provisional.value().resolved_topology);
                 stable.iterations = iterations;

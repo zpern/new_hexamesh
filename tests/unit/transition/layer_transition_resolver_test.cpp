@@ -351,4 +351,7 @@ int main()
             topology.generated_point->z() >= Scalar{0.1})
             return 59;
     if (multiple_builds != 1 || multiple_local_builds == 0) return 60;
+    if (multiple_result.value().collision_full_builds != 1 ||
+        multiple_result.value().collision_incremental_updates != 1)
+        return 61;
 }
