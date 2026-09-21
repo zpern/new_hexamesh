@@ -270,6 +270,7 @@ add_library(
         src/transition/quad_high_neighbor_selector.cpp
         src/transition/corner_suppression.cpp
         src/transition/transition_boundary_checker.cpp
+        src/transition/incremental_transition_collision_state.cpp
         src/transition/layer_transition_resolver.cpp
         src/transition/provisional_transition_builder.cpp
         src/transition/accepted_stopped_front_carry.cpp

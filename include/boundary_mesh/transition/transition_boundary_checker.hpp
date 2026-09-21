@@ -53,6 +53,13 @@ namespace boundary_mesh
                std::tie(right.source_face_id, right.layer, right.role);
     }
 
+    inline bool operator!=(
+        const LayerBoundaryOwnerKey &left,
+        const LayerBoundaryOwnerKey &right)
+    {
+        return !(left == right);
+    }
+
     using TransitionVertexTuple =
         std::tuple<VertexId, std::uint32_t, std::uint32_t>;
     using TransitionTriangleKey =

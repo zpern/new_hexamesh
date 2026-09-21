@@ -1151,6 +1151,19 @@ add_test(
 )
 
 add_executable(
+    boundary_mesh_incremental_transition_collision_state_test
+    unit/transition/incremental_transition_collision_state_test.cpp
+)
+target_link_libraries(
+    boundary_mesh_incremental_transition_collision_state_test
+    PRIVATE boundary_mesh_transition
+)
+add_test(
+    NAME boundary_mesh_incremental_transition_collision_state_test
+    COMMAND boundary_mesh_incremental_transition_collision_state_test
+)
+
+add_executable(
     boundary_mesh_layer_transition_resolver_test
     unit/transition/layer_transition_resolver_test.cpp
 )
