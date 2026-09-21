@@ -221,6 +221,20 @@ namespace boundary_mesh
                     retained, sets, terminal_hexa_points,
                     external_controls, terminal_candidate_faces);
             };
+            input.build_external_patches =
+                [&effective_current, &candidate,
+                 &terminal_hexa_points = input.terminal_hexa_points,
+                 terminal_candidate_faces](
+                    const std::vector<SurfaceFaceId> &retained,
+                    const LayerFaceSets &sets,
+                    const std::vector<SurfaceFaceId> &selected,
+                    const ExternalPatchControls &external_controls)
+            {
+                return buildProvisionalExternalPatches(
+                    effective_current, candidate.next_front,
+                    retained, sets, selected, terminal_hexa_points,
+                    external_controls, terminal_candidate_faces);
+            };
             const auto stable = LayerTransitionResolver{}.resolve(input);
             if (!stable.hasValue())
             {

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <iostream>
 #include <set>
 #include <utility>
@@ -132,6 +133,14 @@ namespace boundary_mesh
         std::uint32_t iterations = 1;
         TransitionBoundaryChecker checker;
         ExternalPatchControls external_controls;
+        std::uint64_t full_build_count{};
+        std::uint64_t full_build_milliseconds{};
+        std::uint64_t local_build_count{};
+        std::uint64_t local_build_milliseconds{};
+        std::uint64_t patch_replace_milliseconds{};
+        std::uint64_t exact_query_milliseconds{};
+        std::uint64_t probe_rounds{};
+        std::set<SurfaceFaceId> searched_patch_ids;
 
         while (true)
         {
@@ -165,9 +174,17 @@ namespace boundary_mesh
             };
             const auto build = [&]()
             {
+                const auto started = std::chrono::steady_clock::now();
                 auto value = input.build_provisional(
                     retained, face_sets, external_controls);
                 if (value.hasValue()) configure(value.value());
+                ++full_build_count;
+                full_build_milliseconds +=
+                    static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<
+                            std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - started)
+                            .count());
                 return value;
             };
 
@@ -187,12 +204,28 @@ namespace boundary_mesh
                 -> ProvisionalLayerTransitionResult
             {
                 if (!input.build_external_patches) return build();
+                const auto local_started = std::chrono::steady_clock::now();
                 auto local = input.build_external_patches(
                     retained, face_sets, selected, external_controls);
                 if (!local.hasValue()) return local;
+                ++local_build_count;
+                local_build_milliseconds +=
+                    static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<
+                            std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - local_started)
+                            .count());
+                const auto replace_started =
+                    std::chrono::steady_clock::now();
                 auto merged = replaceExternalPatches(
                     provisional.value(), local.value(), selected);
                 configure(merged);
+                patch_replace_milliseconds +=
+                    static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<
+                            std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - replace_started)
+                            .count());
                 return ProvisionalLayerTransitionResult::success(
                     std::move(merged));
             };
@@ -263,6 +296,7 @@ namespace boundary_mesh
                 const Scalar initial = external_controls.distanceScale(id);
                 searches.emplace(
                     id, ExternalSearch{Scalar{}, initial, initial, false, false});
+                searched_patch_ids.insert(id);
                 external_changed = true;
             }
 
@@ -303,6 +337,7 @@ namespace boundary_mesh
                 [&](const ProvisionalLayerTransition &trial)
                 -> ExternalCollisionResult
             {
+                const auto query_started = std::chrono::steady_clock::now();
                 std::map<SurfaceFaceId,
                          std::vector<OwnedBoundaryTriangle>> replacements;
                 for (const OwnedBoundaryTriangle &owned :
@@ -375,6 +410,12 @@ namespace boundary_mesh
                         }
                 }
                 search_index = std::move(working_index);
+                exact_query_milliseconds +=
+                    static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<
+                            std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - query_started)
+                            .count());
                 return ExternalCollisionResult::success(
                     std::move(colliding));
             };
@@ -394,6 +435,7 @@ namespace boundary_mesh
                     active_ids.push_back(id);
                 }
                 auto trial = buildProbe(active_ids);
+                ++probe_rounds;
                 if (!trial.hasValue())
                     return ResolveResult::failure(trial.error());
                 const auto collisions = inspectExternalChanges(trial.value());
@@ -457,6 +499,7 @@ namespace boundary_mesh
                 }
                 if (!active) break;
                 auto trial = buildProbe(active_ids);
+                ++probe_rounds;
                 if (!trial.hasValue())
                     return ResolveResult::failure(trial.error());
                 const auto collisions = inspectExternalChanges(trial.value());
@@ -508,6 +551,16 @@ namespace boundary_mesh
                            rollback.end());
             if (rollback.empty())
             {
+                std::cerr
+                    << "temporary resolver external full_builds="
+                    << full_build_count
+                    << " full_build_ms=" << full_build_milliseconds
+                    << " local_builds=" << local_build_count
+                    << " local_build_ms=" << local_build_milliseconds
+                    << " replace_ms=" << patch_replace_milliseconds
+                    << " query_ms=" << exact_query_milliseconds
+                    << " searched_patches=" << searched_patch_ids.size()
+                    << " probe_rounds=" << probe_rounds << '\n';
                 const auto exposed = checker.assembleExposedBoundary(
                     provisional.value().boundary);
                 if (!exposed.hasValue())
