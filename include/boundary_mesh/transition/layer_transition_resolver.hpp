@@ -106,6 +106,8 @@ namespace boundary_mesh
         std::vector<ResolvedTransitionTopology> resolved_topology;
         std::uint32_t iterations{};
         bool all_top_faces_are_triangles{};
+        std::uint64_t collision_full_builds{};
+        std::uint64_t collision_incremental_updates{};
     };
 
     class LayerTransitionResolver

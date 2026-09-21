@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
@@ -6,12 +7,97 @@
 #include <utility>
 
 #include <boundary_mesh/transition/layer_transition_resolver.hpp>
+#include <boundary_mesh/transition/incremental_transition_collision_state.hpp>
 
 namespace boundary_mesh
 {
     namespace
     {
         constexpr Scalar minimum_external_distance_scale{1e-6};
+
+        bool sameSlidingColumns(
+            const std::shared_ptr<const SlidingColumnContext> &left,
+            const std::shared_ptr<const SlidingColumnContext> &right)
+        {
+            if (!left || !right) return left == right;
+            return left->low_points == right->low_points &&
+                left->high_points == right->high_points &&
+                left->low_region_ids == right->low_region_ids &&
+                left->high_region_ids == right->high_region_ids;
+        }
+
+        bool sameOwnedTriangle(
+            const OwnedBoundaryTriangle &left,
+            const OwnedBoundaryTriangle &right)
+        {
+            bool same_vertex_keys = true;
+            for (std::size_t index = 0; index < 3; ++index)
+                same_vertex_keys = same_vertex_keys &&
+                    left.vertex_keys[index].source_vertex_id ==
+                        right.vertex_keys[index].source_vertex_id &&
+                    left.vertex_keys[index].layer ==
+                        right.vertex_keys[index].layer &&
+                    left.vertex_keys[index].branch_id ==
+                        right.vertex_keys[index].branch_id;
+            return left.points == right.points &&
+                same_vertex_keys &&
+                layerBoundaryOwnerKey(left.owner) ==
+                    layerBoundaryOwnerKey(right.owner) &&
+                left.owner.rollback_high_faces ==
+                    right.owner.rollback_high_faces &&
+                left.vertex_sliding_region_ids ==
+                    right.vertex_sliding_region_ids &&
+                left.physical_edge_mask == right.physical_edge_mask &&
+                left.complete_face_exemption_regions ==
+                    right.complete_face_exemption_regions &&
+                sameSlidingColumns(left.sliding_columns,
+                                   right.sliding_columns);
+        }
+
+        std::vector<LayerBoundaryOwnerKey> changedBoundaryOwners(
+            const TransitionBoundaryInput &previous,
+            const TransitionBoundaryInput &next)
+        {
+            using Groups = std::map<LayerBoundaryOwnerKey,
+                std::vector<const OwnedBoundaryTriangle *>>;
+            const auto group = [](const TransitionBoundaryInput &input)
+            {
+                Groups groups;
+                for (const auto &triangle : input.candidate_triangles)
+                    groups[layerBoundaryOwnerKey(triangle.owner)].push_back(
+                        &triangle);
+                return groups;
+            };
+            const Groups old_groups = group(previous);
+            const Groups new_groups = group(next);
+            std::set<LayerBoundaryOwnerKey> keys;
+            for (const auto &[key, unused] : old_groups)
+            { (void)unused; keys.insert(key); }
+            for (const auto &[key, unused] : new_groups)
+            { (void)unused; keys.insert(key); }
+            std::vector<LayerBoundaryOwnerKey> changed;
+            for (const auto &key : keys)
+            {
+                const auto old_group = old_groups.find(key);
+                const auto new_group = new_groups.find(key);
+                if (old_group == old_groups.end() ||
+                    new_group == new_groups.end() ||
+                    old_group->second.size() != new_group->second.size())
+                {
+                    changed.push_back(key);
+                    continue;
+                }
+                for (std::size_t index = 0;
+                     index < old_group->second.size(); ++index)
+                    if (!sameOwnedTriangle(*old_group->second[index],
+                                           *new_group->second[index]))
+                    {
+                        changed.push_back(key);
+                        break;
+                    }
+            }
+            return changed;
+        }
     }
 
     TerminalQuadDecision chooseTerminalQuadDecision(
@@ -141,6 +227,10 @@ namespace boundary_mesh
         std::uint64_t exact_query_milliseconds{};
         std::uint64_t probe_rounds{};
         std::set<SurfaceFaceId> searched_patch_ids;
+        std::optional<IncrementalTransitionCollisionState> collision_state;
+        std::optional<TransitionBoundaryInput> collision_boundary;
+        std::uint64_t collision_full_builds{};
+        std::uint64_t collision_incremental_updates{};
 
         while (true)
         {
@@ -249,17 +339,43 @@ namespace boundary_mesh
             // further work.  Safe patches must not each rebuild this index.
             const auto initial_scan_started =
                 std::chrono::steady_clock::now();
-            const auto initial_report =
-                checker.inspect(provisional.value().boundary);
-            if (!initial_report.hasValue())
-                return ResolveResult::failure(LayerTransitionError{
-                    initial_report.error()});
+            if (!collision_state.has_value())
+            {
+                auto built = IncrementalTransitionCollisionState::build(
+                    provisional.value().boundary);
+                if (!built.hasValue())
+                    return ResolveResult::failure(LayerTransitionError{
+                        built.error()});
+                collision_state = std::move(built.value());
+                ++collision_full_builds;
+            }
+            else
+            {
+                const auto changed = changedBoundaryOwners(
+                    *collision_boundary, provisional.value().boundary);
+                const auto updated = collision_state->update(
+                    provisional.value().boundary, changed);
+                if (!updated.hasValue())
+                    return ResolveResult::failure(LayerTransitionError{
+                        updated.error()});
+                ++collision_incremental_updates;
+            }
+            collision_boundary = provisional.value().boundary;
+            const TransitionCollisionReport initial_report =
+                collision_state->collisionReport();
+#ifndef NDEBUG
+            const auto full_initial_report = checker.inspect(
+                provisional.value().boundary);
+            assert(full_initial_report.hasValue());
+            assert(full_initial_report.value().rollback_faces ==
+                   initial_report.rollback_faces);
+#endif
             std::cerr << "temporary resolver initial_scan_ms="
                       << std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() -
                              initial_scan_started).count()
                       << " colliding_owners="
-                      << initial_report.value().colliding_owners.size()
+                      << initial_report.colliding_owners.size()
                       << '\n';
 
             bool external_changed = false;
@@ -286,7 +402,7 @@ namespace boundary_mesh
             for (const SurfaceFaceId id : external_faces)
             {
                 if (!isColliding(
-                    initial_report.value().colliding_owners,
+                    initial_report.colliding_owners,
                     id))
                 {
                     external_controls.distance_scales[id] =
@@ -542,7 +658,7 @@ namespace boundary_mesh
                 rollback = final_report.value().rollback_faces;
             }
             else
-                rollback = initial_report.value().rollback_faces;
+                rollback = initial_report.rollback_faces;
             rollback.insert(rollback.end(),
                 provisional.value().forced_rollback_high_faces.begin(),
                 provisional.value().forced_rollback_high_faces.end());
@@ -561,20 +677,28 @@ namespace boundary_mesh
                     << " query_ms=" << exact_query_milliseconds
                     << " searched_patches=" << searched_patch_ids.size()
                     << " probe_rounds=" << probe_rounds << '\n';
-                const auto exposed = checker.assembleExposedBoundary(
-                    provisional.value().boundary);
-                if (!exposed.hasValue())
-                    return ResolveResult::failure(LayerTransitionError{
-                        exposed.error()});
                 StableLayerTransition stable;
                 stable.face_sets = std::move(face_sets);
                 stable.retained_high_faces = std::move(retained);
-                stable.exposed_boundary = exposed.value();
+                if (!external_changed)
+                    stable.exposed_boundary = collision_state->exposedBoundary();
+                else
+                {
+                    const auto exposed = checker.assembleExposedBoundary(
+                        provisional.value().boundary);
+                    if (!exposed.hasValue())
+                        return ResolveResult::failure(LayerTransitionError{
+                            exposed.error()});
+                    stable.exposed_boundary = exposed.value();
+                }
                 stable.resolved_topology = std::move(
                     provisional.value().resolved_topology);
                 stable.iterations = iterations;
                 stable.all_top_faces_are_triangles =
                     provisional.value().all_top_faces_are_triangles;
+                stable.collision_full_builds = collision_full_builds;
+                stable.collision_incremental_updates =
+                    collision_incremental_updates;
                 return ResolveResult::success(std::move(stable));
             }
 

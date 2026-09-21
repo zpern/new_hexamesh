@@ -106,6 +106,8 @@ int main()
     const auto result = resolver.resolve(input);
     assert(result.hasValue());
     assert(result.value().iterations == 2);
+    assert(result.value().collision_full_builds == 1);
+    assert(result.value().collision_incremental_updates == 1);
     assert(std::find(result.value().retained_high_faces.begin(),
                      result.value().retained_high_faces.end(), 30) ==
            result.value().retained_high_faces.end());
