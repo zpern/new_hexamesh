@@ -111,4 +111,54 @@ int main()
     if (failed.hasValue() ||
         !sameExposed(state.value().exposedBoundary(), before_error))
         return 6;
+
+    const std::array<CollisionVertexKey, 3> crossing_a{{
+        {10,2,0},{11,2,0},{12,2,0}}};
+    const std::array<CollisionVertexKey, 3> crossing_b{{
+        {20,2,0},{21,2,0},{22,2,0}}};
+    auto first = owned(70, crossing_a);
+    first.points = {{{0,0,0},{1,0,0},{0,1,0}}};
+    auto second = owned(80, crossing_b);
+    second.points = {{{0.25,0.25,-1},{0.25,0.25,1},{1,1,0}}};
+    TransitionBoundaryInput crossing;
+    crossing.candidate_triangles = {first, second};
+    auto collision_state = IncrementalTransitionCollisionState::build(
+        crossing);
+    assert(collision_state.hasValue());
+    const auto crossing_full = checker.inspect(crossing);
+    assert(crossing_full.hasValue());
+    if (collision_state.value().collisionReport().rollback_faces !=
+            crossing_full.value().rollback_faces ||
+        collision_state.value().collisionReport().colliding_owners.size() !=
+            crossing_full.value().colliding_owners.size())
+        return 7;
+
+    TransitionBoundaryInput separated = crossing;
+    for (Point3 &point : separated.candidate_triangles[0].points)
+        point.z() += 5;
+    const auto separated_update = collision_state.value().update(
+        separated, {{70,2,BoundaryOwnerRole::SideTransition}});
+    assert(separated_update.hasValue());
+    const auto separated_full = checker.inspect(separated);
+    assert(separated_full.hasValue());
+    if (collision_state.value().collisionReport().rollback_faces !=
+            separated_full.value().rollback_faces ||
+        collision_state.value().collisionReport().colliding_owners.size() !=
+            separated_full.value().colliding_owners.size() ||
+        collision_state.value().diagnostics().full_collision_builds != 0 ||
+        collision_state.value().diagnostics().self_collision_queries != 1)
+        return 8;
+
+    TransitionBoundaryInput changed_columns = separated;
+    auto columns = std::make_shared<SlidingColumnContext>();
+    columns->low_points = {{0,0,0}};
+    columns->high_points = {{0,0,1}};
+    columns->low_region_ids = {{3}};
+    columns->high_region_ids = {{3}};
+    changed_columns.candidate_triangles[0].sliding_columns = columns;
+    const auto columns_update = collision_state.value().update(
+        changed_columns, {{70,2,BoundaryOwnerRole::SideTransition}});
+    assert(columns_update.hasValue());
+    if (collision_state.value().diagnostics().self_collision_queries != 1)
+        return 9;
 }
