@@ -1,0 +1,89 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "boundary_mesh_cli - Debug",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/boundary_mesh_cli.exe",
+            "args": [
+                "--input",
+                "${config:boundaryMesh.caseName}/${config:boundaryMesh.caseName}.cgns",
+                "--first-height",
+                "0.001",
+                "--growth-ratio",
+                "1.2",
+                "--layer-count",
+                "20",
+                "--maximum-skewness",
+                "1.0",
+                "--max-layer-diff",
+                "1",
+                "--isotropic-height",
+                "1.0",
+                "--multi-normal",
+                "false",
+                "--debuglog",
+                "false"
+            ],
+            "cwd": "C:/Users/zpern/Desktop/todo/jiuyuan-quailty/test_case",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "boundary_mesh_cli - Release",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Release/boundary_mesh_cli.exe",
+            "args": [
+                "--input",
+                "${config:boundaryMesh.caseName}/${config:boundaryMesh.caseName}.cgns",
+                "--first-height",
+                "0.1",
+                "--growth-ratio",
+                "1.2",
+                "--layer-count",
+                "20",
+                "--maximum-skewness",
+                "1",
+                "--max-layer-diff",
+                "1",
+                "--isotropic-height",
+                "1.0",
+                "--multi-normal",
+                "false",
+                "--debuglog",
+                "false"
+            ],
+            "cwd": "C:/Users/zpern/Desktop/todo/jiuyuan-quailty/test_case",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "boundary_mesh_cli - RelWithDebInfo",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/RelWithDebInfo/boundary_mesh_cli.exe",
+            "args": [
+                "--input",
+                "${config:boundaryMesh.caseName}/${config:boundaryMesh.caseName}.cgns",
+                "--first-height",
+                "0.001",
+                "--growth-ratio",
+                "1.2",
+                "--layer-count",
+                "10",
+                "--maximum-skewness",
+                "0.95",
+                "--max-layer-diff",
+                "1",
+                "--isotropic-height",
+                "1.0",
+                "--multi-normal",
+                "false",
+                "--debuglog",
+                "false"
+            ],
+            "cwd": "C:/Users/zpern/Desktop/todo/jiuyuan-quailty/test_case",
+            "console": "integratedTerminal"
+        }
+    ]
+}

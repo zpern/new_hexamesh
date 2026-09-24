@@ -7,11 +7,17 @@
 #include <vector>
 
 #include <boundary_mesh/core/types.hpp>
+#include <boundary_mesh/mesh/mesh_surface_topology_error.hpp>
 
 namespace boundary_mesh
 {
+    void printSurfaceTopologyError(
+        std::ostream &error,
+        const SurfaceTopologyError &topology_error);
+
     struct BoundaryMeshCommandOptions
     {
+        std::filesystem::path config_file;
         std::filesystem::path input;         // CGNS 输入文件
         Scalar first_height{};               // 全部 Wall 顶点的第一层高度
         Scalar growth_ratio{};               // 全部 Wall 顶点的层间增长率

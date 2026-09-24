@@ -90,6 +90,14 @@ namespace boundary_mesh
     TransitionTemplateResult
     buildExternalQuadPatch(const ExternalQuadPatchInput &input);
 
+    std::vector<Point3> findExternalQuadPatchApexCandidates(
+        const ExternalQuadPatchInput &input,
+        std::size_t maximum_candidates);
+
+    std::vector<Point3> findRobustExternalQuadPatchApexCandidates(
+        const ExternalQuadPatchInput &input,
+        std::size_t maximum_candidates);
+
     TransitionTemplateResult
     buildQuadSideTransition(const QuadSideTransitionInput &input);
 

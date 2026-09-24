@@ -354,4 +354,71 @@ int main()
     if (multiple_result.value().collision_full_builds != 1 ||
         multiple_result.value().collision_incremental_updates != 1)
         return 61;
+
+    LayerTransitionInput rollback_resets_external;
+    rollback_resets_external.current_front = front({30,31});
+    rollback_resets_external.candidate_front = front({30,31});
+    rollback_resets_external.candidate_front.layer = 4;
+    rollback_resets_external.completed_layer = 3;
+    bool observed_clean_controls_after_rollback = false;
+    rollback_resets_external.build_provisional = [&] (
+        const std::vector<SurfaceFaceId> &retained,
+        const LayerFaceSets &,
+        const ExternalPatchControls &controls)
+    {
+        const bool temporary_high_face = std::binary_search(
+            retained.begin(), retained.end(), SurfaceFaceId{30});
+        if (!temporary_high_face)
+            observed_clean_controls_after_rollback =
+                !controls.keepHexa(31) &&
+                controls.distance_scales.find(31) ==
+                    controls.distance_scales.end() &&
+                controls.apex_candidate_indices.find(31) ==
+                    controls.apex_candidate_indices.end() &&
+                controls.robust_candidate_indices.find(31) ==
+                    controls.robust_candidate_indices.end() &&
+                controls.explicit_apex_points.find(31) ==
+                    controls.explicit_apex_points.end();
+
+        ProvisionalLayerTransition value;
+        if (temporary_high_face)
+        {
+            value.boundary.candidate_triangles.push_back({
+                {{{-2,0,0.125},{2,0,0.125},{0,0,1}}},
+                {{{300,4,0},{301,4,0},{302,4,0}}},
+                {30,4,BoundaryOwnerRole::RegularCandidate,{30}}});
+            value.forced_rollback_high_faces.push_back(30);
+        }
+
+        ResolvedTransitionTopology topology;
+        topology.source_face_id = 31;
+        topology.layer = 4;
+        topology.template_kind = TransitionTemplateKind::QuadTopCap;
+        topology.terminal_quad_decision = controls.keepHexa(31)
+            ? TerminalQuadDecision::KeepHexa
+            : TerminalQuadDecision::ExternalPatch;
+        if (topology.terminal_quad_decision ==
+            TerminalQuadDecision::ExternalPatch)
+        {
+            const Scalar scale = controls.distanceScale(31);
+            topology.generated_point = Point3{0,0,scale};
+            value.boundary.candidate_triangles.push_back({
+                {{{-1,-1,0},{1,-1,0},{0,1,scale}}},
+                {{{310,4,0},{311,4,0},{312,4,0}}},
+                {31,4,BoundaryOwnerRole::ExternalPatch,{}}});
+        }
+        value.resolved_topology.push_back(std::move(topology));
+        value.all_top_faces_are_triangles = true;
+        return ProvisionalLayerTransitionResult::success(std::move(value));
+    };
+    const auto rollback_reset_result =
+        resolver.resolve(rollback_resets_external);
+    if (!rollback_reset_result.hasValue() ||
+        rollback_reset_result.value().iterations != 2 ||
+        !observed_clean_controls_after_rollback ||
+        rollback_reset_result.value().resolved_topology.size() != 1 ||
+        rollback_reset_result.value().resolved_topology.front()
+                .terminal_quad_decision !=
+            TerminalQuadDecision::ExternalPatch)
+        return 62;
 }

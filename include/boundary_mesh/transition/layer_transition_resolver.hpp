@@ -59,9 +59,13 @@ namespace boundary_mesh
     struct ExternalPatchControls
     {
         std::map<SurfaceFaceId, Scalar> distance_scales;
+        std::map<SurfaceFaceId, std::size_t> apex_candidate_indices;
+        std::map<SurfaceFaceId, std::size_t> robust_candidate_indices;
+        std::map<SurfaceFaceId, Point3> explicit_apex_points;
         std::vector<SurfaceFaceId> keep_hexa_faces;
 
         Scalar distanceScale(SurfaceFaceId id) const;
+        std::size_t apexCandidateIndex(SurfaceFaceId id) const;
         bool keepHexa(SurfaceFaceId id) const;
     };
 

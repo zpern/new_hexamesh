@@ -9,9 +9,11 @@
 #include <locale>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <regex>
 
 #include <boundary_mesh/growth/growth_front_builder.hpp>
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
@@ -22,6 +24,47 @@
 
 namespace boundary_mesh
 {
+    void printSurfaceTopologyError(
+        std::ostream &error,
+        const SurfaceTopologyError &topology_error)
+    {
+        std::visit(
+            [&error](const auto &detail)
+            {
+                using Error = std::decay_t<decltype(detail)>;
+                if constexpr (std::is_same_v<Error, EmptySurface>)
+                    error << "empty surface";
+                else if constexpr (std::is_same_v<Error, FaceTagCountMismatch>)
+                    error << "face tag count mismatch: faces=" << detail.face_count
+                          << " face_tags=" << detail.face_tag_count;
+                else if constexpr (std::is_same_v<Error, NonFiniteVertex>)
+                    error << "non-finite vertex: vertex=" << detail.vertex_id;
+                else if constexpr (std::is_same_v<Error, InvalidVertexReference>)
+                    error << "invalid vertex reference: face=" << detail.face_id
+                          << " vertex=" << detail.vertex_id;
+                else if constexpr (std::is_same_v<Error, DegenerateFace>)
+                    error << "degenerate face: face=" << detail.face_id;
+                else if constexpr (std::is_same_v<Error, DuplicateFace>)
+                    error << "duplicate face: first_face=" << detail.first_face_id
+                          << " duplicate_face=" << detail.duplicate_face_id;
+                else if constexpr (std::is_same_v<Error, BoundaryEdge>)
+                    error << "boundary edge: vertices=" << detail.edge_vertices[0]
+                          << ',' << detail.edge_vertices[1]
+                          << " face=" << detail.face_id;
+                else if constexpr (std::is_same_v<Error, NonManifoldEdge>)
+                    error << "non-manifold edge: vertices=" << detail.edge_vertices[0]
+                          << ',' << detail.edge_vertices[1]
+                          << " faces=" << detail.face_ids[0] << ','
+                          << detail.face_ids[1] << ',' << detail.face_ids[2];
+                else if constexpr (std::is_same_v<Error, InconsistentOrientation>)
+                    error << "inconsistent orientation: vertices="
+                          << detail.edge_vertices[0] << ',' << detail.edge_vertices[1]
+                          << " faces=" << detail.first_face_id << ','
+                          << detail.second_face_id;
+            },
+            topology_error);
+    }
+
     namespace
     {
         enum class ParseStatus
@@ -71,6 +114,33 @@ namespace boundary_mesh
             return false;
         }
 
+        bool loadJsonConfig(const std::filesystem::path &path,
+                            BoundaryMeshCommandOptions &options,
+                            std::string &message)
+        {
+            std::ifstream file(path);
+            if (!file) { message = "failed to open config: " + path.string(); return false; }
+            const std::string json((std::istreambuf_iterator<char>(file)), {});
+            const auto get = [&](const char *key) {
+                std::smatch match;
+                const std::regex pattern(std::string("\\\"") + key + "\\\"\\s*:\\s*(?:\\\"([^\\\"]*)\\\"|([^,}\\s]+))");
+                if (!std::regex_search(json, match, pattern)) return std::string{};
+                return match[1].matched ? match[1].str() : match[2].str();
+            };
+            std::string value;
+            value = get("input"); if (!value.empty()) options.input = value;
+            value = get("output_prefix"); if (!value.empty()) options.output_prefix = value;
+            value = get("first_height"); if (value.empty() || !parseScalar(value, options.first_height)) { message = "invalid first_height in config"; return false; }
+            value = get("growth_ratio"); if (value.empty() || !parseScalar(value, options.growth_ratio)) { message = "invalid growth_ratio in config"; return false; }
+            value = get("layer_count"); if (value.empty() || !parseUnsigned(value, options.layer_count)) { message = "invalid layer_count in config"; return false; }
+            value = get("maximum_skewness"); if (!value.empty() && !parseScalar(value, options.maximum_skewness)) { message = "invalid maximum_skewness in config"; return false; }
+            value = get("max_layer_diff"); if (!value.empty() && !parseUnsigned(value, options.max_layer_diff)) { message = "invalid max_layer_diff in config"; return false; }
+            value = get("isotropic_height"); if (!value.empty() && !parseScalar(value, options.isotropic_height)) { message = "invalid isotropic_height in config"; return false; }
+            value = get("multi_normal"); if (!value.empty() && !parseBoolean(value, options.multi_normal_enabled)) { message = "invalid multi_normal in config"; return false; }
+            value = get("debug_log"); if (!value.empty() && !parseBoolean(value, options.debug_log_enabled)) { message = "invalid debug_log in config"; return false; }
+            return true;
+        }
+
         ParseStatus parseArguments(
             const std::vector<std::string> &arguments,
             BoundaryMeshCommandOptions &options,
@@ -81,8 +151,19 @@ namespace boundary_mesh
             bool has_first_height = false;
             bool has_growth_ratio = false;
             bool has_layer_count = false;
+            if (!arguments.empty() && arguments[0] == "--config")
+            {
+                if (arguments.size() < 2) { message = "missing value for --config"; return ParseStatus::Failure; }
+                options.config_file = arguments[1];
+                if (!loadJsonConfig(options.config_file, options, message)) return ParseStatus::Failure;
+                has_input = !options.input.empty();
+                has_first_height = options.first_height > Scalar{0};
+                has_growth_ratio = options.growth_ratio > Scalar{0};
+                has_layer_count = options.layer_count > 0;
+            }
 
-            for (std::size_t index = 0;
+            const std::size_t start = options.config_file.empty() ? 0 : 2;
+            for (std::size_t index = start;
                  index < arguments.size();
                  index += 2)
             {
@@ -212,6 +293,7 @@ namespace boundary_mesh
                 << "[--multi-normal true|false] "
                 << "[--debuglog true|false] "
                 << "[--output-prefix PATH]\n";
+            error << "   or: boundary_mesh_cli --config FILE [command-line overrides]\n";
         }
 
         std::vector<std::uint32_t> regionIds(
@@ -332,7 +414,17 @@ namespace boundary_mesh
         const auto topology = SurfaceTopologyBuilder{}.build(surface.value());
         if (!topology.hasValue())
         {
-            error << "failed to build surface topology\n";
+            error << "failed to build surface topology: ";
+            printSurfaceTopologyError(error, topology.error());
+            if (const auto *detail = std::get_if<InconsistentOrientation>(
+                    &topology.error()))
+            {
+                error << " regions="
+                      << surface.value().face_tags[detail->first_face_id].region_id
+                      << ','
+                      << surface.value().face_tags[detail->second_face_id].region_id;
+            }
+            error << '\n';
             return 4;
         }
 

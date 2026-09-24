@@ -22,6 +22,34 @@ namespace
 
 int main()
 {
+    const auto topology_error_text =
+        [](const boundary_mesh::SurfaceTopologyError &topology_error)
+    {
+        std::ostringstream error;
+        boundary_mesh::printSurfaceTopologyError(error, topology_error);
+        return error.str();
+    };
+    assert(topology_error_text(boundary_mesh::EmptySurface{}) ==
+           "empty surface");
+    assert(topology_error_text(boundary_mesh::FaceTagCountMismatch{3, 2}) ==
+           "face tag count mismatch: faces=3 face_tags=2");
+    assert(topology_error_text(boundary_mesh::NonFiniteVertex{7}) ==
+           "non-finite vertex: vertex=7");
+    assert(topology_error_text(boundary_mesh::InvalidVertexReference{4, 9}) ==
+           "invalid vertex reference: face=4 vertex=9");
+    assert(topology_error_text(boundary_mesh::DegenerateFace{6}) ==
+           "degenerate face: face=6");
+    assert(topology_error_text(boundary_mesh::DuplicateFace{1, 8}) ==
+           "duplicate face: first_face=1 duplicate_face=8");
+    assert(topology_error_text(boundary_mesh::BoundaryEdge{{2, 5}, 11}) ==
+           "boundary edge: vertices=2,5 face=11");
+    assert(topology_error_text(
+               boundary_mesh::NonManifoldEdge{{2, 5}, {1, 4, 7}}) ==
+           "non-manifold edge: vertices=2,5 faces=1,4,7");
+    assert(topology_error_text(
+               boundary_mesh::InconsistentOrientation{{2, 5}, 3, 9}) ==
+           "inconsistent orientation: vertices=2,5 faces=3,9");
+
     const auto expect_argument_error =
         [](const std::vector<std::string> &arguments)
     {

@@ -1,10 +1,12 @@
 #include <boundary_mesh/transition/incremental_transition_templates.hpp>
 #include <boundary_mesh/quality/volume_cell_evaluator.hpp>
+#include <boundary_mesh/growth/apex_solver.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numeric>
 
 #include <Eigen/LU>
 
@@ -445,6 +447,243 @@ namespace boundary_mesh
         }
         addMetadata(result, result.volume_cells.size(), input.layer);
         return BuildResult::success(std::move(result));
+    }
+
+    std::vector<Point3> findExternalQuadPatchApexCandidates(
+        const ExternalQuadPatchInput &input,
+        std::size_t maximum_candidates)
+    {
+        std::vector<Point3> result;
+        if (maximum_candidates == 0 || input.mesh_vertices == nullptr ||
+            !validIds(input.low, *input.mesh_vertices) ||
+            !std::isfinite(input.distance_scale) ||
+            input.distance_scale <= Scalar{0})
+            return result;
+
+        std::vector<std::array<VertexId, 4>> bases{input.low};
+        for (const std::size_t edge : input.high_edges)
+        {
+            if (edge >= 4) return result;
+            const std::size_t next = (edge + 1) % 4;
+            bases.push_back({input.low[edge], input.high[edge],
+                             input.high[next], input.low[next]});
+        }
+
+        Point3 anchor = Point3::Zero();
+        if (input.high_edges.empty())
+        {
+            for (const VertexId id : input.low)
+                anchor += (*input.mesh_vertices)[id];
+            anchor /= Scalar{4};
+        }
+        else if (input.high_edges.size() == 1)
+        {
+            const std::size_t edge = input.high_edges.front();
+            anchor = ((*input.mesh_vertices)[input.low[edge]] +
+                      (*input.mesh_vertices)[input.low[(edge + 1) % 4]]) /
+                Scalar{2};
+        }
+        else if (input.high_edges.size() == 2)
+        {
+            const std::size_t first = input.high_edges[0];
+            const std::size_t second = input.high_edges[1];
+            std::optional<std::size_t> common;
+            for (const std::size_t vertex : {first, (first + 1) % 4})
+                if (vertex == second || vertex == (second + 1) % 4)
+                    common = vertex;
+            if (!common.has_value()) return result;
+            anchor = (*input.mesh_vertices)[input.low[*common]];
+        }
+        else return result;
+
+        Vector3 direction = Vector3::Zero();
+        for (const auto &base : bases)
+        {
+            const Point3 &p0 = (*input.mesh_vertices)[base[0]];
+            const Point3 &p1 = (*input.mesh_vertices)[base[1]];
+            const Point3 &p2 = (*input.mesh_vertices)[base[2]];
+            const Point3 &p3 = (*input.mesh_vertices)[base[3]];
+            Vector3 normal = (p1-p0).cross(p2-p0) +
+                             (p2-p0).cross(p3-p0);
+            const Scalar norm = normal.norm();
+            if (!std::isfinite(norm) || norm <= input.length_tolerance)
+                return result;
+            direction += normal / norm;
+        }
+        const Scalar direction_norm = direction.norm();
+        if (!std::isfinite(direction_norm) ||
+            direction_norm <= input.length_tolerance)
+            return result;
+        direction /= direction_norm;
+
+        Scalar characteristic{};
+        for (std::size_t edge = 0; edge < 4; ++edge)
+            characteristic += ((*input.mesh_vertices)[input.low[(edge+1)%4]] -
+                               (*input.mesh_vertices)[input.low[edge]]).norm();
+        characteristic /= Scalar{4};
+        if (!std::isfinite(characteristic) || characteristic <= Scalar{0})
+            return result;
+
+        Vector3 tangent = Vector3::Zero();
+        for (std::size_t edge = 0; edge < 4; ++edge)
+        {
+            const Vector3 candidate =
+                (*input.mesh_vertices)[input.low[(edge+1)%4]] -
+                (*input.mesh_vertices)[input.low[edge]];
+            const Vector3 projected = candidate -
+                candidate.dot(direction) * direction;
+            if (projected.squaredNorm() > tangent.squaredNorm())
+                tangent = projected;
+        }
+        const Scalar tangent_norm = tangent.norm();
+        if (!std::isfinite(tangent_norm) ||
+            tangent_norm <= input.length_tolerance)
+            return result;
+        tangent /= tangent_norm;
+        const Vector3 bitangent = direction.cross(tangent).normalized();
+
+        constexpr std::array<Scalar, 8> base_scales{{
+            Scalar{0.0005}, Scalar{0.001}, Scalar{0.002}, Scalar{0.005},
+            Scalar{0.01}, Scalar{0.025}, Scalar{0.06}, Scalar{0.15}}};
+        constexpr std::array<Scalar, 6> lateral_offsets{{
+            Scalar{0.01}, Scalar{0.05}, Scalar{0.15}, Scalar{0.3},
+            Scalar{0.6}, Scalar{1.0}}};
+        constexpr Scalar two_pi{6.283185307179586476925286766559};
+        std::vector<Scalar> scales;
+        for (const Scalar scale : base_scales)
+            scales.push_back(std::min(scale, input.distance_scale));
+        scales.push_back(input.distance_scale);
+        std::sort(scales.begin(), scales.end());
+        scales.erase(std::unique(scales.begin(), scales.end()), scales.end());
+        std::vector<Point3> feasible;
+        for (const Scalar height_scale : scales)
+        {
+            for (const Scalar lateral_offset : lateral_offsets)
+            {
+                for (std::size_t angle_index = 0; angle_index < 8;
+                     ++angle_index)
+                {
+                    const Scalar angle = two_pi *
+                        static_cast<Scalar>(angle_index) / Scalar{8};
+                    const Vector3 lateral = std::cos(angle) * tangent +
+                        std::sin(angle) * bitangent;
+                    ExternalQuadPatchInput trial = input;
+                    trial.apex_point = anchor + characteristic *
+                        (height_scale * direction + lateral_offset * lateral);
+                    if (!buildExternalQuadPatch(trial).hasValue()) continue;
+                    const bool duplicate = std::any_of(
+                        feasible.begin(), feasible.end(),
+                        [&](const Point3 &existing)
+                        { return (existing - *trial.apex_point).norm() <=
+                                 characteristic * Scalar{1e-10}; });
+                    if (!duplicate) feasible.push_back(*trial.apex_point);
+                }
+            }
+        }
+        if (feasible.empty()) return result;
+
+        const Point3 target = anchor + characteristic *
+            input.distance_scale * direction;
+        auto first = std::min_element(
+            feasible.begin(), feasible.end(), [&](const Point3 &left,
+                                                   const Point3 &right)
+            { return (left - target).squaredNorm() <
+                     (right - target).squaredNorm(); });
+        result.push_back(*first);
+        while (result.size() < maximum_candidates &&
+               result.size() < feasible.size())
+        {
+            auto selected = feasible.end();
+            Scalar largest_minimum_distance = Scalar{-1};
+            for (auto candidate = feasible.begin();
+                 candidate != feasible.end(); ++candidate)
+            {
+                const Scalar minimum_distance = std::transform_reduce(
+                    result.begin(), result.end(),
+                    std::numeric_limits<Scalar>::infinity(),
+                    [](Scalar current, Scalar distance)
+                    { return std::min(current, distance); },
+                    [&](const Point3 &existing)
+                    { return (existing - *candidate).squaredNorm(); });
+                if (minimum_distance > largest_minimum_distance)
+                {
+                    largest_minimum_distance = minimum_distance;
+                    selected = candidate;
+                }
+            }
+            if (selected == feasible.end() ||
+                largest_minimum_distance <= Scalar{0})
+                break;
+            result.push_back(*selected);
+        }
+        return result;
+    }
+
+    std::vector<Point3> findRobustExternalQuadPatchApexCandidates(
+        const ExternalQuadPatchInput &input,
+        std::size_t maximum_candidates)
+    {
+        std::vector<Point3> result;
+        if (maximum_candidates == 0 || !input.high_edges.empty() ||
+            input.mesh_vertices == nullptr ||
+            !validIds(input.low,*input.mesh_vertices) ||
+            !std::isfinite(input.distance_scale) ||
+            input.distance_scale <= 0)
+            return result;
+        std::array<Point3,4> quad{};
+        Point3 center = Point3::Zero();
+        Scalar length = 0;
+        for (std::size_t i = 0; i < 4; ++i)
+        {
+            quad[i] = (*input.mesh_vertices)[input.low[i]];
+            center += quad[i];
+        }
+        for (std::size_t i = 0; i < 4; ++i)
+            length += (quad[(i+1)%4]-quad[i]).norm();
+        center /= 4;
+        length /= 4;
+        Vector3 normal = (quad[1]-quad[0]).cross(quad[2]-quad[0]) +
+            (quad[2]-quad[0]).cross(quad[3]-quad[0]);
+        if (!std::isfinite(length) || length <= 0 ||
+            !normal.allFinite() || normal.norm() <= input.length_tolerance)
+            return result;
+        normal.normalize();
+        Vector3 tangent = Vector3::Zero();
+        for (std::size_t i = 0; i < 4; ++i)
+        {
+            const Vector3 edge = quad[(i+1)%4]-quad[i];
+            const Vector3 projected = edge-edge.dot(normal)*normal;
+            if (projected.squaredNorm() > tangent.squaredNorm())
+                tangent = projected;
+        }
+        if (tangent.norm() <= input.length_tolerance) return result;
+        tangent.normalize();
+        const Vector3 bitangent = normal.cross(tangent).normalized();
+        const Point3 target = center+input.distance_scale*length*normal;
+        constexpr std::array<std::array<Scalar,2>,8> offsets{{
+            {{0,0}}, {{1,0}}, {{-1,0}}, {{0,1}}, {{0,-1}},
+            {{1,1}}, {{-1,1}}, {{1,-1}}}};
+        for (const Scalar radius : {Scalar{0.25},Scalar{0.75},Scalar{1.5}})
+            for (const auto &offset : offsets)
+            {
+                if (radius != Scalar{0.25} && offset[0] == 0 &&
+                    offset[1] == 0) continue;
+                const Point3 shifted_target = target + radius*length*
+                    (offset[0]*tangent+offset[1]*bitangent);
+                const auto solved = solvePyramidApex({quad,shifted_target});
+                if (solved.status != ApexSolverStatus::Valid || !solved.apex)
+                    continue;
+                ExternalQuadPatchInput trial = input;
+                trial.apex_point = solved.apex;
+                if (!buildExternalQuadPatch(trial).hasValue()) continue;
+                if (std::any_of(result.begin(),result.end(),
+                    [&](const Point3 &point)
+                    { return (point-*solved.apex).norm() <= length*1e-9; }))
+                    continue;
+                result.push_back(*solved.apex);
+                if (result.size() == maximum_candidates) return result;
+            }
+        return result;
     }
 
     TransitionTemplateResult

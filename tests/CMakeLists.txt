@@ -1149,6 +1149,9 @@ add_test(
     NAME boundary_mesh_transition_boundary_checker_test
     COMMAND boundary_mesh_transition_boundary_checker_test
 )
+add_executable(boundary_mesh_apex_solver_test unit/growth/apex_solver_test.cpp)
+target_link_libraries(boundary_mesh_apex_solver_test PRIVATE BoundaryMesh::Growth)
+add_test(NAME boundary_mesh_apex_solver_test COMMAND boundary_mesh_apex_solver_test)
 
 add_executable(
     boundary_mesh_incremental_transition_collision_state_test

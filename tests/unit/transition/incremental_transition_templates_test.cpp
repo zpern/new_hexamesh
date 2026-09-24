@@ -167,6 +167,18 @@ int main()
     if (!allPositive(two_high_external.value().volume_cells, two_high_points))
         return 18;
 
+    const std::vector<Point3> warped_points{
+        {0,0,0}, {1,0,0.2}, {1,1,-0.5}, {0,1,0.2}};
+    const ExternalQuadPatchInput warped_input{
+        42722, 8, {0,1,2,3}, {0,1,2,3}, {}, &warped_points, 4,
+        Scalar{0.001}, Scalar{1e-12}};
+    const auto robust = findRobustExternalQuadPatchApexCandidates(
+        warped_input, 8);
+    if (robust.empty() || robust.size() > 8) return 19;
+    ExternalQuadPatchInput robust_trial = warped_input;
+    robust_trial.apex_point = robust.front();
+    if (!buildExternalQuadPatch(robust_trial).hasValue()) return 22;
+
     for (const QuadDiagonal diagonal : {
              QuadDiagonal::ZeroTwo, QuadDiagonal::OneThree})
     {

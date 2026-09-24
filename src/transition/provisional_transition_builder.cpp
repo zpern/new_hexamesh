@@ -109,6 +109,56 @@ namespace boundary_mesh
             });
         }
 
+        TransitionTemplateResult buildControlledExternalQuadPatch(
+            ExternalQuadPatchInput input,
+            const ExternalPatchControls &controls)
+        {
+            const auto explicit_apex = controls.explicit_apex_points.find(
+                input.source_face_id);
+            if (explicit_apex != controls.explicit_apex_points.end() &&
+                input.high_edges.empty())
+            {
+                input.apex_point = explicit_apex->second;
+                return buildExternalQuadPatch(input);
+            }
+            const auto robust_index = controls.robust_candidate_indices.find(
+                input.source_face_id);
+            if (robust_index != controls.robust_candidate_indices.end() &&
+                input.high_edges.empty())
+            {
+                const auto candidates =
+                    findRobustExternalQuadPatchApexCandidates(
+                        input,robust_index->second);
+                if (candidates.size() < robust_index->second)
+                    return TransitionTemplateResult::failure(
+                        TransitionTemplateError{
+                            InvalidTransitionTemplateInput{
+                                input.source_face_id,25}});
+                input.apex_point = candidates[robust_index->second-1];
+                return buildExternalQuadPatch(input);
+            }
+            const std::size_t candidate_index =
+                controls.apexCandidateIndex(input.source_face_id);
+            if (candidate_index > 0)
+            {
+                const auto candidates = findExternalQuadPatchApexCandidates(
+                    input, candidate_index);
+                if (candidates.size() < candidate_index)
+                    return TransitionTemplateResult::failure(
+                        TransitionTemplateError{
+                            InvalidTransitionTemplateInput{
+                                input.source_face_id, 24}});
+                input.apex_point = candidates[candidate_index - 1];
+            }
+            auto patch = buildExternalQuadPatch(input);
+            if (patch.hasValue() || !input.high_edges.empty()) return patch;
+            const auto fallback = findRobustExternalQuadPatchApexCandidates(
+                input,1);
+            if (fallback.empty()) return patch;
+            input.apex_point = fallback.front();
+            return buildExternalQuadPatch(input);
+        }
+
         bool containsRegion(
             const std::vector<std::uint32_t> &ids, std::uint32_t region)
         {
@@ -458,9 +508,10 @@ namespace boundary_mesh
                 if (resolved.terminal_quad_decision ==
                     TerminalQuadDecision::ExternalPatch)
                 {
-                    const auto patch = buildExternalQuadPatch({
+                    const auto patch = buildControlledExternalQuadPatch({
                         id,candidate.layer,top,top,{},&points,8,
-                        external_controls.distanceScale(id),Scalar{1e-12}});
+                        external_controls.distanceScale(id),Scalar{1e-12}},
+                        external_controls);
                     if (!patch.hasValue())
                     {
                         if (!internal_center.has_value())
@@ -700,10 +751,10 @@ namespace boundary_mesh
                     if (resolved.terminal_quad_decision ==
                         TerminalQuadDecision::ExternalPatch)
                     {
-                        const auto patch = buildExternalQuadPatch({
+                        const auto patch = buildControlledExternalQuadPatch({
                             low_id,current.layer,low,high,{},&points,8,
                             external_controls.distanceScale(low_id),
-                            Scalar{1e-12}});
+                            Scalar{1e-12}}, external_controls);
                         if (resolved.terminal_quad_decision ==
                                 TerminalQuadDecision::KeepHexa ||
                             !patch.hasValue())
@@ -827,11 +878,11 @@ namespace boundary_mesh
                 if (resolved.terminal_quad_decision ==
                     TerminalQuadDecision::ExternalPatch)
                 {
-                    const auto patch = buildExternalQuadPatch({
+                    const auto patch = buildControlledExternalQuadPatch({
                         low_id,current.layer,low,high,
                         resolved.retained_local_edges,&points,8,
                         external_controls.distanceScale(low_id),
-                        Scalar{1e-12}});
+                        Scalar{1e-12}}, external_controls);
                     if (!patch.hasValue())
                     {
                         resolved.terminal_quad_decision =

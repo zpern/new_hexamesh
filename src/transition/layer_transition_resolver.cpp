@@ -8,6 +8,7 @@
 
 #include <boundary_mesh/transition/layer_transition_resolver.hpp>
 #include <boundary_mesh/transition/incremental_transition_collision_state.hpp>
+#include <boundary_mesh/growth/apex_solver.hpp>
 
 namespace boundary_mesh
 {
@@ -121,6 +122,13 @@ namespace boundary_mesh
     {
         const auto found = distance_scales.find(id);
         return found == distance_scales.end() ? Scalar{0.25} : found->second;
+    }
+
+    std::size_t ExternalPatchControls::apexCandidateIndex(
+        SurfaceFaceId id) const
+    {
+        const auto found = apex_candidate_indices.find(id);
+        return found == apex_candidate_indices.end() ? 0 : found->second;
     }
 
     bool ExternalPatchControls::keepHexa(SurfaceFaceId id) const
@@ -321,10 +329,18 @@ namespace boundary_mesh
             };
 
             std::vector<SurfaceFaceId> external_faces;
+            std::set<SurfaceFaceId> no_high_external_faces;
             for (const auto &topology : provisional.value().resolved_topology)
+            {
                 if (topology.terminal_quad_decision ==
                     TerminalQuadDecision::ExternalPatch)
+                {
                     external_faces.push_back(topology.source_face_id);
+                    if (topology.retained_local_edges.empty())
+                        no_high_external_faces.insert(
+                            topology.source_face_id);
+                }
+            }
             std::sort(external_faces.begin(), external_faces.end());
             external_faces.erase(std::unique(
                 external_faces.begin(), external_faces.end()),
@@ -387,6 +403,7 @@ namespace boundary_mesh
                 Scalar probe{};
                 bool bracketed = false;
                 bool exhausted = false;
+                bool apex_candidate_resolved = false;
             };
             std::map<SurfaceFaceId, ExternalSearch> searches;
             const auto isColliding = [](const auto &owners, SurfaceFaceId id)
@@ -411,7 +428,8 @@ namespace boundary_mesh
                 }
                 const Scalar initial = external_controls.distanceScale(id);
                 searches.emplace(
-                    id, ExternalSearch{Scalar{}, initial, initial, false, false});
+                    id, ExternalSearch{
+                        Scalar{}, initial, initial, false, false, false});
                 searched_patch_ids.insert(id);
                 external_changed = true;
             }
@@ -449,6 +467,8 @@ namespace boundary_mesh
 
             using ExternalCollisionResult = Result<
                 std::set<SurfaceFaceId>, LayerTransitionError>;
+            std::map<SurfaceFaceId,std::vector<TrianglePoints>>
+                encountered_collision_faces;
             const auto inspectExternalChanges =
                 [&](const ProvisionalLayerTransition &trial)
                 -> ExternalCollisionResult
@@ -518,13 +538,31 @@ namespace boundary_mesh
                     const CollisionGroupId group =
                         static_cast<CollisionGroupId>(id) + 2;
                     for (const CollisionTriangle &triangle : converted)
-                        if (!working_index.queryIllegalContacts(
-                                triangle, group).empty())
+                    {
+                        const auto contacts = working_index.queryIllegalContacts(
+                                triangle, group);
+                        if (!contacts.empty())
                         {
                             colliding.insert(id);
-                            break;
                         }
+                        for (const auto contact : contacts)
+                            encountered_collision_faces[id].push_back(
+                                working_index.primitive(contact).points);
+                    }
                 }
+                for (const auto &[id,triangles] : replacements)
+                    for (const auto &owned : triangles)
+                    {
+                        const auto query = makeTransitionCollisionTriangle(owned,id);
+                        if (changed.original_surface != nullptr)
+                            for (const auto hit : changed.original_surface->queryIllegalContacts(query))
+                                encountered_collision_faces[id].push_back(
+                                    changed.original_surface->primitive(hit).points);
+                        if (changed.historical_index != nullptr)
+                            for (const auto hit : changed.historical_index->queryIllegalContacts(query))
+                                encountered_collision_faces[id].push_back(
+                                    changed.historical_index->primitive(hit).points);
+                    }
                 search_index = std::move(working_index);
                 exact_query_milliseconds +=
                     static_cast<std::uint64_t>(
@@ -535,6 +573,90 @@ namespace boundary_mesh
                 return ExternalCollisionResult::success(
                     std::move(colliding));
             };
+
+            constexpr std::size_t maximum_apex_candidates = 8;
+            for (auto &[id, search] : searches)
+            {
+                bool resolved = false;
+                for (std::size_t candidate = 1;
+                     candidate <= maximum_apex_candidates; ++candidate)
+                {
+                    external_controls.apex_candidate_indices[id] = candidate;
+                    const std::vector<SurfaceFaceId> selected{id};
+                    auto trial = buildProbe(selected);
+                    ++probe_rounds;
+                    if (!trial.hasValue())
+                        return ResolveResult::failure(trial.error());
+                    const auto topology = std::find_if(
+                        trial.value().resolved_topology.begin(),
+                        trial.value().resolved_topology.end(),
+                        [id](const ResolvedTransitionTopology &value)
+                        { return value.source_face_id == id; });
+                    if (topology == trial.value().resolved_topology.end() ||
+                        topology->terminal_quad_decision !=
+                            TerminalQuadDecision::ExternalPatch ||
+                        !topology->generated_point.has_value())
+                    {
+                        continue;
+                    }
+
+                    const auto collisions = inspectExternalChanges(trial.value());
+                    if (!collisions.hasValue())
+                        return ResolveResult::failure(collisions.error());
+                    provisional = std::move(trial);
+                    if (collisions.value().find(id) == collisions.value().end())
+                    {
+                        search.apex_candidate_resolved = true;
+                        search.bracketed = true;
+                        search.exhausted = true;
+                        search.low = search.high = search.probe =
+                            external_controls.distanceScale(id);
+                        resolved = true;
+                        break;
+                    }
+                }
+                if (!resolved)
+                    external_controls.apex_candidate_indices.erase(id);
+                if (!resolved && no_high_external_faces.count(id) != 0)
+                {
+                    for (std::size_t candidate = 1;
+                         candidate <= maximum_apex_candidates; ++candidate)
+                    {
+                        external_controls.robust_candidate_indices[id] =
+                            candidate;
+                        const std::vector<SurfaceFaceId> selected{id};
+                        auto trial = buildProbe(selected);
+                        ++probe_rounds;
+                        if (!trial.hasValue())
+                            return ResolveResult::failure(trial.error());
+                        const auto topology = std::find_if(
+                            trial.value().resolved_topology.begin(),
+                            trial.value().resolved_topology.end(),
+                            [id](const ResolvedTransitionTopology &value)
+                            { return value.source_face_id == id; });
+                        if (topology == trial.value().resolved_topology.end() ||
+                            topology->terminal_quad_decision !=
+                                TerminalQuadDecision::ExternalPatch ||
+                            !topology->generated_point.has_value())
+                            continue;
+                        const auto collisions = inspectExternalChanges(
+                            trial.value());
+                        if (!collisions.hasValue())
+                            return ResolveResult::failure(collisions.error());
+                        provisional = std::move(trial);
+                        if (collisions.value().count(id) != 0) continue;
+                        search.apex_candidate_resolved = true;
+                        search.bracketed = true;
+                        search.exhausted = true;
+                        search.low = search.high = search.probe =
+                            external_controls.distanceScale(id);
+                        resolved = true;
+                        break;
+                    }
+                    if (!resolved)
+                        external_controls.robust_candidate_indices.erase(id);
+                }
+            }
 
             while (std::any_of(
                 searches.begin(), searches.end(), [](const auto &entry)
@@ -576,6 +698,139 @@ namespace boundary_mesh
                 provisional = std::move(trial);
             }
 
+            for (auto &[id,search] : searches)
+            {
+                if (search.bracketed || !no_high_external_faces.count(id) ||
+                    search.apex_candidate_resolved)
+                    continue;
+                const auto topology = std::find_if(
+                    provisional.value().resolved_topology.begin(),
+                    provisional.value().resolved_topology.end(),
+                    [id](const ResolvedTransitionTopology &value)
+                    { return value.source_face_id == id; });
+                if (topology == provisional.value().resolved_topology.end() ||
+                    !topology->generated_point.has_value())
+                    continue;
+                std::array<Point3,4> quad{};
+                std::size_t quad_count = 0;
+                const Point3 anchor = *topology->generated_point;
+                for (const auto &owned : provisional.value().boundary.candidate_triangles)
+                {
+                    if (owned.owner.role != BoundaryOwnerRole::ExternalPatch ||
+                        owned.owner.source_face_id != id) continue;
+                    for (const Point3 &point : owned.points)
+                    {
+                        if ((point-anchor).norm() <= Scalar{1e-9}) continue;
+                        bool duplicate = false;
+                        for (std::size_t i = 0; i < quad_count; ++i)
+                            duplicate = duplicate ||
+                                (quad[i]-point).norm() <= Scalar{1e-9};
+                        if (!duplicate && quad_count < 4)
+                            quad[quad_count++] = point;
+                    }
+                }
+                if (quad_count != 4) continue;
+                ApexSolverInput solver_input;
+                solver_input.quad = quad;
+                solver_input.target = anchor;
+                const auto planes = encountered_collision_faces.find(id);
+                if (planes == encountered_collision_faces.end()) continue;
+                struct PlaneSearchNode
+                {
+                    ApexSolverInput constraints;
+                    TrianglePoints plane{};
+                };
+                const auto samePlane = [](const TrianglePoints &left,
+                                           const TrianglePoints &right)
+                {
+                    Vector3 a = (left[1]-left[0]).cross(left[2]-left[0]);
+                    Vector3 b = (right[1]-right[0]).cross(right[2]-right[0]);
+                    if (a.norm() <= 1e-14 || b.norm() <= 1e-14) return false;
+                    a.normalize(); b.normalize();
+                    const Scalar sign = a.dot(b) < 0 ? Scalar{-1} : Scalar{1};
+                    return (a-sign*b).norm() <= Scalar{1e-8} &&
+                        std::abs(a.dot(left[0])-sign*b.dot(right[0])) <= 1e-8;
+                };
+                std::vector<PlaneSearchNode> pending;
+                std::vector<TrianglePoints> unique_planes;
+                for (const auto &plane : planes->second)
+                    if (std::none_of(unique_planes.begin(),unique_planes.end(),
+                        [&](const TrianglePoints &other)
+                        { return samePlane(plane,other); }))
+                        unique_planes.push_back(plane);
+                for (const auto &plane : unique_planes)
+                    pending.push_back({solver_input,plane});
+                std::size_t attempts = 0;
+                while (!pending.empty() && attempts < 128 &&
+                       !search.apex_candidate_resolved)
+                {
+                    PlaneSearchNode node = std::move(pending.back());
+                    pending.pop_back();
+                const auto candidates = projectPyramidApexToPlaneSides(
+                        node.constraints,anchor,node.plane,14);
+                    for (const Point3 &candidate : candidates)
+                    {
+                        if (++attempts > 128) break;
+                        const std::size_t old_plane_count =
+                            encountered_collision_faces[id].size();
+                        external_controls.explicit_apex_points[id] = candidate;
+                        const std::vector<SurfaceFaceId> selected{id};
+                        auto trial = buildProbe(selected);
+                        ++probe_rounds;
+                        if (!trial.hasValue())
+                            return ResolveResult::failure(trial.error());
+                        const auto collision = inspectExternalChanges(
+                            trial.value());
+                        if (!collision.hasValue())
+                            return ResolveResult::failure(collision.error());
+                        provisional = std::move(trial);
+                        if (collision.value().count(id) == 0)
+                        {
+                            search.apex_candidate_resolved = true;
+                            search.bracketed = true;
+                            search.exhausted = true;
+                            search.low = search.high = search.probe =
+                                external_controls.distanceScale(id);
+                            break;
+                        }
+                        ApexSolverInput child = node.constraints;
+                        Vector3 normal = (node.plane[1]-node.plane[0]).cross(
+                            node.plane[2]-node.plane[0]).normalized();
+                        const Scalar side = normal.dot(candidate-node.plane[0]) >= 0
+                            ? Scalar{1} : Scalar{-1};
+                        const Scalar epsilon = std::max(
+                            (quad[1]-quad[0]).norm(),Scalar{1})*1e-9;
+                        child.additional_constraints.push_back({
+                            side*normal,side*normal.dot(node.plane[0])+epsilon});
+                        const auto &updated_planes = encountered_collision_faces[id];
+                        for (std::size_t index = old_plane_count;
+                             index < updated_planes.size(); ++index)
+                        {
+                            bool already_constrained = samePlane(
+                                updated_planes[index],node.plane);
+                            const Vector3 new_normal =
+                                (updated_planes[index][1]-updated_planes[index][0])
+                                .cross(updated_planes[index][2]-updated_planes[index][0])
+                                .normalized();
+                            for (const ApexConstraint &constraint :
+                                 child.additional_constraints)
+                            {
+                                const Scalar aligned = constraint.normal.dot(new_normal);
+                                if (std::abs(std::abs(aligned)-1) <= Scalar{1e-8} &&
+                                    std::abs(constraint.normal.dot(
+                                        updated_planes[index][0])-constraint.offset) <=
+                                        Scalar{1e-7})
+                                    already_constrained = true;
+                            }
+                            if (!already_constrained)
+                                pending.push_back({child,updated_planes[index]});
+                        }
+                    }
+                }
+                if (!search.apex_candidate_resolved)
+                    external_controls.explicit_apex_points.erase(id);
+            }
+
             bool keep_hexa_changed = false;
             for (const auto &[id, search] : searches)
             {
@@ -607,7 +862,8 @@ namespace boundary_mesh
                 std::vector<SurfaceFaceId> active_ids;
                 for (auto &[id, search] : searches)
                 {
-                    if (!search.bracketed) continue;
+                    if (!search.bracketed || search.apex_candidate_resolved)
+                        continue;
                     active = true;
                     external_controls.distance_scales[id] =
                         (search.low + search.high) * Scalar{0.5};
@@ -635,7 +891,7 @@ namespace boundary_mesh
                 provisional = std::move(trial);
             }
             for (const auto &[id, search] : searches)
-                if (search.bracketed)
+                if (search.bracketed && !search.apex_candidate_resolved)
                     external_controls.distance_scales[id] = search.low;
             if (!searches.empty() || keep_hexa_changed)
             {
@@ -721,6 +977,11 @@ namespace boundary_mesh
                     TransitionCoordinationError{
                         MissingTransitionFaceState{
                             rollback.front()}}});
+            // External-patch controls are valid only for the topology that
+            // produced them.  Rolling back any retained high face changes
+            // the provisional transition boundary, so retry every external
+            // patch from its defaults on the rebuilt topology.
+            external_controls = ExternalPatchControls{};
             ++iterations;
         }
     }

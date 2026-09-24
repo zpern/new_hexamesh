@@ -162,6 +162,7 @@ target_link_libraries(
 add_library(
     boundary_mesh_growth
     STATIC
+        src/growth/apex_solver.cpp
         src/growth/growth_patch_builder.cpp
         src/growth/growth_front_builder.cpp
         src/growth/front_adjacency.cpp
