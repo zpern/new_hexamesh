@@ -380,6 +380,51 @@ int main()
         !terminal->generated_point.has_value())
         return 41;
 
+    // An external patch failure must leave the internal fallback's boundary
+    // in the collision candidates, including a low quad with two high edges.
+    GrowthFront two_high_low = transition_low;
+    two_high_low.vertices.push_back({{1,2,0},6});
+    two_high_low.vertices.push_back({{0,2,0},7});
+    two_high_low.faces.push_back(Quad{{3,2,6,7}});
+    two_high_low.source_face_ids.push_back(2);
+    GrowthFront two_high_top = transition_high;
+    two_high_top.vertices.push_back({{0,1,1},3});
+    two_high_top.vertices.push_back({{1,2,1},6});
+    two_high_top.vertices.push_back({{0,2,1},7});
+    two_high_top.faces.push_back(Quad{{4,3,5,6}});
+    two_high_top.source_face_ids.push_back(2);
+    LayerFaceSets two_high_sets;
+    addInitialStop(two_high_sets, {0,1,StopOrigin::Collision});
+    ExternalPatchControls failed_patch;
+    failed_patch.distance_scales[0] = Scalar{0};
+    const auto fallback_boundary = buildProvisionalTransition(
+        two_high_low, two_high_top, {1,2}, two_high_sets,
+        thin_hexa, failed_patch);
+    if (!fallback_boundary.hasValue()) return 47;
+    const auto fallback_topology = std::find_if(
+        fallback_boundary.value().resolved_topology.begin(),
+        fallback_boundary.value().resolved_topology.end(),
+        [](const ResolvedTransitionTopology &value)
+        { return value.source_face_id == 0; });
+    if (fallback_topology ==
+            fallback_boundary.value().resolved_topology.end() ||
+        fallback_topology->terminal_quad_decision !=
+            TerminalQuadDecision::InternalSplit)
+        return 48;
+    const auto &fallback_triangles =
+        fallback_boundary.value().boundary.candidate_triangles;
+    if (std::none_of(fallback_triangles.begin(), fallback_triangles.end(),
+            [](const OwnedBoundaryTriangle &value)
+            { return value.owner.source_face_id == 0 &&
+                     value.owner.role == BoundaryOwnerRole::TopCap; }))
+        return 49;
+    if (std::count_if(fallback_triangles.begin(), fallback_triangles.end(),
+            [](const OwnedBoundaryTriangle &value)
+            { return value.owner.source_face_id == 0 &&
+                     value.owner.role == BoundaryOwnerRole::SideTransition; })
+        != 4)
+        return 51;
+
     GrowthFront terminal_current;
     terminal_current.layer = 1;
     terminal_current.vertices = {
@@ -399,6 +444,17 @@ int main()
             Point3{0,0,0.01}, Point3{1,0,0.01},
             Point3{1,1,0.01}, Point3{0,1,0.01}}};
     };
+    ExternalPatchControls failed_terminal_patch;
+    failed_terminal_patch.distance_scales[90] = Scalar{0};
+    const auto cap_only_fallback = buildProvisionalTransition(
+        terminal_current, terminal_candidate, {90}, {}, terminal_hexa,
+        failed_terminal_patch, {90});
+    if (!cap_only_fallback.hasValue() ||
+        cap_only_fallback.value().resolved_topology.size() != 1 ||
+        cap_only_fallback.value().resolved_topology.front()
+            .terminal_quad_decision != TerminalQuadDecision::InternalSplit ||
+        cap_only_fallback.value().boundary.candidate_triangles.size() != 2)
+        return 50;
     const ProvisionalTransitionBuildContext transition_context{
         terminal_current, terminal_candidate};
     for (const Scalar scale : {Scalar{0.25}, Scalar{0.125}, Scalar{0.0625}})

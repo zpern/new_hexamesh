@@ -675,6 +675,57 @@ namespace boundary_mesh
             }
             diagnostic_stage("coordination-after-collision");
             LayerStepResult coordinated_step = final_step.value();
+            while (!coordinated_step.next_front.faces.empty())
+            {
+                const std::size_t previous_count =
+                    coordinated_step.next_front.faces.size();
+                const auto checked_obstacles =
+                    LayerCollisionChecker{}.filterAgainstObstacles(
+                        original_collision.value(), sliding_collision.value(),
+                        sliding_surfaces.value(), exposed_boundary,
+                        current_front, coordinated_step);
+                if (!checked_obstacles.hasValue())
+                    return GrowthResult::failure(CollisionStateFailure{
+                        step_result.value().layer,
+                        checked_obstacles.error()});
+                const auto obstacle_stops = propagator.applyDirectStops(
+                    constraints,
+                    addedCollisionStops(
+                        checked_obstacles.value().stopped_faces,
+                        coordinated_step.stopped_faces),
+                    options.max_layer_diff);
+                if (!obstacle_stops.hasValue())
+                    return GrowthResult::failure(obstacle_stops.error());
+                const auto after_obstacles = propagator.filterCandidates(
+                    current_front, checked_obstacles.value(), constraints);
+                if (!after_obstacles.hasValue())
+                    return GrowthResult::failure(after_obstacles.error());
+                const auto checked_self =
+                    LayerCollisionChecker{}.filterSelfCollisions(
+                        current_front, after_obstacles.value());
+                if (!checked_self.hasValue())
+                    return GrowthResult::failure(CollisionStateFailure{
+                        step_result.value().layer, checked_self.error()});
+                const auto self_stops = propagator.applyDirectStops(
+                    constraints,
+                    addedCollisionStops(
+                        checked_self.value().stopped_faces,
+                        after_obstacles.value().stopped_faces),
+                    options.max_layer_diff);
+                if (!self_stops.hasValue())
+                    return GrowthResult::failure(self_stops.error());
+                const auto checked_final = options.enforce_single_high_edge
+                    ? propagator.filterSingleHighEdgeCandidates(
+                          current_front, checked_self.value(), constraints,
+                          options.max_layer_diff, pending_stop_cells)
+                    : propagator.filterCandidates(
+                          current_front, checked_self.value(), constraints);
+                if (!checked_final.hasValue())
+                    return GrowthResult::failure(checked_final.error());
+                coordinated_step = checked_final.value();
+                if (coordinated_step.next_front.faces.size() == previous_count)
+                    break;
+            }
             if (options.candidate_rejections)
             {
                 std::vector<SurfaceFaceId> rejected =

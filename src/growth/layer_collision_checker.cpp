@@ -553,26 +553,45 @@ namespace boundary_mesh
         if (batch.owners().size() != obstacle_step.next_front.faces.size())
             return Result<LayerStepResult, SpatialError>::failure(
                 SpatialError::InvalidTopologyReference);
-        const auto collisions =
-            BatchSelfCollisionDetector::detectOwners(batch.owners());
-        if (!collisions.hasValue())
+        LayerStepResult remaining = obstacle_step;
+        const LayerBoundaryBatch *current_batch = &batch;
+        std::optional<LayerBoundaryBatch> rebuilt_batch;
+        while (!remaining.next_front.faces.empty())
         {
-            return Result<LayerStepResult, SpatialError>::failure(
-                collisions.error());
-        }
-
-        std::vector<bool> stopped(batch.owners().size(), false);
-        for (const std::uint32_t owner :
-             collisions.value().illegal_owner_ids)
-        {
-            if (owner >= stopped.size())
-            {
+            const auto collisions =
+                BatchSelfCollisionDetector::detectOwners(
+                    current_batch->owners());
+            if (!collisions.hasValue())
                 return Result<LayerStepResult, SpatialError>::failure(
-                    SpatialError::InvalidTopologyReference);
+                    collisions.error());
+            if (collisions.value().illegal_owner_ids.empty())
+                break;
+
+            std::vector<bool> stopped(current_batch->owners().size(), false);
+            for (const std::uint32_t owner :
+                 collisions.value().illegal_owner_ids)
+            {
+                if (owner >= stopped.size())
+                    return Result<LayerStepResult, SpatialError>::failure(
+                        SpatialError::InvalidTopologyReference);
+                stopped[owner] = true;
             }
-            stopped[owner] = true;
+            remaining = compactStep(current_front, remaining, stopped);
+            if (remaining.next_front.faces.empty())
+                break;
+            const auto candidates = buildLayerBoundaryCandidates(
+                current_front, remaining);
+            if (!candidates.hasValue())
+                return Result<LayerStepResult, SpatialError>::failure(
+                    candidates.error());
+            auto rebuilt = LayerBoundaryBatch::build(candidates.value());
+            if (!rebuilt.hasValue())
+                return Result<LayerStepResult, SpatialError>::failure(
+                    rebuilt.error());
+            rebuilt_batch.emplace(std::move(rebuilt.value()));
+            current_batch = &*rebuilt_batch;
         }
         return Result<LayerStepResult, SpatialError>::success(
-            compactStep(current_front, obstacle_step, stopped));
+            std::move(remaining));
     }
 }

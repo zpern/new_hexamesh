@@ -788,7 +788,8 @@ namespace boundary_mesh
                                     physicalEdgeMask(triangle,4),{},nullptr);
                         }
                     }
-                    else
+                    if (resolved.terminal_quad_decision ==
+                        TerminalQuadDecision::InternalSplit)
                     {
                         const auto &triangles = chosen.value().triangles;
                         const LayerBoundaryOwner owner{
@@ -923,9 +924,13 @@ namespace boundary_mesh
                                 columnContext(current,candidate,
                                     low_source_ids,candidate_vertices));
                     }
-                    provisional.resolved_topology.push_back(
-                        std::move(resolved));
-                    continue;
+                    if (resolved.terminal_quad_decision !=
+                        TerminalQuadDecision::InternalSplit)
+                    {
+                        provisional.resolved_topology.push_back(
+                            std::move(resolved));
+                        continue;
+                    }
                 }
                 std::vector<Triangle> low_cap = diagonal ==
                         QuadDiagonal::ZeroTwo
