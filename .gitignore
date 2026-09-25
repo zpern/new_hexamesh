@@ -2,3 +2,4 @@
 /build-*/
 .worktrees/
 .vs/
+*.vtk
