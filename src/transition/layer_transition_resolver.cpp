@@ -898,6 +898,7 @@ namespace boundary_mesh
             std::map<SurfaceFaceId, ProbeCandidateCache> probe_candidates;
             std::map<SurfaceFaceId,
                      std::vector<OwnedBoundaryTriangle>> accepted_probe_patches;
+            std::optional<IncrementalCollisionIndex> accepted_probe_index;
             const auto rememberLocalProbe = [&](
                 const ProvisionalLayerTransition &trial,
                 const std::vector<SurfaceFaceId> &selected)
@@ -932,17 +933,12 @@ namespace boundary_mesh
                 for (const SurfaceFaceId id : selected)
                     if (searches.count(id) != 0)
                         replacements[id];
-                for (const auto &[id, triangles] : accepted_probe_patches)
-                    replacements[id] = triangles;
-                for (const SurfaceFaceId id : selected)
-                    if (searches.count(id) != 0)
-                        replacements[id].clear();
                 for (const OwnedBoundaryTriangle &owned :
                      trial.boundary.candidate_triangles)
                     if (owned.owner.role ==
                             BoundaryOwnerRole::ExternalPatch &&
-                        searches.find(owned.owner.source_face_id) !=
-                            searches.end())
+                        replacements.find(owned.owner.source_face_id) !=
+                            replacements.end())
                         replacements[owned.owner.source_face_id].push_back(
                             owned);
 
@@ -960,9 +956,12 @@ namespace boundary_mesh
                     trial.boundary.prior_transition_dynamic_index;
                 changed.sliding_surface = trial.boundary.sliding_surface;
                 for (const auto &[id, triangles] : replacements)
+                {
+                    (void)id;
                     changed.candidate_triangles.insert(
                         changed.candidate_triangles.end(),
                         triangles.begin(), triangles.end());
+                }
                 std::set<SurfaceFaceId> colliding;
                 if (!probe_static_context)
                 {
@@ -975,6 +974,9 @@ namespace boundary_mesh
                 TransitionStaticObstacleQueryScratch obstacle_scratch;
                 for (const auto &owned : changed.candidate_triangles)
                 {
+                    if (std::find(selected.begin(), selected.end(),
+                                  owned.owner.source_face_id) == selected.end())
+                        continue;
                     std::vector<TrianglePoints> static_contacts;
                     auto hit = probe_static_context->intersects(
                         owned,
@@ -1004,6 +1006,22 @@ namespace boundary_mesh
                             owned, id));
                     converted_replacements.emplace(id, std::move(converted));
                 }
+                std::set<CollisionGroupId> replaced_groups;
+                for (const auto &[id, triangles] : accepted_probe_patches)
+                {
+                    (void)triangles;
+                    replaced_groups.insert(
+                        static_cast<CollisionGroupId>(id) + 2);
+                }
+                std::vector<CollisionPrimitiveGroup> trial_groups;
+                trial_groups.reserve(selected.size());
+                for (const auto &[id, converted] : converted_replacements)
+                {
+                    const CollisionGroupId group =
+                        static_cast<CollisionGroupId>(id) + 2;
+                    replaced_groups.insert(group);
+                    trial_groups.push_back({group, converted});
+                }
                 for (const auto &[id, converted] : converted_replacements)
                     for (const auto &triangle : converted)
                     {
@@ -1016,16 +1034,6 @@ namespace boundary_mesh
                             return ExternalCollisionResult::failure(LayerTransitionError{
                                 TransitionBoundaryError{SpatialError::DegenerateTriangle}});
                     }
-                std::set<CollisionGroupId> replaced_groups;
-                std::vector<CollisionPrimitiveGroup> trial_groups;
-                trial_groups.reserve(converted_replacements.size());
-                for (const auto &[id, converted] : converted_replacements)
-                {
-                    const CollisionGroupId group =
-                        static_cast<CollisionGroupId>(id) + 2;
-                    replaced_groups.insert(group);
-                    trial_groups.push_back({group, converted});
-                }
                 auto trial_index_result = IncrementalCollisionIndex::build(
                     std::move(trial_groups));
                 if (!trial_index_result.hasValue())
@@ -1102,8 +1110,13 @@ namespace boundary_mesh
                                       replaced_groups);
                         const auto moving_contacts =
                             trial_index.queryIllegalContacts(triangle, group);
+                        const auto accepted_contacts = accepted_probe_index
+                            ? accepted_probe_index->queryIllegalContacts(
+                                  triangle, group)
+                            : std::vector<CollisionPrimitiveId>{};
                         if (!environment_contacts.empty() ||
-                            !moving_contacts.empty())
+                            !moving_contacts.empty() ||
+                            !accepted_contacts.empty())
                         {
                             colliding.insert(id);
                         }
@@ -1115,6 +1128,9 @@ namespace boundary_mesh
                             for (const auto contact : moving_contacts)
                                 encountered_collision_faces[id].push_back(
                                     trial_index.primitive(contact).points);
+                            for (const auto contact : accepted_contacts)
+                                encountered_collision_faces[id].push_back(
+                                    accepted_probe_index->primitive(contact).points);
                         }
                     }
                 }
@@ -1130,6 +1146,7 @@ namespace boundary_mesh
             const auto rememberAcceptedProbe = [&] (
                 const ProvisionalLayerTransition &trial,
                 SurfaceFaceId id)
+                -> Result<std::monostate, LayerTransitionError>
             {
                 std::vector<OwnedBoundaryTriangle> accepted;
                 for (const OwnedBoundaryTriangle &owned :
@@ -1137,8 +1154,49 @@ namespace boundary_mesh
                     if (owned.owner.role == BoundaryOwnerRole::ExternalPatch &&
                         owned.owner.source_face_id == id)
                         accepted.push_back(owned);
-                if (!accepted.empty())
-                    accepted_probe_patches[id] = std::move(accepted);
+                if (accepted.empty())
+                    return Result<std::monostate, LayerTransitionError>::success(
+                        std::monostate{});
+
+                std::vector<CollisionTriangle> converted;
+                converted.reserve(accepted.size());
+                for (const OwnedBoundaryTriangle &triangle : accepted)
+                    converted.push_back(
+                        makeTransitionCollisionTriangle(triangle, id));
+                const CollisionGroupId group =
+                    static_cast<CollisionGroupId>(id) + 2;
+                if (!accepted_probe_index)
+                {
+                    auto built = IncrementalCollisionIndex::build(
+                        {{group, std::move(converted)}});
+                    if (!built.hasValue())
+                        return Result<std::monostate, LayerTransitionError>::failure(
+                            LayerTransitionError{TransitionBoundaryError{
+                                built.error()}});
+                    accepted_probe_index = std::move(built.value());
+                }
+                else
+                {
+                    const auto existing =
+                        accepted_probe_patches.find(id);
+                    if (existing != accepted_probe_patches.end())
+                    {
+                        const auto erased = accepted_probe_index->eraseGroup(group);
+                        if (!erased.hasValue())
+                            return Result<std::monostate, LayerTransitionError>::failure(
+                                LayerTransitionError{TransitionBoundaryError{
+                                    erased.error()}});
+                    }
+                    const auto updated = accepted_probe_index->insertGroup(
+                        {group, std::move(converted)});
+                    if (!updated.hasValue())
+                        return Result<std::monostate, LayerTransitionError>::failure(
+                            LayerTransitionError{TransitionBoundaryError{
+                                updated.error()}});
+                }
+                accepted_probe_patches[id] = std::move(accepted);
+                return Result<std::monostate, LayerTransitionError>::success(
+                    std::monostate{});
             };
 
             constexpr std::size_t maximum_apex_candidates = 8;
@@ -1206,7 +1264,10 @@ namespace boundary_mesh
                                   << '\n';
                     if (collisions.value().find(id) == collisions.value().end())
                     {
-                        rememberAcceptedProbe(trial.value(), id);
+                        const auto remembered =
+                            rememberAcceptedProbe(trial.value(), id);
+                        if (!remembered.hasValue())
+                            return ResolveResult::failure(remembered.error());
                         if (no_high_external_faces.count(id) != 0)
                         {
                             external_controls.explicit_apex_points[id] =
@@ -1252,7 +1313,10 @@ namespace boundary_mesh
                             return ResolveResult::failure(collisions.error());
                         rememberLocalProbe(trial.value(), selected);
                         if (collisions.value().count(id) != 0) continue;
-                        rememberAcceptedProbe(trial.value(), id);
+                        const auto remembered =
+                            rememberAcceptedProbe(trial.value(), id);
+                        if (!remembered.hasValue())
+                            return ResolveResult::failure(remembered.error());
                         external_controls.explicit_apex_points[id] =
                             *topology->generated_point;
                         external_controls.robust_candidate_indices.erase(id);
@@ -1424,7 +1488,11 @@ namespace boundary_mesh
                         rememberLocalProbe(trial.value(), selected);
                         if (collision.value().count(id) == 0)
                         {
-                            rememberAcceptedProbe(trial.value(), id);
+                            const auto remembered =
+                                rememberAcceptedProbe(trial.value(), id);
+                            if (!remembered.hasValue())
+                                return ResolveResult::failure(
+                                    remembered.error());
                             search.apex_candidate_resolved = true;
                             search.bracketed = true;
                             search.exhausted = true;
