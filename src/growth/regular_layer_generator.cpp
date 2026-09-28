@@ -7,6 +7,8 @@
 #include <limits>
 #include <optional>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -37,26 +39,25 @@ namespace boundary_mesh
             {
                 return false;
             }
+            std::unordered_set<VertexId> patch_vertex_ids;
+            patch_vertex_ids.reserve(patch.vertices().size());
+            for (const PatchVertex &vertex : patch.vertices())
+                patch_vertex_ids.insert(vertex.source_vertex_id);
             for (const GrowthFrontVertex &vertex : front.vertices)
             {
-                const bool known = std::any_of(
-                    patch.vertices().begin(), patch.vertices().end(),
-                    [&](const PatchVertex &patch_vertex)
-                    {
-                        return patch_vertex.source_vertex_id ==
-                               vertex.source_vertex_id;
-                    });
-                if (!known)
+                if (patch_vertex_ids.find(vertex.source_vertex_id) ==
+                    patch_vertex_ids.end())
                 {
                     return false;
                 }
             }
+            std::unordered_set<SurfaceFaceId> patch_face_ids(
+                patch.sourceFaceIds().begin(),
+                patch.sourceFaceIds().end());
             for (const SurfaceFaceId source_face_id : front.source_face_ids)
             {
-                if (std::find(
-                        patch.sourceFaceIds().begin(),
-                        patch.sourceFaceIds().end(),
-                        source_face_id) == patch.sourceFaceIds().end())
+                if (patch_face_ids.find(source_face_id) ==
+                    patch_face_ids.end())
                 {
                     return false;
                 }
@@ -80,45 +81,12 @@ namespace boundary_mesh
                 });
         }
 
-        LayerVertexRecord *findLayerRecord(
-            LayerVertexTable &records,
+        std::uint64_t layerVertexKey(
             VertexId source_vertex_id,
             std::uint32_t branch_id)
         {
-            const auto found = std::find_if(
-                records.begin(), records.end(),
-                [&](const LayerVertexRecord &record)
-                {
-                    return record.source_vertex_id == source_vertex_id &&
-                           record.branch_id == branch_id;
-                });
-            return found == records.end() ? nullptr : &*found;
-        }
-
-        VertexGrowthRecord *findVertexRecord(
-            std::vector<VertexGrowthRecord> &records,
-            VertexId source_vertex_id)
-        {
-            const auto found = std::find_if(
-                records.begin(), records.end(),
-                [&](const VertexGrowthRecord &record)
-                {
-                    return record.source_vertex_id == source_vertex_id;
-                });
-            return found == records.end() ? nullptr : &*found;
-        }
-
-        FaceGrowthRecord *findFaceRecord(
-            std::vector<FaceGrowthRecord> &records,
-            SurfaceFaceId source_face_id)
-        {
-            const auto found = std::find_if(
-                records.begin(), records.end(),
-                [&](const FaceGrowthRecord &record)
-                {
-                    return record.source_face_id == source_face_id;
-                });
-            return found == records.end() ? nullptr : &*found;
+            return (static_cast<std::uint64_t>(source_vertex_id) << 32) |
+                branch_id;
         }
 
         std::vector<FaceStopEvent> directQualityStops(
@@ -355,6 +323,14 @@ namespace boundary_mesh
                 CollisionInitializationFailure{
                     original_collision.error()});
         }
+        const auto non_wall_collision =
+            buildNonWallSurfaceCollisionIndex(surface_mesh, topology);
+        if (!non_wall_collision.hasValue())
+        {
+            return GrowthResult::failure(
+                CollisionInitializationFailure{
+                    non_wall_collision.error()});
+        }
         const auto sliding_collision =
             SlidingIntersectionIndex::build(surface_mesh);
         if (!sliding_collision.hasValue())
@@ -396,6 +372,12 @@ namespace boundary_mesh
         }
 
         RegularLayerGrowthResult result;
+        std::unordered_map<std::uint64_t, std::size_t> layer_record_indices;
+        std::unordered_map<VertexId, std::size_t> vertex_record_indices;
+        std::unordered_map<SurfaceFaceId, std::size_t> face_record_indices;
+        layer_record_indices.reserve(initial_front.vertices.size());
+        vertex_record_indices.reserve(patch.vertices().size());
+        face_record_indices.reserve(patch.sourceFaceIds().size());
         GrowthFront current_front = initial_front;
         std::vector<SurfaceFaceId> pending_stop_cells;
         result.mesh.vertices.reserve(initial_front.vertices.size());
@@ -414,6 +396,8 @@ namespace boundary_mesh
                 return GrowthResult::failure(
                     InvalidLayerFrontMapping{0});
             }
+            vertex_record_indices.emplace(
+                patch_vertex.source_vertex_id, result.vertices.size());
             result.vertices.push_back(
                 VertexGrowthRecord{
                     patch_vertex.source_vertex_id,
@@ -426,10 +410,12 @@ namespace boundary_mesh
         {
             const GrowthFrontVertex &front_vertex =
                 initial_front.vertices[index];
-            if (findLayerRecord(
-                    result.layer_vertices,
-                    front_vertex.source_vertex_id,
-                    front_vertex.branch_id) == nullptr)
+            const std::uint64_t key = layerVertexKey(
+                front_vertex.source_vertex_id, front_vertex.branch_id);
+            const auto [record_position, inserted] =
+                layer_record_indices.emplace(
+                    key, result.layer_vertices.size());
+            if (inserted)
             {
                 result.layer_vertices.push_back(
                     LayerVertexRecord{
@@ -445,25 +431,24 @@ namespace boundary_mesh
             }
             const VertexId global_id = static_cast<VertexId>(index);
             current_global_ids.push_back(global_id);
-            LayerVertexRecord *record = findLayerRecord(
-                result.layer_vertices,
-                front_vertex.source_vertex_id,
-                front_vertex.branch_id);
-            if (record == nullptr)
-            {
-                return GrowthResult::failure(
-                    InvalidLayerFrontMapping{0});
-            }
-            record->layer_vertex_ids.push_back(global_id);
+            result.layer_vertices[record_position->second]
+                .layer_vertex_ids.push_back(global_id);
         }
         for (const SurfaceFaceId source_face_id :
              patch.sourceFaceIds())
         {
+            face_record_indices.emplace(source_face_id, result.faces.size());
             result.faces.push_back(
                 FaceGrowthRecord{source_face_id});
         }
 
         ExposedBoundaryTracker exposed_boundary;
+        const auto initialized_obstacle_boundary =
+            exposed_boundary.initializeWallSurface(surface_mesh);
+        if (!initialized_obstacle_boundary.hasValue())
+            return GrowthResult::failure(CollisionStateFailure{
+                current_front.layer,
+                initialized_obstacle_boundary.error()});
         const auto sliding_surfaces = SlidingSurfaceBuilder{}.build(surface_mesh);
         if (!sliding_surfaces.hasValue())
             return GrowthResult::failure(GrowthDirectionFailure{
@@ -557,7 +542,7 @@ namespace boundary_mesh
                     CollisionStateFailure{
                         step_result.value().layer,
                         obstacle_candidates.error()});
-            const auto obstacle_batch =
+            auto obstacle_batch =
                 LayerBoundaryBatch::build(obstacle_candidates.value());
             if (!obstacle_batch.hasValue())
                 return GrowthResult::failure(
@@ -575,7 +560,7 @@ namespace boundary_mesh
                 << '\n';
             const auto obstacle_step =
                 LayerCollisionChecker{}.filterAgainstObstacles(
-                    original_collision.value(),
+                    non_wall_collision.value(),
                     sliding_collision.value(),
                     sliding_surfaces.value(),
                     exposed_boundary,
@@ -610,7 +595,7 @@ namespace boundary_mesh
                 return GrowthResult::failure(
                     propagated_obstacle_step.error());
             }
-            const LayerBoundaryBatch *self_batch = &obstacle_batch.value();
+            LayerBoundaryBatch *self_batch = &obstacle_batch.value();
             std::optional<LayerBoundaryBatch> reduced_self_batch;
             if (propagated_obstacle_step.value()
                     .previous_front_face_indices !=
@@ -675,65 +660,25 @@ namespace boundary_mesh
             }
             diagnostic_stage("coordination-after-collision");
             LayerStepResult coordinated_step = final_step.value();
-            while (!coordinated_step.next_front.faces.empty())
-            {
-                const std::size_t previous_count =
-                    coordinated_step.next_front.faces.size();
-                const auto checked_obstacles =
-                    LayerCollisionChecker{}.filterAgainstObstacles(
-                        original_collision.value(), sliding_collision.value(),
-                        sliding_surfaces.value(), exposed_boundary,
-                        current_front, coordinated_step);
-                if (!checked_obstacles.hasValue())
-                    return GrowthResult::failure(CollisionStateFailure{
-                        step_result.value().layer,
-                        checked_obstacles.error()});
-                const auto obstacle_stops = propagator.applyDirectStops(
-                    constraints,
-                    addedCollisionStops(
-                        checked_obstacles.value().stopped_faces,
-                        coordinated_step.stopped_faces),
-                    options.max_layer_diff);
-                if (!obstacle_stops.hasValue())
-                    return GrowthResult::failure(obstacle_stops.error());
-                const auto after_obstacles = propagator.filterCandidates(
-                    current_front, checked_obstacles.value(), constraints);
-                if (!after_obstacles.hasValue())
-                    return GrowthResult::failure(after_obstacles.error());
-                const auto checked_self =
-                    LayerCollisionChecker{}.filterSelfCollisions(
-                        current_front, after_obstacles.value());
-                if (!checked_self.hasValue())
-                    return GrowthResult::failure(CollisionStateFailure{
-                        step_result.value().layer, checked_self.error()});
-                const auto self_stops = propagator.applyDirectStops(
-                    constraints,
-                    addedCollisionStops(
-                        checked_self.value().stopped_faces,
-                        after_obstacles.value().stopped_faces),
-                    options.max_layer_diff);
-                if (!self_stops.hasValue())
-                    return GrowthResult::failure(self_stops.error());
-                const auto checked_final = options.enforce_single_high_edge
-                    ? propagator.filterSingleHighEdgeCandidates(
-                          current_front, checked_self.value(), constraints,
-                          options.max_layer_diff, pending_stop_cells)
-                    : propagator.filterCandidates(
-                          current_front, checked_self.value(), constraints);
-                if (!checked_final.hasValue())
-                    return GrowthResult::failure(checked_final.error());
-                coordinated_step = checked_final.value();
-                if (coordinated_step.next_front.faces.size() == previous_count)
-                    break;
-            }
+            // Obstacle checks have already covered every face before the
+            // self-collision pass, and self-collision removes both owners of
+            // every illegal pair. Termination/high-edge coordination only
+            // removes additional faces; it does not change surviving prism
+            // geometry. Collision validity is downward-closed under this
+            // face removal, so rescanning the reduced front here cannot find
+            // a new collision.
             if (options.candidate_rejections)
             {
+                const auto rejection_started =
+                    std::chrono::steady_clock::now();
                 std::vector<SurfaceFaceId> rejected =
                     options.candidate_rejections(
                         current_front, coordinated_step,
                         current_global_ids, result.mesh,
                         result.layer_vertices, original_collision.value(),
                         exposed_boundary);
+                const auto rejection_finished =
+                    std::chrono::steady_clock::now();
                 std::sort(rejected.begin(), rejected.end());
                 rejected.erase(
                     std::unique(rejected.begin(), rejected.end()),
@@ -753,11 +698,38 @@ namespace boundary_mesh
                         constraint->limit_kind =
                             FaceLayerLimitKind::NeighborConstraint;
                 }
+                const auto propagation_started =
+                    std::chrono::steady_clock::now();
+                const auto rejection_propagation = propagator.propagateFrom(
+                    constraints, rejected, options.max_layer_diff);
+                const auto propagation_finished =
+                    std::chrono::steady_clock::now();
+                if (!rejection_propagation.hasValue())
+                    return GrowthResult::failure(
+                        rejection_propagation.error());
+                const auto filter_started =
+                    std::chrono::steady_clock::now();
                 const auto filtered = propagator.filterCandidates(
                     current_front, coordinated_step, constraints);
+                const auto filter_finished =
+                    std::chrono::steady_clock::now();
                 if (!filtered.hasValue())
                     return GrowthResult::failure(filtered.error());
                 coordinated_step = std::move(filtered.value());
+                std::cerr << "temporary layer rejection_work faces="
+                    << rejected.size()
+                    << " propagated_changes="
+                    << rejection_propagation.value().size()
+                    << " callback_ms="
+                    << std::chrono::duration_cast<std::chrono::milliseconds>(
+                           rejection_finished - rejection_started).count()
+                    << " propagation_ms="
+                    << std::chrono::duration_cast<std::chrono::milliseconds>(
+                           propagation_finished - propagation_started).count()
+                    << " filtering_ms="
+                    << std::chrono::duration_cast<std::chrono::milliseconds>(
+                           filter_finished - filter_started).count()
+                    << '\n';
             }
             diagnostic_stage("candidate-rejections");
             const LayerStepResult &step = coordinated_step;
@@ -917,31 +889,35 @@ namespace boundary_mesh
             {
                 const VertexId source_id =
                     step.next_front.vertices[index].source_vertex_id;
-                LayerVertexRecord *layer_record = findLayerRecord(
-                    result.layer_vertices,
-                    source_id,
-                    step.next_front.vertices[index].branch_id);
-                VertexGrowthRecord *vertex_record = findVertexRecord(
-                    result.vertices, source_id);
-                if (layer_record == nullptr || vertex_record == nullptr)
+                const auto layer_position = layer_record_indices.find(
+                    layerVertexKey(source_id,
+                        step.next_front.vertices[index].branch_id));
+                const auto vertex_position = vertex_record_indices.find(
+                    source_id);
+                if (layer_position == layer_record_indices.end() ||
+                    vertex_position == vertex_record_indices.end())
                 {
                     return GrowthResult::failure(
                         InvalidLayerFrontMapping{current_front.layer});
                 }
-                layer_record->layer_vertex_ids.push_back(
+                result.layer_vertices[layer_position->second]
+                    .layer_vertex_ids.push_back(
                     next_global_ids[index]);
-                vertex_record->accepted_layer_count = step.layer;
+                result.vertices[vertex_position->second]
+                    .accepted_layer_count = step.layer;
             }
             for (const SurfaceFaceId source_face_id :
                  step.next_front.source_face_ids)
             {
-                FaceGrowthRecord *record = findFaceRecord(
-                    result.faces, source_face_id);
-                if (record == nullptr)
+                const auto face_position = face_record_indices.find(
+                    source_face_id);
+                if (face_position == face_record_indices.end())
                 {
                     return GrowthResult::failure(
                         InvalidLayerFrontMapping{current_front.layer});
                 }
+                FaceGrowthRecord *record =
+                    &result.faces[face_position->second];
                 record->accepted_layer_count = std::max(
                     record->accepted_layer_count,
                     step.layer);
@@ -979,26 +955,30 @@ namespace boundary_mesh
             }
             for (const FaceStopEvent &event : step.stopped_faces)
             {
-                FaceGrowthRecord *record = findFaceRecord(
-                    result.faces, event.source_face_id);
-                if (record == nullptr)
+                const auto face_position = face_record_indices.find(
+                    event.source_face_id);
+                if (face_position == face_record_indices.end())
                 {
                     return GrowthResult::failure(
                         InvalidLayerFrontMapping{current_front.layer});
                 }
+                FaceGrowthRecord *record =
+                    &result.faces[face_position->second];
                 record->status = FaceGrowthStatus::Stopped;
                 record->stop_reason = event.reason;
                 record->stop_layer = event.layer;
             }
             for (const FaceStopEvent &event : step.completed_faces)
             {
-                FaceGrowthRecord *record = findFaceRecord(
-                    result.faces, event.source_face_id);
-                if (record == nullptr)
+                const auto face_position = face_record_indices.find(
+                    event.source_face_id);
+                if (face_position == face_record_indices.end())
                 {
                     return GrowthResult::failure(
                         InvalidLayerFrontMapping{current_front.layer});
                 }
+                FaceGrowthRecord *record =
+                    &result.faces[face_position->second];
                 record->status = FaceGrowthStatus::Completed;
                 record->stop_reason = event.reason;
                 record->stop_layer = event.layer;
@@ -1030,7 +1010,8 @@ namespace boundary_mesh
             surface_mesh,
             initial_front,
             exposed_boundary,
-            zero_layer_source_face_ids);
+            zero_layer_source_face_ids,
+            !options.defer_interface_materialization);
         if (!farfield_boundary.hasValue())
         {
             return GrowthResult::failure(
@@ -1039,6 +1020,9 @@ namespace boundary_mesh
                     farfield_boundary.error()});
         }
         result.farfield_boundary = farfield_boundary.value();
+        if (options.defer_interface_materialization)
+            return GrowthResult::success(std::move(result));
+
         const auto top_surface = extractBoundaryLayerTop(
             result.farfield_boundary);
         if (!top_surface.hasValue())

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <iostream>
+#include <unordered_map>
 #include <utility>
 
 #include <boundary_mesh/spatial/batch_self_collision_detector.hpp>
@@ -11,6 +13,32 @@ namespace boundary_mesh
 {
     namespace
     {
+        std::vector<Aabb> conservativeOwnerBounds(
+            const LayerBoundaryBatch &batch)
+        {
+            std::vector<Aabb> bounds;
+            bounds.reserve(batch.candidates().size());
+            for (const LayerBoundaryCandidate &candidate : batch.candidates())
+            {
+                // Every possible side face lies inside the full bottom/top
+                // prism envelope, even when this side is currently shared.
+                const Point3 &first = candidate.bottom.points.front();
+                Aabb envelope{first, first};
+                for (const Point3 &point : candidate.bottom.points)
+                {
+                    envelope.minimum = envelope.minimum.cwiseMin(point);
+                    envelope.maximum = envelope.maximum.cwiseMax(point);
+                }
+                for (const Point3 &point : candidate.top.points)
+                {
+                    envelope.minimum = envelope.minimum.cwiseMin(point);
+                    envelope.maximum = envelope.maximum.cwiseMax(point);
+                }
+                bounds.push_back(std::move(envelope));
+            }
+            return bounds;
+        }
+
         std::vector<VertexId> faceVertexIds(const SurfaceFace &face)
         {
             return std::visit(
@@ -436,7 +464,7 @@ namespace boundary_mesh
             return Result<LayerStepResult, SpatialError>::failure(
                 candidates.error());
         }
-        const auto batch = LayerBoundaryBatch::build(candidates.value());
+        auto batch = LayerBoundaryBatch::build(candidates.value());
         if (!batch.hasValue())
             return Result<LayerStepResult, SpatialError>::failure(batch.error());
         return filterAgainstObstacles(
@@ -548,50 +576,122 @@ namespace boundary_mesh
     LayerCollisionChecker::filterSelfCollisions(
         const GrowthFront &current_front,
         const LayerStepResult &obstacle_step,
-        const LayerBoundaryBatch &batch) const
+        LayerBoundaryBatch &batch) const
     {
         if (batch.owners().size() != obstacle_step.next_front.faces.size())
             return Result<LayerStepResult, SpatialError>::failure(
                 SpatialError::InvalidTopologyReference);
         LayerStepResult remaining = obstacle_step;
-        const LayerBoundaryBatch *current_batch = &batch;
-        std::optional<LayerBoundaryBatch> rebuilt_batch;
-        while (!remaining.next_front.faces.empty())
+        LayerBoundaryBatch &current_batch = batch;
+        std::optional<BatchSelfCollisionIndex> persistent_index;
+        std::vector<std::size_t> current_changed_owner_indices;
+        std::unordered_map<SurfaceFaceId, std::size_t> current_owner_indices;
+        std::vector<bool> stopped(batch.owners().size(), false);
+        current_owner_indices.reserve(current_batch.candidates().size());
+        for (std::size_t index = 0;
+             index < current_batch.candidates().size();
+             ++index)
         {
-            const auto collisions =
-                BatchSelfCollisionDetector::detectOwners(
-                    current_batch->owners());
+            const SurfaceFaceId source =
+                current_batch.candidates()[index].top.source_face_id;
+            current_owner_indices.emplace(source, index);
+        }
+        bool full_scan = true;
+        std::size_t full_scan_rounds = 0;
+        std::size_t local_scan_rounds = 0;
+        std::size_t changed_owner_total = 0;
+        std::uint64_t owner_pair_total = 0;
+        std::uint64_t triangle_pair_total = 0;
+        std::uint64_t triangle_aabb_rejections = 0;
+        std::uint64_t exact_test_total = 0;
+        std::uint64_t illegal_owner_pair_total = 0;
+        while (!obstacle_step.next_front.faces.empty())
+        {
+            if (full_scan)
+                ++full_scan_rounds;
+            else
+            {
+                ++local_scan_rounds;
+                changed_owner_total +=
+                    current_changed_owner_indices.size();
+            }
+            if (!full_scan && !persistent_index.has_value())
+            {
+                const auto built = BatchSelfCollisionIndex::build(
+                    batch.owners(), conservativeOwnerBounds(batch));
+                if (!built.hasValue())
+                    return Result<LayerStepResult, SpatialError>::failure(
+                        built.error());
+                persistent_index.emplace(built.value());
+            }
+            const auto collisions = full_scan
+                ? BatchSelfCollisionDetector::detectOwners(
+                      current_batch.owners())
+                : persistent_index->detectChanged(
+                      current_batch.owners(),
+                      current_changed_owner_indices);
             if (!collisions.hasValue())
                 return Result<LayerStepResult, SpatialError>::failure(
                     collisions.error());
+            owner_pair_total += collisions.value().diagnostics.owner_pairs;
+            triangle_pair_total += collisions.value().diagnostics.unique_pairs;
+            triangle_aabb_rejections +=
+                collisions.value().diagnostics.aabb_rejections;
+            exact_test_total += collisions.value().diagnostics.exact_tests;
+            illegal_owner_pair_total +=
+                collisions.value().diagnostics.illegal_owner_pairs;
             if (collisions.value().illegal_owner_ids.empty())
                 break;
 
-            std::vector<bool> stopped(current_batch->owners().size(), false);
+            std::vector<std::size_t> newly_stopped;
             for (const std::uint32_t owner :
                  collisions.value().illegal_owner_ids)
             {
-                if (owner >= stopped.size())
+                const auto candidate = current_owner_indices.find(owner);
+                if (candidate == current_owner_indices.end())
                     return Result<LayerStepResult, SpatialError>::failure(
                         SpatialError::InvalidTopologyReference);
-                stopped[owner] = true;
+                if (!stopped[candidate->second])
+                {
+                    stopped[candidate->second] = true;
+                    newly_stopped.push_back(candidate->second);
+                }
             }
-            remaining = compactStep(current_front, remaining, stopped);
-            if (remaining.next_front.faces.empty())
-                break;
-            const auto candidates = buildLayerBoundaryCandidates(
-                current_front, remaining);
-            if (!candidates.hasValue())
+            if (newly_stopped.empty()) break;
+            const auto updated = current_batch.deactivateOwners(newly_stopped);
+            if (!updated.hasValue())
                 return Result<LayerStepResult, SpatialError>::failure(
-                    candidates.error());
-            auto rebuilt = LayerBoundaryBatch::build(candidates.value());
-            if (!rebuilt.hasValue())
-                return Result<LayerStepResult, SpatialError>::failure(
-                    rebuilt.error());
-            rebuilt_batch.emplace(std::move(rebuilt.value()));
-            current_batch = &*rebuilt_batch;
+                    updated.error());
+            current_changed_owner_indices = updated.value();
+            if (current_changed_owner_indices.empty()) break;
+            full_scan = false;
         }
+        if (std::any_of(stopped.begin(), stopped.end(),
+                        [](bool value) { return value; }))
+            remaining = compactStep(current_front, obstacle_step, stopped);
+        std::cerr << "temporary self-collision scans full_rounds="
+                  << full_scan_rounds
+                  << " local_rounds=" << local_scan_rounds
+                  << " changed_owners=" << changed_owner_total
+                  << " owner_pairs=" << owner_pair_total
+                  << " triangle_pairs=" << triangle_pair_total
+                  << " triangle_aabb_rejections="
+                  << triangle_aabb_rejections
+                  << " exact_tests=" << exact_test_total
+                  << " illegal_owner_pairs=" << illegal_owner_pair_total
+                  << '\n';
         return Result<LayerStepResult, SpatialError>::success(
             std::move(remaining));
+    }
+
+    Result<LayerStepResult, SpatialError>
+    LayerCollisionChecker::filterSelfCollisions(
+        const GrowthFront &current_front,
+        const LayerStepResult &obstacle_step,
+        const LayerBoundaryBatch &batch) const
+    {
+        LayerBoundaryBatch mutable_batch = batch;
+        return filterSelfCollisions(
+            current_front, obstacle_step, mutable_batch);
     }
 }

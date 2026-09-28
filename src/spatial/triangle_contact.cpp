@@ -832,6 +832,39 @@ namespace boundary_mesh
                        edge_source.points[second]) <= tolerance_squared;
         }
 
+        bool oppositeEdgeCrossesTriangleInterior(
+            const CollisionTriangle &edge_source,
+            std::size_t shared_vertex,
+            const CollisionTriangle &target)
+        {
+            const Point3 &first = edge_source.points[(shared_vertex + 1) % 3];
+            const Point3 &second = edge_source.points[(shared_vertex + 2) % 3];
+            const Point3 &a = target.points[0];
+            const Point3 &b = target.points[1];
+            const Point3 &c = target.points[2];
+            const Vector3 normal = (b - a).cross(c - a);
+            const Scalar normal_squared = normal.squaredNorm();
+            if (normal_squared == Scalar{0}) return false;
+
+            const Scalar first_side = normal.dot(first - a);
+            const Scalar second_side = normal.dot(second - a);
+            if (!((first_side < Scalar{0} && second_side > Scalar{0}) ||
+                  (first_side > Scalar{0} && second_side < Scalar{0})))
+                return false;
+
+            const Scalar fraction = first_side /
+                (first_side - second_side);
+            const Point3 crossing = first + fraction * (second - first);
+            const Scalar u = normal.dot((b - crossing).cross(c - crossing)) /
+                normal_squared;
+            const Scalar v = normal.dot((c - crossing).cross(a - crossing)) /
+                normal_squared;
+            const Scalar w = Scalar{1} - u - v;
+            constexpr Scalar margin =
+                Scalar{128} * std::numeric_limits<Scalar>::epsilon();
+            return u > margin && v > margin && w > margin;
+        }
+
     }
 
     Result<TriangleContactKind, SpatialError>
@@ -938,6 +971,13 @@ namespace boundary_mesh
         if (shared.count == 1 &&
             feature.kind != SharedFeatureKind::None)
         {
+            if (evidence.value().kind ==
+                    TriangleContactKind::ProperIntersect &&
+                (oppositeEdgeCrossesTriangleInterior(
+                     first, shared.first_indices[0], second) ||
+                 oppositeEdgeCrossesTriangleInterior(
+                     second, shared.second_indices[0], first)))
+                return Result<bool, SpatialError>::success(true);
             return Result<bool, SpatialError>::success(
                 oppositeEdgeIntersectsTriangle(
                     first,

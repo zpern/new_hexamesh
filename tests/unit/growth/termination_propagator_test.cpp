@@ -14,6 +14,28 @@
 
 using namespace boundary_mesh;
 
+namespace
+{
+    bool sameConstraints(
+        const FaceLayerConstraintTable &left,
+        const FaceLayerConstraintTable &right)
+    {
+        if (left.entries().size() != right.entries().size()) return false;
+        for (std::size_t index = 0; index < left.entries().size(); ++index)
+        {
+            const auto &a = left.entries()[index];
+            const auto &b = right.entries()[index];
+            if (a.source_face_id != b.source_face_id ||
+                a.requested_layer_count != b.requested_layer_count ||
+                a.allowed_layer_count != b.allowed_layer_count ||
+                a.limit_kind != b.limit_kind ||
+                a.direct_reason != b.direct_reason)
+                return false;
+        }
+        return true;
+    }
+}
+
 SurfaceMesh makeDelayedSelectionMesh()
 {
     SurfaceMesh mesh;
@@ -98,6 +120,22 @@ int main()
     assert(runtime.find(2)->direct_reason == FaceStopReason::Collision);
     assert(runtime.find(1)->allowed_layer_count == 5);
     assert(runtime.find(4)->allowed_layer_count == 6);
+    auto runtime_full_fixed_point = runtime;
+    assert(propagator.value().propagateInitial(
+        runtime_full_fixed_point, 1).hasValue());
+    assert(sameConstraints(runtime, runtime_full_fixed_point));
+
+    auto seeded_constraints = initial.value();
+    seeded_constraints.find(2)->allowed_layer_count = 2;
+    seeded_constraints.find(2)->limit_kind =
+        FaceLayerLimitKind::NeighborConstraint;
+    auto seeded_full_fixed_point = seeded_constraints;
+    assert(propagator.value().propagateInitial(
+        seeded_full_fixed_point, 1).hasValue());
+    const auto seeded_propagation = propagator.value().propagateFrom(
+        seeded_constraints, {2}, 1);
+    assert(seeded_propagation.hasValue());
+    assert(sameConstraints(seeded_constraints, seeded_full_fixed_point));
 
     LayerStepResult actual_candidates;
     actual_candidates.layer = 5;
@@ -131,6 +169,28 @@ int main()
            std::vector<SurfaceFaceId>{2});
     assert(actual_constraints.find(4)->allowed_layer_count == 4);
     assert((actual_pending == std::vector<SurfaceFaceId>{2}));
+    auto actual_full_fixed_point = actual_constraints;
+    assert(propagator.value().propagateInitial(
+        actual_full_fixed_point, 1).hasValue());
+    assert(sameConstraints(actual_constraints, actual_full_fixed_point));
+
+    auto unordered_candidates = actual_candidates;
+    std::swap(unordered_candidates.next_front.faces[0],
+              unordered_candidates.next_front.faces[1]);
+    std::swap(unordered_candidates.next_front.source_face_ids[0],
+              unordered_candidates.next_front.source_face_ids[1]);
+    std::swap(unordered_candidates.previous_front_face_indices[0],
+              unordered_candidates.previous_front_face_indices[1]);
+    auto unordered_constraints = initial.value();
+    unordered_constraints.find(1)->allowed_layer_count = 4;
+    std::vector<SurfaceFaceId> unordered_pending;
+    const auto unordered_filtered =
+        propagator.value().filterSingleHighEdgeCandidates(
+            front.value(), unordered_candidates, unordered_constraints, 1,
+            unordered_pending);
+    assert(unordered_filtered.hasValue());
+    assert((unordered_filtered.value().next_front.source_face_ids ==
+            std::vector<SurfaceFaceId>{2}));
 
     LayerStepResult zero_layer_candidates = actual_candidates;
     zero_layer_candidates.layer = 1;

@@ -27,6 +27,12 @@ namespace boundary_mesh
             std::uint32_t max_difference) const;
 
         Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>
+        propagateFrom(
+            FaceLayerConstraintTable &constraints,
+            const std::vector<SurfaceFaceId> &changed_seeds,
+            std::uint32_t max_difference) const;
+
+        Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>
         applyDirectStops(
             FaceLayerConstraintTable &constraints,
             const std::vector<FaceStopEvent> &events,
@@ -65,7 +71,8 @@ namespace boundary_mesh
         Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>
         propagate(
             FaceLayerConstraintTable &constraints,
-            std::uint32_t max_difference) const;
+            std::uint32_t max_difference,
+            const std::vector<SurfaceFaceId> *changed_seeds = nullptr) const;
 
         std::vector<NeighborEntry> entries_; // 按源面编号升序保存的邻接图
     };

@@ -16,13 +16,46 @@ namespace boundary_mesh
     {
         IncrementalCollisionIndex index;
         index.options_ = options;
+        std::size_t count = 0;
+        for (const auto &group : groups)
+        {
+            if (group.triangles.size() >
+                std::numeric_limits<CollisionPrimitiveId>::max() - count)
+                return Result<IncrementalCollisionIndex, SpatialError>::failure(
+                    SpatialError::PrimitiveIdOverflow);
+            count += group.triangles.size();
+        }
+        index.primitives_.reserve(count);
         for (CollisionPrimitiveGroup &group : groups)
         {
-            const auto inserted = index.insertGroup(std::move(group));
-            if (!inserted.hasValue())
+            auto inserted = index.groups_.emplace(
+                group.id, std::vector<CollisionPrimitiveId>{});
+            if (!inserted.second)
                 return Result<IncrementalCollisionIndex, SpatialError>::failure(
-                    inserted.error());
+                    SpatialError::InvalidTopologyReference);
+            auto &ids = inserted.first->second;
+            ids.reserve(group.triangles.size());
+            for (auto &triangle : group.triangles)
+            {
+                const auto box = makeAabb(
+                    triangle.points[0], triangle.points[1], triangle.points[2]);
+                if (!box.hasValue())
+                    return Result<IncrementalCollisionIndex, SpatialError>::failure(
+                        box.error());
+                if ((triangle.points[1] - triangle.points[0])
+                        .cross(triangle.points[2] - triangle.points[0])
+                        .squaredNorm() == Scalar{0})
+                    return Result<IncrementalCollisionIndex, SpatialError>::failure(
+                        SpatialError::DegenerateTriangle);
+                ids.push_back(static_cast<CollisionPrimitiveId>(
+                    index.primitives_.size()));
+                index.primitives_.push_back({
+                    std::move(triangle), box.value(), group.id, true});
+            }
         }
+        index.diagnostics_.inserts = count;
+        index.diagnostics_.active_primitives = count;
+        index.query_marks_.resize(index.primitives_.size(), 0);
         index.rebuildTree();
         index.diagnostics_.rebuilds = 0;
         index.diagnostics_.root_expansions = 0;
@@ -76,6 +109,7 @@ namespace boundary_mesh
         groups_.emplace(group.id, std::move(ids));
         diagnostics_.inserts += count;
         diagnostics_.active_primitives += count;
+        query_marks_.resize(primitives_.size(), 0);
         if (!had_root || expands_root)
         {
             if (expands_root) ++diagnostics_.root_expansions;
@@ -107,23 +141,37 @@ namespace boundary_mesh
         const Aabb &bounds,
         std::optional<CollisionGroupId> ignored_group) const
     {
-        ++diagnostics_.queries;
         std::vector<CollisionPrimitiveId> candidates;
-        if (!nodes_.empty()) queryNode(0, bounds, candidates);
-        std::sort(candidates.begin(), candidates.end());
-        candidates.erase(std::unique(candidates.begin(), candidates.end()),
-                         candidates.end());
-        std::vector<CollisionPrimitiveId> result;
-        for (const CollisionPrimitiveId id : candidates)
+        queryCandidates(bounds, candidates, ignored_group);
+        return candidates;
+    }
+
+    void IncrementalCollisionIndex::queryCandidates(
+        const Aabb &bounds,
+        std::vector<CollisionPrimitiveId> &result,
+        std::optional<CollisionGroupId> ignored_group) const
+    {
+        ++diagnostics_.queries;
+        result.clear();
+        ++query_epoch_;
+        if (query_epoch_ == 0)
+        {
+            std::fill(query_marks_.begin(), query_marks_.end(), 0);
+            query_epoch_ = 1;
+        }
+        if (!nodes_.empty())
+            queryNode(0, bounds, result, query_epoch_);
+        std::size_t write = 0;
+        for (const CollisionPrimitiveId id : result)
         {
             const StoredPrimitive &primitive = primitives_[static_cast<std::size_t>(id)];
             if (!primitive.active ||
                 (ignored_group.has_value() && primitive.group == *ignored_group))
                 continue;
-            result.push_back(id);
+            result[write++] = id;
         }
+        result.resize(write);
         diagnostics_.broad_phase_candidates += result.size();
-        return result;
     }
 
     std::vector<CollisionPrimitiveId>
@@ -131,15 +179,135 @@ namespace boundary_mesh
         const CollisionTriangle &triangle,
         std::optional<CollisionGroupId> ignored_group) const
     {
+        std::vector<CollisionPrimitiveId> candidates;
+        std::vector<CollisionPrimitiveId> result;
+        queryIllegalContacts(
+            triangle, candidates, result, ignored_group);
+        return result;
+    }
+
+    void IncrementalCollisionIndex::queryIllegalContacts(
+        const CollisionTriangle &triangle,
+        std::vector<CollisionPrimitiveId> &candidate_scratch,
+        std::vector<CollisionPrimitiveId> &result,
+        std::optional<CollisionGroupId> ignored_group) const
+    {
+        const auto bounds = makeAabb(
+            triangle.points[0], triangle.points[1], triangle.points[2]);
+        result.clear();
+        candidate_scratch.clear();
+        if (!bounds.hasValue()) return;
+        queryCandidates(bounds.value(), candidate_scratch, ignored_group);
+        for (const CollisionPrimitiveId id : candidate_scratch)
+        {
+            ++diagnostics_.exact_tests;
+            const auto illegal = hasIllegalTriangleContact(triangle, primitive(id));
+            if (!illegal.hasValue() || illegal.value()) result.push_back(id);
+        }
+    }
+
+    std::vector<CollisionPrimitiveId>
+    IncrementalCollisionIndex::queryIllegalContactsAfter(
+        const CollisionTriangle &triangle,
+        CollisionPrimitiveId minimum_candidate_id_exclusive,
+        std::optional<CollisionGroupId> ignored_group) const
+    {
+        std::vector<CollisionPrimitiveId> candidates;
+        std::vector<CollisionPrimitiveId> result;
+        queryIllegalContactsAfter(
+            triangle, minimum_candidate_id_exclusive, candidates, result,
+            ignored_group);
+        return result;
+    }
+
+    void IncrementalCollisionIndex::queryIllegalContactsAfter(
+        const CollisionTriangle &triangle,
+        CollisionPrimitiveId minimum_candidate_id_exclusive,
+        std::vector<CollisionPrimitiveId> &candidate_scratch,
+        std::vector<CollisionPrimitiveId> &result,
+        std::optional<CollisionGroupId> ignored_group) const
+    {
+        const auto bounds = makeAabb(
+            triangle.points[0], triangle.points[1], triangle.points[2]);
+        result.clear();
+        candidate_scratch.clear();
+        if (!bounds.hasValue()) return;
+        queryCandidates(bounds.value(), candidate_scratch, ignored_group);
+        for (const CollisionPrimitiveId id : candidate_scratch)
+        {
+            if (id <= minimum_candidate_id_exclusive) continue;
+            ++diagnostics_.exact_tests;
+            const auto illegal = hasIllegalTriangleContact(
+                triangle, primitive(id));
+            if (!illegal.hasValue() || illegal.value()) result.push_back(id);
+        }
+    }
+
+    std::vector<CollisionPrimitiveId>
+    IncrementalCollisionIndex::queryIllegalContacts(
+        const CollisionTriangle &triangle,
+        const std::set<CollisionGroupId> &ignored_groups) const
+    {
         const auto bounds = makeAabb(
             triangle.points[0], triangle.points[1], triangle.points[2]);
         if (!bounds.hasValue()) return {};
         std::vector<CollisionPrimitiveId> result;
-        for (const CollisionPrimitiveId id :
-             queryCandidates(bounds.value(), ignored_group))
+        for (const CollisionPrimitiveId id : queryCandidates(bounds.value()))
         {
+            const StoredPrimitive &stored =
+                primitives_[static_cast<std::size_t>(id)];
+            if (ignored_groups.find(stored.group) != ignored_groups.end())
+                continue;
             ++diagnostics_.exact_tests;
-            const auto illegal = hasIllegalTriangleContact(triangle, primitive(id));
+            const auto illegal = hasIllegalTriangleContact(
+                triangle, stored.triangle);
+            if (!illegal.hasValue() || illegal.value()) result.push_back(id);
+        }
+        return result;
+    }
+
+    std::vector<CollisionPrimitiveId>
+    IncrementalCollisionIndex::queryIllegalContacts(
+        const CollisionTriangle &triangle,
+        const std::vector<CollisionPrimitiveId> &candidates,
+        std::optional<CollisionGroupId> ignored_group) const
+    {
+        const auto bounds = makeAabb(
+            triangle.points[0], triangle.points[1], triangle.points[2]);
+        if (!bounds.hasValue()) return {};
+        std::vector<CollisionPrimitiveId> result;
+        for (const auto id : candidates)
+        {
+            const auto &stored = primitives_[static_cast<std::size_t>(id)];
+            if (!stored.active || (ignored_group && stored.group == *ignored_group) ||
+                !overlaps(stored.bounds, bounds.value())) continue;
+            ++diagnostics_.exact_tests;
+            const auto illegal = hasIllegalTriangleContact(triangle, stored.triangle);
+            if (!illegal.hasValue() || illegal.value()) result.push_back(id);
+        }
+    }
+
+    std::vector<CollisionPrimitiveId>
+    IncrementalCollisionIndex::queryIllegalContacts(
+        const CollisionTriangle &triangle,
+        const std::vector<CollisionPrimitiveId> &candidates,
+        const std::set<CollisionGroupId> &ignored_groups) const
+    {
+        const auto bounds = makeAabb(
+            triangle.points[0], triangle.points[1], triangle.points[2]);
+        if (!bounds.hasValue()) return {};
+        std::vector<CollisionPrimitiveId> result;
+        for (const auto id : candidates)
+        {
+            const StoredPrimitive &stored =
+                primitives_[static_cast<std::size_t>(id)];
+            if (!stored.active ||
+                ignored_groups.find(stored.group) != ignored_groups.end() ||
+                !overlaps(stored.bounds, bounds.value()))
+                continue;
+            ++diagnostics_.exact_tests;
+            const auto illegal = hasIllegalTriangleContact(
+                triangle, stored.triangle);
             if (!illegal.hasValue() || illegal.value()) result.push_back(id);
         }
         return result;
@@ -205,6 +373,7 @@ namespace boundary_mesh
 
     void IncrementalCollisionIndex::rebuildTree()
     {
+        ++diagnostics_.tree_builds;
         nodes_.clear();
         std::vector<CollisionPrimitiveId> ids;
         for (std::size_t index = 0; index < primitives_.size(); ++index)
@@ -303,7 +472,8 @@ namespace boundary_mesh
     void IncrementalCollisionIndex::queryNode(
         std::size_t node_index,
         const Aabb &bounds,
-        std::vector<CollisionPrimitiveId> &result) const
+        std::vector<CollisionPrimitiveId> &result,
+        std::uint64_t query_epoch) const
     {
         const Node &node = nodes_[node_index];
         if (!overlaps(node.bounds, bounds)) return;
@@ -311,11 +481,21 @@ namespace boundary_mesh
         {
             for (const CollisionPrimitiveId id : node.primitives)
                 if (overlaps(primitives_[static_cast<std::size_t>(id)].bounds, bounds))
+                {
+                    ++diagnostics_.candidate_visits;
+                    const auto slot = static_cast<std::size_t>(id);
+                    if (query_marks_[slot] == query_epoch)
+                    {
+                        ++diagnostics_.duplicate_candidate_visits;
+                        continue;
+                    }
+                    query_marks_[slot] = query_epoch;
                     result.push_back(id);
+                }
             return;
         }
         for (const std::size_t child : node.children)
             if (child != std::numeric_limits<std::size_t>::max())
-                queryNode(child, bounds, result);
+                queryNode(child, bounds, result, query_epoch);
     }
 }

@@ -163,17 +163,33 @@ namespace boundary_mesh
     std::vector<std::size_t> CollisionIndex::queryIllegalContacts(
         const CollisionTriangle &query) const
     {
+        std::vector<std::size_t> candidates;
+        std::vector<std::size_t> traversal;
+        std::vector<std::size_t> contacts;
+        queryIllegalContacts(query, candidates, traversal, contacts);
+        return contacts;
+    }
+
+    void CollisionIndex::queryIllegalContacts(
+        const CollisionTriangle &query,
+        std::vector<std::size_t> &candidate_scratch,
+        std::vector<std::size_t> &traversal_scratch,
+        std::vector<std::size_t> &result) const
+    {
         const auto bounds = makeAabb(
             query.points[0],
             query.points[1],
             query.points[2]);
+        result.clear();
+        candidate_scratch.clear();
+        traversal_scratch.clear();
         if (!bounds.hasValue())
         {
-            return {};
+            return;
         }
 
-        std::vector<std::size_t> result;
-        for (const std::size_t primitive : tree_.query(bounds.value()))
+        tree_.query(bounds.value(), candidate_scratch, traversal_scratch);
+        for (const std::size_t primitive : candidate_scratch)
         {
             const auto illegal = hasIllegalTriangleContact(
                 query,
@@ -183,7 +199,6 @@ namespace boundary_mesh
                 result.push_back(primitive);
             }
         }
-        return result;
     }
 
     std::size_t CollisionIndex::primitiveCount() const noexcept
@@ -237,6 +252,42 @@ namespace boundary_mesh
                 return Result<CollisionIndex, SpatialError>::failure(
                     status.error());
             }
+        }
+        return CollisionIndex::build(std::move(triangles));
+    }
+
+    Result<CollisionIndex, SpatialError> buildNonWallSurfaceCollisionIndex(
+        const SurfaceMesh &mesh,
+        const SurfaceTopology &topology)
+    {
+        if (mesh.faces.size() != mesh.face_tags.size() ||
+            topology.faceEdges().size() != mesh.faces.size() ||
+            topology.faceNeighbors().size() != mesh.faces.size() ||
+            topology.vertexFaces().size() != mesh.vertices.size() ||
+            mesh.faces.size() > static_cast<std::size_t>(
+                std::numeric_limits<SurfaceFaceId>::max()))
+            return Result<CollisionIndex, SpatialError>::failure(
+                SpatialError::InvalidTopologyReference);
+
+        std::vector<CollisionTriangle> triangles;
+        for (std::size_t face_index = 0;
+             face_index < mesh.faces.size();
+             ++face_index)
+        {
+            const SurfaceBoundaryKind kind =
+                mesh.face_tags[face_index].kind;
+            if (kind == SurfaceBoundaryKind::Wall ||
+                !CollisionBoundaryPolicy{}.isObstacle(
+                    kind, CollisionSurfaceOrigin::InputSurface))
+                continue;
+            const auto status = appendFaceTriangles(
+                mesh,
+                mesh.faces[face_index],
+                static_cast<SurfaceFaceId>(face_index),
+                triangles);
+            if (!status.hasValue())
+                return Result<CollisionIndex, SpatialError>::failure(
+                    status.error());
         }
         return CollisionIndex::build(std::move(triangles));
     }

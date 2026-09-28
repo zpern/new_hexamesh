@@ -10,6 +10,7 @@
 
 #include <boundary_mesh/growth/exposed_boundary.hpp>
 #include <boundary_mesh/spatial/collision_index.hpp>
+#include <boundary_mesh/spatial/incremental_collision_index.hpp>
 #include <boundary_mesh/spatial/sliding_intersection_index.hpp>
 #include <boundary_mesh/transition/layer_quad_diagonal_table.hpp>
 
@@ -38,6 +39,11 @@ namespace boundary_mesh
         BoundaryOwnerRole role{};
     };
 
+    struct UnresolvedTransitionCollision
+    {
+        std::vector<LayerBoundaryOwnerKey> owners;
+    };
+
     inline bool operator==(
         const LayerBoundaryOwnerKey &left,
         const LayerBoundaryOwnerKey &right)
@@ -59,6 +65,19 @@ namespace boundary_mesh
         const LayerBoundaryOwnerKey &right)
     {
         return !(left == right);
+    }
+
+    inline void appendLayerBoundaryRollbackFaces(
+        const LayerBoundaryOwner &owner,
+        std::vector<SurfaceFaceId> &rollback_faces)
+    {
+        if (!owner.rollback_high_faces.empty())
+            rollback_faces.insert(
+                rollback_faces.end(),
+                owner.rollback_high_faces.begin(),
+                owner.rollback_high_faces.end());
+        else if (owner.role == BoundaryOwnerRole::RegularCandidate)
+            rollback_faces.push_back(owner.source_face_id);
     }
 
     using TransitionVertexTuple =
@@ -101,23 +120,43 @@ namespace boundary_mesh
     struct TransitionBoundaryInput
     {
         std::vector<OwnedBoundaryTriangle> candidate_triangles;
+        // True only when the rule-layer pipeline has already checked all
+        // RegularCandidate geometry against static obstacles and itself.
+        // Resolver collision state still indexes those triangles so
+        // transition geometry can query them.
+        bool regular_candidate_geometry_prevalidated{};
         std::vector<LayerDiagonalRequirement> diagonal_requirements;
         const CollisionIndex *original_surface{};
         const ExposedBoundaryTracker *historical_boundary{};
         const IncrementalCollisionIndex *historical_index{};
+        // historical_index contains both regular exposed faces and committed
+        // transition faces when this flag is set.
+        bool historical_index_includes_transition{};
         const std::vector<OwnedBoundaryTriangle>
             *prior_transition_boundary{};
+        const CollisionIndex *prior_transition_index{};
+        const IncrementalCollisionIndex *prior_transition_dynamic_index{};
         const SlidingIntersectionIndex *sliding_surface{};
     };
 
     using TransitionBoundaryError = std::variant<
         SpatialError,
-        ConflictingLayerQuadDiagonal>;
+        ConflictingLayerQuadDiagonal,
+        UnresolvedTransitionCollision>;
 
     struct TransitionCollisionReport
     {
         std::vector<LayerBoundaryOwner> colliding_owners;
         std::vector<SurfaceFaceId> rollback_faces;
+    };
+
+    struct TransitionStaticObstacleQueryScratch
+    {
+        std::vector<std::size_t> candidate_ids;
+        std::vector<std::size_t> traversal_nodes;
+        std::vector<std::size_t> contact_ids;
+        std::vector<std::uint64_t> incremental_candidate_ids;
+        std::vector<std::uint64_t> incremental_contact_ids;
     };
 
     class TransitionStaticObstacleContext
@@ -129,17 +168,22 @@ namespace boundary_mesh
         static BuildResult build(const TransitionBoundaryInput &input);
 
         Result<bool, TransitionBoundaryError> intersects(
-            const OwnedBoundaryTriangle &triangle) const;
+            const OwnedBoundaryTriangle &triangle,
+            std::vector<TrianglePoints> *collided_faces = nullptr,
+            TransitionStaticObstacleQueryScratch *scratch = nullptr) const;
 
     private:
         const CollisionIndex *original_surface_{};
         const ExposedBoundaryTracker *historical_boundary_{};
         const IncrementalCollisionIndex *historical_index_{};
+        bool historical_index_includes_transition_{};
         const std::vector<OwnedBoundaryTriangle>
             *prior_transition_boundary_{};
         const SlidingIntersectionIndex *sliding_surface_{};
         std::optional<CollisionIndex> immutable_historical_index_;
+        const CollisionIndex *shared_prior_transition_index_{};
         std::optional<CollisionIndex> prior_transition_index_;
+        const IncrementalCollisionIndex *shared_prior_transition_dynamic_index_{};
     };
 
     CollisionTriangle makeTransitionCollisionTriangle(

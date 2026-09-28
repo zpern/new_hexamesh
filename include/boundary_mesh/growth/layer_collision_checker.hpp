@@ -71,6 +71,12 @@ namespace boundary_mesh
         filterSelfCollisions(
             const GrowthFront &current_front,
             const LayerStepResult &obstacle_step,
+            LayerBoundaryBatch &batch) const;
+
+        Result<LayerStepResult, SpatialError>
+        filterSelfCollisions(
+            const GrowthFront &current_front,
+            const LayerStepResult &obstacle_step,
             const LayerBoundaryBatch &batch) const;
     };
 }

@@ -1,8 +1,12 @@
 #include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <map>
 #include <optional>
 #include <type_traits>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -18,6 +22,23 @@ namespace boundary_mesh
 {
     namespace
     {
+        bool traceTransitionFace(SurfaceFaceId id)
+        {
+            const char *value = std::getenv("BOUNDARY_MESH_TRACE_FACE");
+            if (value == nullptr) return false;
+            while (*value != '\0')
+            {
+                char *end = nullptr;
+                const auto parsed = std::strtoull(value, &end, 10);
+                if (end != value && parsed == id) return true;
+                if (end == value) break;
+                value = end;
+                while (*value == ',' || *value == ';' || *value == ' ')
+                    ++value;
+            }
+            return false;
+        }
+
         std::uint64_t cellKey(
             SurfaceFaceId id,
             std::uint32_t layer)
@@ -65,18 +86,13 @@ namespace boundary_mesh
         }
 
         const LayerVertexRecord *layerRecord(
-            const LayerVertexTable &table,
+            const std::unordered_map<std::uint64_t, const LayerVertexRecord *> &table,
             VertexId source_vertex_id,
             std::uint32_t branch_id)
         {
-            const auto found = std::find_if(
-                table.begin(), table.end(),
-                [source_vertex_id, branch_id](const auto &record)
-                {
-                    return record.source_vertex_id == source_vertex_id &&
-                           record.branch_id == branch_id;
-                });
-            return found == table.end() ? nullptr : &*found;
+            const auto key = (static_cast<std::uint64_t>(source_vertex_id) << 32) | branch_id;
+            const auto found = table.find(key);
+            return found == table.end() ? nullptr : found->second;
         }
 
         struct FinalQuad
@@ -86,9 +102,10 @@ namespace boundary_mesh
             std::uint32_t region{};
             std::array<VertexId, 4> source_ids{};
             std::array<VertexId, 4> top_ids{};
-            QuadDiagonal diagonal{};
-            std::vector<std::size_t> high_edges;
-            std::vector<Triangle> top_faces;
+        QuadDiagonal diagonal{};
+        std::vector<std::size_t> high_edges;
+        std::vector<Triangle> top_faces;
+        bool split_failed_column{};
         };
 
         struct FinalTriangle
@@ -268,6 +285,63 @@ namespace boundary_mesh
             top = std::move(exposed);
         }
 
+        struct HexaColumnSplitEvaluation
+        {
+            QuadDiagonal diagonal{};
+            std::size_t bad_prism_count{};
+            Scalar worst_skewness{};
+            std::vector<std::array<Prism,2>> split_cells;
+        };
+
+        std::array<Prism,2> splitHexa(
+            const Hexa &hexa, QuadDiagonal diagonal)
+        {
+            const auto &v = hexa.vertex_ids;
+            if (diagonal == QuadDiagonal::ZeroTwo)
+                return {Prism{{v[0],v[1],v[2],v[4],v[5],v[6]}},
+                        Prism{{v[0],v[2],v[3],v[4],v[6],v[7]}}};
+            return {Prism{{v[1],v[2],v[3],v[5],v[6],v[7]}},
+                    Prism{{v[1],v[3],v[0],v[5],v[7],v[4]}}};
+        }
+
+        std::optional<HexaColumnSplitEvaluation> evaluateColumnSplit(
+            const std::vector<Hexa> &hexas,
+            const std::vector<Point3> &vertices,
+            QuadDiagonal diagonal)
+        {
+            if (hexas.empty()) return std::nullopt;
+            HexaColumnSplitEvaluation result;
+            result.diagonal = diagonal;
+            result.split_cells.reserve(hexas.size());
+            for (const Hexa &hexa : hexas)
+            {
+                const auto prisms = splitHexa(hexa, diagonal);
+                for (const Prism &prism : prisms)
+                {
+                    PrismPoints points{};
+                    for (std::size_t corner = 0; corner < 6; ++corner)
+                    {
+                        const VertexId id = prism.vertex_ids[corner];
+                        if (static_cast<std::size_t>(id) >= vertices.size())
+                            return std::nullopt;
+                        points[corner] = vertices[id];
+                    }
+                    const auto quality = evaluatePrism(
+                        points, VolumeCellQualityOptions{Scalar{1}});
+                    if (!quality.hasValue() ||
+                        quality.value().validity != VolumeCellValidity::Valid ||
+                        !std::isfinite(quality.value().skewness))
+                        return std::nullopt;
+                    if (quality.value().skewness > Scalar{0.9})
+                        ++result.bad_prism_count;
+                    result.worst_skewness = std::max(
+                        result.worst_skewness, quality.value().skewness);
+                }
+                result.split_cells.push_back(prisms);
+            }
+            return result;
+        }
+
     }
 
 
@@ -276,11 +350,19 @@ namespace boundary_mesh
         const SurfaceMesh &surface_mesh,
         const GrowthFront &initial_front,
         RegularLayerGrowthResult result,
-        const std::vector<ResolvedTransitionTopology> &resolved_topology)
+        const std::vector<ResolvedTransitionTopology> &resolved_topology,
+        bool split_failed_hexa_columns)
     {
         using GrowthResult = Result<
             RegularLayerGrowthResult, IncrementalLayerGrowthError>;
+        const auto finalization_started = std::chrono::steady_clock::now();
         LayerQuadDiagonalTable diagonals;
+        std::unordered_map<std::uint64_t, const LayerVertexRecord *> layer_records;
+        layer_records.reserve(result.layer_vertices.size());
+        for (const auto &record : result.layer_vertices)
+            layer_records.try_emplace(
+                (static_cast<std::uint64_t>(record.source_vertex_id) << 32) | record.branch_id,
+                &record);
         SurfaceMesh triangular_top;
         triangular_top.vertices = result.mesh.vertices;
         std::unordered_set<TriangleKey,TriangleKeyHash>
@@ -291,8 +373,10 @@ namespace boundary_mesh
         std::size_t diagnostic_internal_splits = 0;
         std::size_t diagnostic_external_bad = 0;
         std::size_t diagnostic_internal_bad = 0;
+        std::size_t terminal_center_solves = 0;
         const auto count_bad = [&](const auto &cells, bool external)
         {
+#ifndef NDEBUG
             for (const auto &cell : cells)
             {
                 const auto quality = std::visit([&](const auto &value)
@@ -333,6 +417,10 @@ namespace boundary_mesh
                 if (quality.hasValue() && quality.value().skewness > Scalar{0.9})
                     external ? ++diagnostic_external_bad : ++diagnostic_internal_bad;
             }
+#else
+            (void)cells;
+            (void)external;
+#endif
         };
         std::unordered_map<SurfaceFaceId, const SurfaceFace *> source_faces;
         for (std::size_t index = 0;
@@ -438,7 +526,7 @@ namespace boundary_mesh
                             const auto &vertex = initial_front.vertices[
                                 quad->vertex_ids[local]];
                             const auto *record = layerRecord(
-                                result.layer_vertices,
+                                layer_records,
                                 vertex.source_vertex_id,
                                 vertex.branch_id);
                             if (record != nullptr &&
@@ -447,33 +535,43 @@ namespace boundary_mesh
                                 selector_high[local] = record->layer_vertex_ids[
                                     growth->accepted_layer_count + 1];
                         }
-                    const auto selection = selectQuadHighNeighbors({
-                        id, growth->accepted_layer_count, high_neighbors,
-                        top_ids, selector_high, &result.mesh.vertices, 1e-12});
-                    if (!selection.hasValue())
-                        return GrowthResult::failure(
-                            IncrementalLayerGrowthError{
-                                atStage(selection.error(),6)});
-                    const auto diagonal = diagonals.resolve(
-                        {id, growth->accepted_layer_count},
-                        oriented(top_ids, result.mesh.vertices),
-                        selection.value().required_low_diagonal, 1e-12);
-                    if (!diagonal.hasValue())
-                        return GrowthResult::failure(
-                            IncrementalLayerGrowthError{
-                                diagonal.error()});
                     const auto stable_position = stable_topology.find(
                         cellKey(id, growth->accepted_layer_count));
                     const ResolvedTransitionTopology *stable =
                         stable_position == stable_topology.end()
                             ? nullptr : stable_position->second;
-                    const QuadDiagonal final_diagonal =
-                        stable != nullptr && stable->low_diagonal.has_value()
-                            ? *stable->low_diagonal : diagonal.value();
-                    const std::vector<std::size_t> final_high_edges =
-                        stable != nullptr
-                            ? stable->retained_local_edges
-                            : selection.value().retained_local_edges;
+                    QuadDiagonal final_diagonal{};
+                    std::vector<std::size_t> final_high_edges;
+                    const bool has_stable_quad_topology =
+                        stable != nullptr &&
+                        stable->low_diagonal.has_value();
+                    if (has_stable_quad_topology)
+                    {
+                        final_diagonal = *stable->low_diagonal;
+                        final_high_edges = stable->retained_local_edges;
+                    }
+                    else
+                    {
+                        const auto selection = selectQuadHighNeighbors({
+                            id, growth->accepted_layer_count, high_neighbors,
+                            top_ids, selector_high, &result.mesh.vertices,
+                            1e-12});
+                        if (!selection.hasValue())
+                            return GrowthResult::failure(
+                                IncrementalLayerGrowthError{
+                                    atStage(selection.error(),6)});
+                        const auto diagonal = diagonals.resolve(
+                            {id, growth->accepted_layer_count},
+                            oriented(top_ids, result.mesh.vertices),
+                            selection.value().required_low_diagonal, 1e-12);
+                        if (!diagonal.hasValue())
+                            return GrowthResult::failure(
+                                IncrementalLayerGrowthError{
+                                    diagonal.error()});
+                        final_diagonal = diagonal.value();
+                        final_high_edges =
+                            selection.value().retained_local_edges;
+                    }
 
                     const std::array<Point3, 4> bottom_points{{
                         result.mesh.vertices[bottom_ids[0]],
@@ -485,10 +583,23 @@ namespace boundary_mesh
                         result.mesh.vertices[top_ids[1]],
                         result.mesh.vertices[top_ids[2]],
                         result.mesh.vertices[top_ids[3]]}};
-                    const auto internal_center =
-                        findPositiveQuadTopCapCenter({
-                            bottom_points, top_points, final_diagonal,
-                            Scalar{1e-12}});
+                    std::optional<Point3> internal_center;
+                    if (stable == nullptr ||
+                        stable->terminal_quad_decision ==
+                            TerminalQuadDecision::InternalSplit)
+                    {
+                        internal_center = stable != nullptr
+                                ? stable->generated_point
+                                : std::optional<Point3>{};
+                        if (!internal_center.has_value())
+                        {
+                            ++terminal_center_solves;
+                            internal_center =
+                                findPositiveQuadTopCapCenter({
+                                    bottom_points, top_points, final_diagonal,
+                                    Scalar{1e-12}});
+                        }
+                    }
 
                     // The finalizer must never invent an unchecked external
                     // patch.  If no stable resolver decision exists and the
@@ -513,6 +624,7 @@ namespace boundary_mesh
                             id,growth->accepted_layer_count,region,
                             quad->vertex_ids,top_ids,final_diagonal,{},
                             split});
+                        final_quads.back().split_failed_column = true;
                         continue;
                     }
 
@@ -581,6 +693,7 @@ namespace boundary_mesh
                         final_quads.push_back({
                             id,growth->accepted_layer_count,region,
                             quad->vertex_ids,top_ids,final_diagonal,{},split});
+                        final_quads.back().split_failed_column = true;
                         continue;
                     }
                     if (result.mesh.vertices.size() >
@@ -638,7 +751,7 @@ namespace boundary_mesh
                             const auto &vertex = initial_front.vertices[
                                 quad->vertex_ids[local]];
                             const auto *record = layerRecord(
-                                result.layer_vertices,
+                                layer_records,
                                 vertex.source_vertex_id,
                                 vertex.branch_id);
                             if (record != nullptr &&
@@ -715,11 +828,139 @@ namespace boundary_mesh
                         }
                     }
                 }
+                if (traceTransitionFace(id))
+                {
+                    std::cerr << "trace final triangle-side face=" << id
+                              << " accepted=" << growth->accepted_layer_count
+                              << " high_edge=";
+                    if (high_edge) std::cerr << *high_edge;
+                    else std::cerr << "none";
+                    std::cerr << '\n';
+                }
                 final_triangles.push_back({
                     id, growth->accepted_layer_count, region,
                     std::get<Triangle>(*face).vertex_ids,
                     triangle.vertex_ids, high_edge, {triangle}});
             }
+        }
+
+        std::unordered_map<std::size_t, std::array<Prism,2>> prism_replacements;
+        std::unordered_map<SurfaceFaceId, QuadDiagonal> split_diagonals;
+        std::size_t split_column_count = 0;
+        if (split_failed_hexa_columns)
+            for (FinalQuad &terminal : final_quads)
+            {
+                if (!terminal.split_failed_column) continue;
+                std::vector<std::pair<std::uint32_t,std::size_t>> column_indices;
+                std::vector<Hexa> column_hexas;
+                for (std::size_t index = 0;
+                     index < result.mesh.cells.size() &&
+                         index < result.mesh.metadata.size();
+                     ++index)
+                    if (result.mesh.metadata[index].source_face_id == terminal.id &&
+                        std::holds_alternative<Hexa>(result.mesh.cells[index]))
+                        column_indices.emplace_back(
+                            result.mesh.metadata[index].layer,index);
+                std::sort(column_indices.begin(), column_indices.end());
+                for (const auto &[layer,index] : column_indices)
+                {
+                    (void)layer;
+                    column_hexas.push_back(
+                        std::get<Hexa>(result.mesh.cells[index]));
+                }
+                const auto zero_two = evaluateColumnSplit(
+                    column_hexas,result.mesh.vertices,QuadDiagonal::ZeroTwo);
+                const auto one_three = evaluateColumnSplit(
+                    column_hexas,result.mesh.vertices,QuadDiagonal::OneThree);
+                const HexaColumnSplitEvaluation *selected = nullptr;
+                if (zero_two && one_three)
+                    selected =
+                        std::tie(zero_two->bad_prism_count,
+                                 zero_two->worst_skewness) <=
+                                std::tie(one_three->bad_prism_count,
+                                         one_three->worst_skewness)
+                            ? &*zero_two : &*one_three;
+                else if (zero_two)
+                    selected = &*zero_two;
+                else if (one_three)
+                    selected = &*one_three;
+                if (selected == nullptr)
+                {
+                    const auto diagnostic = std::find_if(
+                        result.terminal_transition_diagnostics.rbegin(),
+                        result.terminal_transition_diagnostics.rend(),
+                        [&](const auto &entry)
+                        { return entry.source_face_id == terminal.id &&
+                                 entry.layer == terminal.layer; });
+                    if (diagnostic !=
+                        result.terminal_transition_diagnostics.rend())
+                        diagnostic->reason +=
+                            "; both full-column prism splits were invalid; kept Hexa";
+                    else
+                        result.terminal_transition_diagnostics.push_back({
+                            terminal.id,terminal.layer,0,Scalar{0},{},{},
+                            "both full-column prism splits were invalid; kept Hexa"});
+                    continue;
+                }
+                split_diagonals[terminal.id] = selected->diagonal;
+                ++split_column_count;
+                const auto diagnostic = std::find_if(
+                    result.terminal_transition_diagnostics.rbegin(),
+                    result.terminal_transition_diagnostics.rend(),
+                    [&](const auto &entry)
+                    { return entry.source_face_id == terminal.id &&
+                             entry.layer == terminal.layer; });
+                if (diagnostic !=
+                    result.terminal_transition_diagnostics.rend())
+                {
+                    diagnostic->split_succeeded = true;
+                    diagnostic->reason =
+                        "no positive non-intersecting terminal quad patch; split column into prisms";
+                }
+                for (std::size_t index = 0;
+                     index < column_indices.size(); ++index)
+                    prism_replacements[column_indices[index].second] =
+                        selected->split_cells[index];
+            }
+
+        if (!prism_replacements.empty())
+        {
+            std::vector<VolumeCell> split_cells;
+            std::vector<CellMetadata> split_metadata;
+            split_cells.reserve(result.mesh.cells.size() + prism_replacements.size());
+            split_metadata.reserve(result.mesh.metadata.size() + prism_replacements.size());
+            for (std::size_t index = 0; index < result.mesh.cells.size(); ++index)
+            {
+                const auto replacement = prism_replacements.find(index);
+                if (replacement == prism_replacements.end())
+                {
+                    split_cells.push_back(std::move(result.mesh.cells[index]));
+                    if (index < result.mesh.metadata.size())
+                        split_metadata.push_back(result.mesh.metadata[index]);
+                    continue;
+                }
+                const CellMetadata metadata = result.mesh.metadata[index];
+                split_cells.emplace_back(replacement->second[0]);
+                split_metadata.push_back(metadata);
+                split_cells.emplace_back(replacement->second[1]);
+                split_metadata.push_back(metadata);
+            }
+            result.mesh.cells = std::move(split_cells);
+            result.mesh.metadata = std::move(split_metadata);
+            for (FinalQuad &terminal : final_quads)
+                if (const auto chosen = split_diagonals.find(terminal.id);
+                    chosen != split_diagonals.end())
+                {
+                    terminal.diagonal = chosen->second;
+                    const auto &v = terminal.top_ids;
+                    terminal.top_faces = chosen->second == QuadDiagonal::ZeroTwo
+                        ? std::vector<Triangle>{
+                            Triangle{{v[0],v[1],v[2]}},
+                            Triangle{{v[0],v[2],v[3]}}}
+                        : std::vector<Triangle>{
+                            Triangle{{v[1],v[2],v[3]}},
+                            Triangle{{v[1],v[3],v[0]}}};
+                }
         }
 
         for (FinalQuad &low : final_quads)
@@ -734,7 +975,7 @@ namespace boundary_mesh
                     const GrowthFrontVertex &vertex =
                         initial_front.vertices[low.source_ids[local]];
                     const LayerVertexRecord *record = layerRecord(
-                        result.layer_vertices,
+                        layer_records,
                         vertex.source_vertex_id,
                         vertex.branch_id);
                     if (record == nullptr ||
@@ -787,7 +1028,7 @@ namespace boundary_mesh
                     const auto &vertex = initial_front.vertices[
                         low.source_ids[local]];
                     const LayerVertexRecord *record = layerRecord(
-                        result.layer_vertices,
+                        layer_records,
                         vertex.source_vertex_id, vertex.branch_id);
                     if (record == nullptr ||
                         record->layer_vertex_ids.size() <= low.layer + 1)
@@ -804,6 +1045,18 @@ namespace boundary_mesh
                     return GrowthResult::failure(
                         IncrementalLayerGrowthError{
                             atStage(side.error(),10)});
+                if (traceTransitionFace(low.id))
+                    for (const Triangle &triangle : side.value().top_faces)
+                    {
+                        std::cerr << "trace final triangle-side top-face=";
+                        for (const VertexId vertex : triangle.vertex_ids)
+                        {
+                            const Point3 &point = result.mesh.vertices[vertex];
+                            std::cerr << '(' << point.x() << ',' << point.y()
+                                      << ',' << point.z() << ") ";
+                        }
+                        std::cerr << '\n';
+                    }
                 result.mesh.cells.insert(
                     result.mesh.cells.end(),
                     side.value().volume_cells.begin(),
@@ -872,7 +1125,12 @@ namespace boundary_mesh
                   << diagnostic_internal_splits << " external="
                   << diagnostic_external_patches << " skewness>0.9 internal="
                   << diagnostic_internal_bad << " external="
-                  << diagnostic_external_bad << '\n';
+                  << diagnostic_external_bad
+                  << " center-solves=" << terminal_center_solves
+                  << " split-columns=" << split_column_count << '\n';
+        std::cerr << "temporary finalization ms="
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - finalization_started).count() << '\n';
         return GrowthResult::success(std::move(result));
     }
 }

@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -67,11 +68,20 @@ namespace boundary_mesh
     public:
         ExposedBoundaryTracker();
 
+        Result<std::monostate, SpatialError> initializeWallSurface(
+            const SurfaceMesh &surface);
+
         Result<ExposedBoundaryUpdate, SpatialError> prepare(
             const std::vector<LayerBoundaryCandidate> &candidates) const;
 
         Result<std::monostate, SpatialError> apply(
             const ExposedBoundaryUpdate &update);
+
+        // Add already committed transition faces to the same historical
+        // collision tree.  These groups are append-only; regular exposed
+        // faces continue to use prepare/apply parity updates.
+        Result<std::monostate, SpatialError> appendTransitionTriangles(
+            std::vector<CollisionTriangle> triangles);
 
         const IncrementalCollisionIndex &collisionIndex() const noexcept;
 
@@ -81,7 +91,7 @@ namespace boundary_mesh
 
         bool contains(const BoundaryFaceKey &key) const noexcept;
 
-        const std::vector<BoundaryFace> &faces() const noexcept;
+        const std::vector<BoundaryFace> &faces() const;
 
         Result<std::vector<CollisionTriangle>, SpatialError>
         collisionTriangles(
@@ -91,8 +101,14 @@ namespace boundary_mesh
         IncrementalCollisionIndex collision_index_;
         std::map<BoundaryFaceKey, CollisionGroupId, BoundaryFaceKeyLess>
             collision_groups_;
+        std::map<CollisionGroupId, std::vector<CollisionTriangle>>
+            transition_groups_;
         CollisionGroupId next_collision_group_id_{1};
-        std::vector<BoundaryFace> faces_; // 按规范面键排序的当前外露面
+        std::map<BoundaryFaceKey, BoundaryFace, BoundaryFaceKeyLess>
+            faces_by_key_;
+        std::set<BoundaryFaceKey, BoundaryFaceKeyLess> input_face_keys_;
+        mutable std::vector<BoundaryFace> faces_cache_;
+        mutable bool faces_cache_valid_{};
         ExposedBoundaryApplyDiagnostics last_apply_diagnostics_;
     };
 

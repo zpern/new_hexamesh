@@ -73,6 +73,17 @@ int main()
     const auto strip_result = applyCornerSuppression({
         strip, liftedCandidates(strip, {11,12,20}),
         strip_sets, 3, 1e-12});
+    const auto full_strip_candidate = liftedCandidates(strip, {11,12,20});
+    const std::vector<SurfaceFaceId> strip_retained{11,12,20};
+    const auto strip_view_result = applyCornerSuppression(
+        CornerSuppressionView{strip, full_strip_candidate, strip_retained,
+                              strip_sets, 3, 1e-12});
+    if (!strip_view_result.hasValue() || !strip_result.hasValue() ||
+        strip_view_result.value().retained_high_faces !=
+            strip_result.value().retained_high_faces ||
+        strip_view_result.value().removed_high_faces !=
+            strip_result.value().removed_high_faces)
+        return 20;
     assert(strip_result.hasValue());
     assert((strip_result.value().removed_high_faces ==
             std::vector<SurfaceFaceId>{11}));

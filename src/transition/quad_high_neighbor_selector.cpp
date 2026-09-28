@@ -27,7 +27,7 @@ namespace boundary_mesh
                 : QuadDiagonal::OneThree;
         }
 
-        std::vector<std::vector<std::size_t>> candidates(
+        std::vector<std::vector<std::size_t>> buildCandidates(
             const std::vector<QuadHighNeighbor> &highs)
         {
             std::vector<std::size_t> edges;
@@ -82,6 +82,12 @@ namespace boundary_mesh
         }
     }
 
+    std::vector<std::vector<std::size_t>> quadHighNeighborCandidates(
+        const std::vector<QuadHighNeighbor> &high_neighbors)
+    {
+        return buildCandidates(high_neighbors);
+    }
+
     QuadHighNeighborSelectionResult selectQuadHighNeighbors(
         const QuadHighNeighborSelectionInput &input)
     {
@@ -98,7 +104,7 @@ namespace boundary_mesh
                         InvalidTransitionTemplateInput{
                             input.source_face_id}});
 
-        const auto options = candidates(input.high_neighbors);
+        const auto options = quadHighNeighborCandidates(input.high_neighbors);
         std::vector<QuadHighNeighborSelection> viable;
         for (const auto &edges : options)
         {

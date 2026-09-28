@@ -1,8 +1,10 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <limits>
 #include <optional>
+#include <iostream>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -532,6 +534,7 @@ namespace boundary_mesh
         {
             return SmoothingResult::failure(initialized.error());
         }
+        const auto smoothing_started = std::chrono::steady_clock::now();
 
         auto constrained_initial = constrainDirections(
             front,
@@ -618,6 +621,7 @@ namespace boundary_mesh
                 }
             }
         }
+        const auto normals_done = std::chrono::steady_clock::now();
 
         std::vector<Point3> predicted_positions;
         predicted_positions.reserve(front.vertices.size());
@@ -697,6 +701,7 @@ namespace boundary_mesh
             actual_heights[index] = actual;
         }
 
+        const auto heights_done = std::chrono::steady_clock::now();
         auto refinement = refineDirectionsForSkewness(
             front,
             evaluation,
@@ -704,6 +709,19 @@ namespace boundary_mesh
             current,
             actual_heights,
             options.skewness);
+        const auto refinement_done = std::chrono::steady_clock::now();
+        std::cerr << "temporary smoother normals-ms="
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                normals_done - smoothing_started).count()
+            << " heights-ms="
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                heights_done - normals_done).count()
+            << " skewness-ms="
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                refinement_done - heights_done).count()
+            << " activated=" << refinement.diagnostics.activated_vertices
+            << " updated=" << refinement.diagnostics.updated_vertices
+            << '\n';
 
         auto constrained_refined = constrainDirections(
             front,

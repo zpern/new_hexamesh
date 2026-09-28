@@ -90,6 +90,9 @@ namespace boundary_mesh
         std::uint32_t max_layer_diff{1};             // 共享边两侧最大允许层数差
         Scalar isotropic_height{1};                  // BLMesh 风格实际层高与前沿多尺度的停止阈值
         bool enforce_single_high_edge{false};        // 过渡试生长按 HexaMesh 规则限制唯一高邻边
+        bool verify_transition_rebuilds{false};       // Compare local updates with full reconstruction.
+        bool defer_interface_materialization{false}; // Incremental finalizer emits terminal interfaces once.
+        bool split_failed_hexa_columns{true}; // Split terminal KeepHexa columns into two prisms per layer.
         // 在规则质量与碰撞过滤完成后、提交本层单元前，返回还需回退的源面。
         // 过渡模块用它执行逐层角点压制/固定点协调；空回调保持规则生成行为不变。
         std::function<std::vector<SurfaceFaceId>(
@@ -97,7 +100,7 @@ namespace boundary_mesh
             const std::vector<VertexId> &,
             const VolumeMesh &, const LayerVertexTable &,
             const CollisionIndex &,
-            const ExposedBoundaryTracker &)>
+            ExposedBoundaryTracker &)>
             candidate_rejections;
     };
 
@@ -119,6 +122,7 @@ namespace boundary_mesh
             std::vector<SurfaceFaceId> high_faces;
             std::vector<SurfaceFaceId> rollback_high_faces;
             std::string reason;
+            bool split_succeeded{};
         };
         std::vector<TerminalTransitionDiagnostic>
             terminal_transition_diagnostics;

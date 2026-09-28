@@ -26,7 +26,9 @@ namespace boundary_mesh
         std::uint32_t max_layer_diff{1};     // 相邻源面的最大层数差
         Scalar isotropic_height{1};          // 平均侧边长度与底面尺度之比的停止阈值
         bool multi_normal_enabled{};         // 是否在规则层前生成多法向过渡体
+        bool split_failed_hexa_columns{true}; // 是否拆分过渡失败列中的六面体
         bool debug_log_enabled{};             // 是否写出逐源面停止诊断
+        bool verify_transition_rebuilds{};
         std::filesystem::path output_prefix; // 两个 VTK 输出的公共前缀
     };
 

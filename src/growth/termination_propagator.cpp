@@ -5,6 +5,7 @@
 #include <functional>
 #include <limits>
 #include <queue>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 
@@ -31,17 +32,6 @@ namespace boundary_mesh
                         value.begin(), value.end()};
                 },
                 neighbors);
-        }
-
-        std::vector<VertexId> faceVertexIds(const SurfaceFace &face)
-        {
-            return std::visit(
-                [](const auto &value)
-                {
-                    return std::vector<VertexId>{
-                        value.vertex_ids.begin(), value.vertex_ids.end()};
-                },
-                face);
         }
 
         std::vector<EdgeId> faceEdgeIds(const FaceEdgeIds &edges)
@@ -214,6 +204,15 @@ namespace boundary_mesh
     }
 
     Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>
+    TerminationPropagator::propagateFrom(
+        FaceLayerConstraintTable &constraints,
+        const std::vector<SurfaceFaceId> &changed_seeds,
+        std::uint32_t max_difference) const
+    {
+        return propagate(constraints, max_difference, &changed_seeds);
+    }
+
+    Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>
     TerminationPropagator::applyDirectStops(
         FaceLayerConstraintTable &constraints,
         const std::vector<FaceStopEvent> &events,
@@ -248,7 +247,8 @@ namespace boundary_mesh
             }
         }
 
-        const auto propagated = propagate(constraints, max_difference);
+        const auto propagated = propagate(constraints, max_difference,
+                                          &changed);
         if (!propagated.hasValue())
         {
             return propagated;
@@ -286,6 +286,10 @@ namespace boundary_mesh
         output.next_front.layer = step.next_front.layer;
         output.stopped_faces = step.stopped_faces;
         output.completed_faces = step.completed_faces;
+        std::unordered_set<SurfaceFaceId> stopped_face_ids;
+        stopped_face_ids.reserve(output.stopped_faces.size() + 8);
+        for (const FaceStopEvent &event : output.stopped_faces)
+            stopped_face_ids.insert(event.source_face_id);
         std::vector<bool> keep(step.next_front.faces.size(), true);
         std::vector<bool> used(step.next_front.vertices.size(), false);
 
@@ -308,14 +312,7 @@ namespace boundary_mesh
                 if (constraint->limit_kind ==
                     FaceLayerLimitKind::NeighborConstraint)
                 {
-                    const bool already_present = std::any_of(
-                        output.stopped_faces.begin(),
-                        output.stopped_faces.end(),
-                        [&](const FaceStopEvent &event)
-                        {
-                            return event.source_face_id == source_face_id;
-                        });
-                    if (!already_present)
+                    if (stopped_face_ids.insert(source_face_id).second)
                     {
                         output.stopped_faces.push_back(
                             {step.previous_front_face_indices[face_index],
@@ -326,18 +323,21 @@ namespace boundary_mesh
                 }
                 continue;
             }
-            for (const VertexId id :
-                 faceVertexIds(step.next_front.faces[face_index]))
-            {
-                const std::size_t vertex_index =
-                    static_cast<std::size_t>(id);
-                if (vertex_index >= used.size())
+            const bool valid_vertices = std::visit(
+                [&](const auto &face)
                 {
-                    return FilterResult::failure(
-                        {source_face_id, step.layer});
-                }
-                used[vertex_index] = true;
-            }
+                    for (const VertexId id : face.vertex_ids)
+                    {
+                        const std::size_t vertex_index =
+                            static_cast<std::size_t>(id);
+                        if (vertex_index >= used.size()) return false;
+                        used[vertex_index] = true;
+                    }
+                    return true;
+                }, step.next_front.faces[face_index]);
+            if (!valid_vertices)
+                return FilterResult::failure(
+                    {source_face_id, step.layer});
         }
 
         std::vector<VertexId> remap(
@@ -411,7 +411,7 @@ namespace boundary_mesh
         if (step.layer == 0)
             return FilterResult::failure({0, 0});
 
-        LayerStepResult output = step;
+        const LayerStepResult &output = step;
         bool constrained = false;
         struct StopCell
         {
@@ -427,12 +427,23 @@ namespace boundary_mesh
                 pending_stop_cells.end());
         };
         std::vector<StopCell> stop_cells;
-        stop_cells.reserve(
-            pending_stop_cells.size() +
-            current_front.source_face_ids.size());
+        stop_cells.reserve(pending_stop_cells.size() + 8);
         for (const SurfaceFaceId pending_id : pending_stop_cells)
             stop_cells.push_back({pending_id, step.layer - 1});
         pending_stop_cells.clear();
+        std::unordered_set<SurfaceFaceId> stop_cell_ids;
+        stop_cell_ids.reserve(stop_cells.size() + 8);
+        for (const StopCell &stop_cell : stop_cells)
+            stop_cell_ids.insert(stop_cell.source_face_id);
+        std::vector<SurfaceFaceId> candidate_ids =
+            output.next_front.source_face_ids;
+        if (!std::is_sorted(candidate_ids.begin(), candidate_ids.end()))
+            std::sort(candidate_ids.begin(), candidate_ids.end());
+        const auto candidatePresent = [&](SurfaceFaceId id)
+        {
+            return std::binary_search(
+                candidate_ids.begin(), candidate_ids.end(), id);
+        };
 
         std::vector<std::pair<SurfaceFaceId, std::uint32_t>>
             limits_before;
@@ -440,10 +451,7 @@ namespace boundary_mesh
         for (const SurfaceFaceId source_face_id :
              current_front.source_face_ids)
         {
-            const bool candidate_present = std::find(
-                output.next_front.source_face_ids.begin(),
-                output.next_front.source_face_ids.end(),
-                source_face_id) != output.next_front.source_face_ids.end();
+            const bool candidate_present = candidatePresent(source_face_id);
             const FaceLayerConstraint *constraint =
                 constraints.find(source_face_id);
             if (constraint == nullptr)
@@ -451,20 +459,25 @@ namespace boundary_mesh
                     {source_face_id, step.layer});
             limits_before.push_back(
                 {source_face_id, constraint->allowed_layer_count});
-            const bool already_pending = std::any_of(
-                stop_cells.begin(), stop_cells.end(),
-                [source_face_id](const StopCell &value)
-                { return value.source_face_id == source_face_id; });
+            const bool already_pending =
+                stop_cell_ids.find(source_face_id) != stop_cell_ids.end();
             if (already_pending) continue;
             if (!candidate_present)
+            {
                 stop_cells.push_back({source_face_id, step.layer - 1});
+                stop_cell_ids.insert(source_face_id);
+            }
             else if (constraint->allowed_layer_count == step.layer &&
                      constraint->limit_kind !=
                          FaceLayerLimitKind::Requested)
                 pending_stop_cells.push_back(source_face_id);
         }
 
-        std::vector<SurfaceFaceId> directly_limited;
+        std::vector<SurfaceFaceId> propagation_seeds;
+        propagation_seeds.reserve(stop_cells.size() + 8);
+        for (const StopCell &stop_cell : stop_cells)
+            propagation_seeds.push_back(stop_cell.source_face_id);
+        std::unordered_set<SurfaceFaceId> directly_limited_ids;
 
         for (const StopCell &stop_cell : stop_cells)
         {
@@ -485,11 +498,7 @@ namespace boundary_mesh
             const NeighborEntry::EdgeRule *selected = nullptr;
             for (const NeighborEntry::EdgeRule &rule : entry->edge_rules)
             {
-                if (std::find(
-                        output.next_front.source_face_ids.begin(),
-                        output.next_front.source_face_ids.end(),
-                        rule.neighbor) !=
-                        output.next_front.source_face_ids.end())
+                if (candidatePresent(rule.neighbor))
                 {
                     selected = &rule;
                     break;
@@ -500,11 +509,7 @@ namespace boundary_mesh
             for (const SurfaceFaceId affected_id :
                  selected->non_contact_corner_faces)
             {
-                if (std::find(
-                        output.next_front.source_face_ids.begin(),
-                        output.next_front.source_face_ids.end(),
-                        affected_id) ==
-                    output.next_front.source_face_ids.end())
+                if (!candidatePresent(affected_id))
                     continue;
                 FaceLayerConstraint *affected =
                     constraints.find(affected_id);
@@ -514,7 +519,8 @@ namespace boundary_mesh
                 if (affected->allowed_layer_count > completed_layer)
                 {
                     affected->allowed_layer_count = completed_layer;
-                    directly_limited.push_back(affected_id);
+                    propagation_seeds.push_back(affected_id);
+                    directly_limited_ids.insert(affected_id);
                     if (affected->limit_kind !=
                         FaceLayerLimitKind::DirectStop)
                         affected->limit_kind =
@@ -526,9 +532,10 @@ namespace boundary_mesh
         if (!constrained)
         {
             normalizePending();
-            return FilterResult::success(std::move(output));
+            return FilterResult::success(step);
         }
-        const auto propagated = propagate(constraints, max_difference);
+        const auto propagated = propagate(
+            constraints, max_difference, &propagation_seeds);
         if (!propagated.hasValue())
             return FilterResult::failure(propagated.error());
         for (const auto &[source_face_id, limit_before] : limits_before)
@@ -538,13 +545,11 @@ namespace boundary_mesh
             if (constraint == nullptr)
                 return FilterResult::failure(
                     {source_face_id, step.layer});
-            const bool was_stop_cell = std::any_of(
-                stop_cells.begin(), stop_cells.end(),
-                [source_face_id](const StopCell &value)
-                { return value.source_face_id == source_face_id; });
-            const bool directly_stopped = std::find(
-                directly_limited.begin(), directly_limited.end(),
-                source_face_id) != directly_limited.end();
+            const bool was_stop_cell =
+                stop_cell_ids.find(source_face_id) != stop_cell_ids.end();
+            const bool directly_stopped =
+                directly_limited_ids.find(source_face_id) !=
+                directly_limited_ids.end();
             if (!was_stop_cell && !directly_stopped &&
                 limit_before > step.layer &&
                 constraint->allowed_layer_count == step.layer &&
@@ -553,13 +558,14 @@ namespace boundary_mesh
                 pending_stop_cells.push_back(source_face_id);
         }
         normalizePending();
-        return filterCandidates(current_front, output, constraints);
+        return filterCandidates(current_front, step, constraints);
     }
 
     Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>
     TerminationPropagator::propagate(
         FaceLayerConstraintTable &constraints,
-        std::uint32_t max_difference) const
+        std::uint32_t max_difference,
+        const std::vector<SurfaceFaceId> *changed_seeds) const
     {
         using QueueValue = std::pair<std::uint32_t, SurfaceFaceId>;
         std::priority_queue<
@@ -567,18 +573,32 @@ namespace boundary_mesh
             std::vector<QueueValue>,
             std::greater<QueueValue>> queue;
 
-        for (const NeighborEntry &entry : entries_)
+        if (changed_seeds == nullptr)
         {
-            const FaceLayerConstraint *constraint =
-                constraints.find(entry.source_face_id);
-            if (constraint == nullptr)
+            for (const NeighborEntry &entry : entries_)
             {
-                return Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>::failure(
-                    {entry.source_face_id, 0});
+                const FaceLayerConstraint *constraint =
+                    constraints.find(entry.source_face_id);
+                if (constraint == nullptr)
+                {
+                    return Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>::failure(
+                        {entry.source_face_id, 0});
+                }
+                queue.push({constraint->allowed_layer_count,
+                            entry.source_face_id});
             }
-            queue.push({
-                constraint->allowed_layer_count,
-                entry.source_face_id});
+        }
+        else
+        {
+            for (const SurfaceFaceId seed : *changed_seeds)
+            {
+                const FaceLayerConstraint *constraint =
+                    constraints.find(seed);
+                if (constraint == nullptr)
+                    return Result<std::vector<SurfaceFaceId>, InvalidFaceConstraintState>::failure(
+                        {seed, 0});
+                queue.push({constraint->allowed_layer_count, seed});
+            }
         }
 
         std::vector<SurfaceFaceId> changed;

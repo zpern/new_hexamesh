@@ -60,6 +60,17 @@ int main()
     assert(symmetry_count == 1);
     assert(internal_count == 1);
 
+    // Shared topological keys must map to one output vertex, while the same
+    // source vertex at a different layer remains a distinct output vertex.
+    assert(result.value().vertices.size() == 9);
+
+    const auto non_interface = buildFarfieldBoundary(
+        original, tracker, {}, false);
+    assert(non_interface.hasValue());
+    assert(non_interface.value().faces.size() == 3);
+    for (const SurfaceBoundaryTag tag : non_interface.value().face_tags)
+        assert(tag.kind != SurfaceBoundaryKind::BoundaryLayerInterface);
+
     const auto top_only = extractBoundaryLayerTop(result.value());
     assert(top_only.hasValue());
     assert(top_only.value().faces.size() == 2);

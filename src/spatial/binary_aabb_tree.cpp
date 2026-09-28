@@ -153,12 +153,21 @@ namespace boundary_mesh
         const Aabb &bounds) const
     {
         std::vector<std::size_t> result;
-        if (nodes_.empty() || !valid(bounds))
-        {
-            return result;
-        }
+        std::vector<std::size_t> stack;
+        query(bounds, result, stack);
+        return result;
+    }
 
-        std::vector<std::size_t> stack{0};
+    void BinaryAabbTree::query(
+        const Aabb &bounds,
+        std::vector<std::size_t> &result,
+        std::vector<std::size_t> &stack) const
+    {
+        result.clear();
+        stack.clear();
+        if (nodes_.empty() || !valid(bounds)) return;
+
+        stack.push_back(0);
         while (!stack.empty())
         {
             const std::size_t node_index = stack.back();
@@ -192,7 +201,6 @@ namespace boundary_mesh
         result.erase(
             std::unique(result.begin(), result.end()),
             result.end());
-        return result;
     }
 
     std::size_t BinaryAabbTree::nearest(

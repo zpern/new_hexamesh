@@ -111,6 +111,17 @@ int main()
     assert(owner_report.value().colliding_owners.size() == 1);
     assert(owner_report.value().rollback_faces.empty());
 
+    TransitionBoundaryInput regular_owner_input;
+    regular_owner_input.candidate_triangles.push_back(triangle(
+        flat, candidate_keys, 45, {},
+        BoundaryOwnerRole::RegularCandidate));
+    regular_owner_input.original_surface = &obstacle_index.value();
+    const auto regular_owner_report = checker.inspect(regular_owner_input);
+    if (!regular_owner_report.hasValue() ||
+        regular_owner_report.value().rollback_faces !=
+            std::vector<SurfaceFaceId>{45})
+        return 86;
+
     TransitionBoundaryInput cap_input;
     cap_input.candidate_triangles.push_back(triangle(
         flat, candidate_keys, 30, {30}, BoundaryOwnerRole::TopCap));
@@ -317,6 +328,21 @@ int main()
     const auto provisional = buildProvisionalTransition(
         transition_low, transition_high, {1}, transition_sets);
     if (!provisional.hasValue()) return 30;
+    const auto no_terminal_geometry = std::find_if(
+        provisional.value().resolved_topology.begin(),
+        provisional.value().resolved_topology.end(),
+        [](const ResolvedTransitionTopology &value)
+        { return value.source_face_id == 0; });
+    if (no_terminal_geometry ==
+            provisional.value().resolved_topology.end() ||
+        no_terminal_geometry->terminal_quad_decision !=
+            TerminalQuadDecision::InternalSplit ||
+        std::any_of(provisional.value().boundary.candidate_triangles.begin(),
+            provisional.value().boundary.candidate_triangles.end(),
+            [](const OwnedBoundaryTriangle &value)
+            { return value.owner.source_face_id == 0 &&
+                     value.owner.role == BoundaryOwnerRole::ExternalPatch; }))
+        return 52;
     std::size_t side_triangles{};
     std::size_t attached_sides{};
     std::size_t associated_vertices{};
@@ -380,8 +406,9 @@ int main()
         !terminal->generated_point.has_value())
         return 41;
 
-    // An external patch failure must leave the internal fallback's boundary
-    // in the collision candidates, including a low quad with two high edges.
+    // If the aspect ratio prioritizes the external path, failure of all
+    // high-edge external candidates must request a resolver rollback first;
+    // it must not commit the internal topology selected from the old neighbors.
     GrowthFront two_high_low = transition_low;
     two_high_low.vertices.push_back({{1,2,0},6});
     two_high_low.vertices.push_back({{0,2,0},7});
@@ -409,21 +436,22 @@ int main()
     if (fallback_topology ==
             fallback_boundary.value().resolved_topology.end() ||
         fallback_topology->terminal_quad_decision !=
-            TerminalQuadDecision::InternalSplit)
+            TerminalQuadDecision::KeepHexa ||
+        fallback_boundary.value().forced_rollback_high_faces !=
+            std::vector<SurfaceFaceId>{1,2})
         return 48;
-    const auto &fallback_triangles =
-        fallback_boundary.value().boundary.candidate_triangles;
-    if (std::none_of(fallback_triangles.begin(), fallback_triangles.end(),
-            [](const OwnedBoundaryTriangle &value)
-            { return value.owner.source_face_id == 0 &&
-                     value.owner.role == BoundaryOwnerRole::TopCap; }))
+    ExternalPatchControls zero_high_controls;
+    zero_high_controls.explicit_apex_points[0] = Point3{0.5,0.5,0.02};
+    const auto zero_high_external = buildProvisionalTransition(
+        two_high_low, two_high_top, {}, two_high_sets,
+        thin_hexa, zero_high_controls);
+    if (!zero_high_external.hasValue() ||
+        zero_high_external.value().resolved_topology.size() != 1 ||
+        zero_high_external.value().resolved_topology.front()
+            .terminal_quad_decision != TerminalQuadDecision::ExternalPatch ||
+        !zero_high_external.value().resolved_topology.front()
+             .retained_local_edges.empty())
         return 49;
-    if (std::count_if(fallback_triangles.begin(), fallback_triangles.end(),
-            [](const OwnedBoundaryTriangle &value)
-            { return value.owner.source_face_id == 0 &&
-                     value.owner.role == BoundaryOwnerRole::SideTransition; })
-        != 4)
-        return 51;
 
     GrowthFront terminal_current;
     terminal_current.layer = 1;
@@ -528,4 +556,39 @@ int main()
     if (!cross_prior.hasValue() ||
         cross_prior.value() != std::vector<SurfaceFaceId>{81})
         return 39;
+    const auto cached_prior = CollisionIndex::build({
+        makeTransitionCollisionTriangle(prior_transition_boundary.front(), 0)});
+    if (!cached_prior.hasValue()) return 62;
+    later_transition.prior_transition_index = &cached_prior.value();
+    const auto cached_cross_prior = checker.findRollbackFaces(
+        later_transition);
+    if (!cached_cross_prior.hasValue() ||
+        cached_cross_prior.value() != cross_prior.value())
+        return 63;
+    const auto cached_context = TransitionStaticObstacleContext::build(
+        later_transition);
+    if (!cached_context.hasValue()) return 64;
+    const auto cached_hit = cached_context.value().intersects(
+        later_transition.candidate_triangles.front());
+    if (!cached_hit.hasValue() || !cached_hit.value()) return 65;
+    std::vector<TrianglePoints> cached_contacts;
+    const auto cached_hit_with_contacts = cached_context.value().intersects(
+        later_transition.candidate_triangles.front(), &cached_contacts);
+    if (!cached_hit_with_contacts.hasValue() ||
+        !cached_hit_with_contacts.value() || cached_contacts.empty())
+        return 66;
+
+    auto incremental_prior = IncrementalCollisionIndex::build({
+        {CollisionGroupId{700}, {
+            makeTransitionCollisionTriangle(
+                prior_transition_boundary.front(), 0)}}});
+    if (!incremental_prior.hasValue()) return 84;
+    later_transition.prior_transition_index = nullptr;
+    later_transition.prior_transition_dynamic_index =
+        &incremental_prior.value();
+    const auto incremental_cross_prior = checker.findRollbackFaces(
+        later_transition);
+    if (!incremental_cross_prior.hasValue() ||
+        incremental_cross_prior.value() != std::vector<SurfaceFaceId>{81})
+        return 85;
 }

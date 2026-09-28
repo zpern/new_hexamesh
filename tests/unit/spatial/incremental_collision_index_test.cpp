@@ -68,16 +68,107 @@ namespace
 
 int main()
 {
+    IncrementalCollisionIndexOptions overlap_options;
+    overlap_options.target_leaf_capacity = 1;
+    overlap_options.maximum_depth = 6;
+    std::vector<CollisionPrimitiveGroup> overlapping_leaves;
+    overlapping_leaves.push_back({100, {horizontalTriangle()}});
+    for (std::uint32_t id = 0; id < 12; ++id)
+    {
+        const Scalar x = (id & 1) ? Scalar{0.8} : Scalar{-0.8};
+        const Scalar y = (id & 2) ? Scalar{0.8} : Scalar{-0.8};
+        overlapping_leaves.push_back({101 + id,
+            {tinyTriangle({x,y,Scalar(id % 3) * Scalar{0.01}}, id)}});
+    }
+    auto overlapping_index = IncrementalCollisionIndex::build(
+        std::move(overlapping_leaves), overlap_options);
+    if (!overlapping_index.hasValue()) return 42;
+    const Aabb all_overlaps{
+        Point3{-2,-2,-1}, Point3{2,2,1}};
+    const auto overlap_candidates =
+        overlapping_index.value().queryCandidates(all_overlaps);
+    const auto repeated_overlap_candidates =
+        overlapping_index.value().queryCandidates(all_overlaps);
+    auto sorted_unique_candidates = overlap_candidates;
+    std::sort(sorted_unique_candidates.begin(), sorted_unique_candidates.end());
+    sorted_unique_candidates.erase(std::unique(
+        sorted_unique_candidates.begin(), sorted_unique_candidates.end()),
+        sorted_unique_candidates.end());
+    if (overlap_candidates != repeated_overlap_candidates ||
+        overlap_candidates.size() != sorted_unique_candidates.size() ||
+        overlapping_index.value().diagnostics().duplicate_candidate_visits == 0)
+        return 43;
+
+    const auto one_pass_pairs = IncrementalCollisionIndex::build({
+        {100, {horizontalTriangle()}},
+        {200, {verticalTriangle()}}});
+    if (!one_pass_pairs.hasValue()) return 40;
+    const auto forward_pair = one_pass_pairs.value().queryIllegalContactsAfter(
+        horizontalTriangle(), 0);
+    const auto reverse_pair = one_pass_pairs.value().queryIllegalContactsAfter(
+        verticalTriangle(), 1);
+    std::vector<CollisionPrimitiveId> reusable_candidates{99};
+    std::vector<CollisionPrimitiveId> reusable_contacts{99};
+    one_pass_pairs.value().queryIllegalContactsAfter(
+        horizontalTriangle(), 0, reusable_candidates, reusable_contacts);
+    const auto full_forward_pair =
+        one_pass_pairs.value().queryIllegalContacts(
+            horizontalTriangle(), CollisionGroupId{100});
+    const auto full_reverse_pair =
+        one_pass_pairs.value().queryIllegalContacts(
+            verticalTriangle(), CollisionGroupId{200});
+    if (forward_pair != full_forward_pair ||
+        reusable_contacts != forward_pair ||
+        reusable_candidates.empty() ||
+        forward_pair.size() != 1 ||
+        forward_pair.front() != 1 || !reverse_pair.empty() ||
+        full_reverse_pair.size() != 1 || full_reverse_pair.front() != 0)
+        return 41;
+    one_pass_pairs.value().queryIllegalContactsAfter(
+        shiftedTriangle(100.0, 9), 0, reusable_candidates,
+        reusable_contacts);
+    if (!reusable_contacts.empty() || !reusable_candidates.empty()) return 44;
+
+    std::vector<CollisionPrimitiveGroup> spread;
+    for (std::uint32_t id = 0; id < 100; ++id)
+        spread.push_back({id, {shiftedTriangle(id * 10.0, id)}});
+    const auto bulk = IncrementalCollisionIndex::build(std::move(spread));
+    if (!bulk.hasValue() || bulk.value().diagnostics().tree_builds != 1 ||
+        bulk.value().diagnostics().active_primitives != 100)
+        return 1;
+    const auto duplicate = IncrementalCollisionIndex::build(
+        {{1, {horizontalTriangle()}}, {1, {horizontalTriangle()}}});
+    if (duplicate.hasValue()) return 2;
     const auto empty = IncrementalCollisionIndex::build({});
     assert(empty.hasValue());
     auto index = std::move(empty.value());
 
     const CollisionGroupId group{7};
-    assert(index.insertGroup({group, {horizontalTriangle()}}).hasValue());
-    assert(index.queryIllegalContacts(verticalTriangle()).size() == 1);
+    const auto horizontal_inserted =
+        index.insertGroup({group, {horizontalTriangle()}});
+    if (!horizontal_inserted.hasValue() ||
+        index.queryIllegalContacts(verticalTriangle()).size() != 1)
+        return 21;
+    if (!index.queryIllegalContacts(
+            verticalTriangle(), std::set<CollisionGroupId>{group}).empty())
+        return 20;
+    const auto distant_inserted = index.insertGroup(
+        {8, {shiftedTriangle(100.0, 8)}});
+    if (!distant_inserted.hasValue()) return 22;
+    const Aabb broad_bounds{
+        Point3{-200, -200, -200}, Point3{200, 200, 200}};
+    const auto broad_candidates = index.queryCandidates(broad_bounds);
+    const auto exact_tests_before = index.diagnostics().exact_tests;
+    const auto cached_contacts = index.queryIllegalContacts(
+        verticalTriangle(), broad_candidates, std::set<CollisionGroupId>{});
+    if (cached_contacts.size() != 1 ||
+        index.diagnostics().exact_tests != exact_tests_before + 1)
+        return 23;
 
-    assert(index.eraseGroup(group).hasValue());
-    assert(index.queryIllegalContacts(verticalTriangle()).empty());
+    const auto horizontal_erased = index.eraseGroup(group);
+    if (!horizontal_erased.hasValue() ||
+        !index.queryIllegalContacts(verticalTriangle()).empty())
+        return 24;
 
     const auto missing = index.eraseGroup(group);
     assert(!missing.hasValue());

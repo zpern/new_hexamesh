@@ -5,6 +5,7 @@
 #include <array>
 #include <map>
 #include <optional>
+#include <set>
 #include <variant>
 #include <vector>
 
@@ -36,7 +37,9 @@ namespace boundary_mesh
     {
         std::uint64_t inserts{}, erases{}, queries{};
         std::uint64_t broad_phase_candidates{}, exact_tests{};
+        std::uint64_t candidate_visits{}, duplicate_candidate_visits{};
         std::uint64_t rebuilds{}, root_expansions{};
+        std::uint64_t tree_builds{};
         std::size_t active_primitives{}, inactive_primitives{};
         std::size_t maximum_leaf_load{};
     };
@@ -54,9 +57,39 @@ namespace boundary_mesh
         std::vector<CollisionPrimitiveId> queryCandidates(
             const Aabb &bounds,
             std::optional<CollisionGroupId> ignored_group = {}) const;
+        void queryCandidates(
+            const Aabb &bounds,
+            std::vector<CollisionPrimitiveId> &result,
+            std::optional<CollisionGroupId> ignored_group = {}) const;
         std::vector<CollisionPrimitiveId> queryIllegalContacts(
             const CollisionTriangle &triangle,
             std::optional<CollisionGroupId> ignored_group = {}) const;
+        void queryIllegalContacts(
+            const CollisionTriangle &triangle,
+            std::vector<CollisionPrimitiveId> &candidate_scratch,
+            std::vector<CollisionPrimitiveId> &contacts,
+            std::optional<CollisionGroupId> ignored_group = {}) const;
+        std::vector<CollisionPrimitiveId> queryIllegalContactsAfter(
+            const CollisionTriangle &triangle,
+            CollisionPrimitiveId minimum_candidate_id_exclusive,
+            std::optional<CollisionGroupId> ignored_group = {}) const;
+        void queryIllegalContactsAfter(
+            const CollisionTriangle &triangle,
+            CollisionPrimitiveId minimum_candidate_id_exclusive,
+            std::vector<CollisionPrimitiveId> &candidate_scratch,
+            std::vector<CollisionPrimitiveId> &contacts,
+            std::optional<CollisionGroupId> ignored_group = {}) const;
+        std::vector<CollisionPrimitiveId> queryIllegalContacts(
+            const CollisionTriangle &triangle,
+            const std::set<CollisionGroupId> &ignored_groups) const;
+        std::vector<CollisionPrimitiveId> queryIllegalContacts(
+            const CollisionTriangle &triangle,
+            const std::vector<CollisionPrimitiveId> &candidates,
+            std::optional<CollisionGroupId> ignored_group = {}) const;
+        std::vector<CollisionPrimitiveId> queryIllegalContacts(
+            const CollisionTriangle &triangle,
+            const std::vector<CollisionPrimitiveId> &candidates,
+            const std::set<CollisionGroupId> &ignored_groups) const;
         const CollisionTriangle &primitive(CollisionPrimitiveId id) const;
         const CollisionIndexDiagnostics &diagnostics() const noexcept;
         void compactInactive();
@@ -89,13 +122,16 @@ namespace boundary_mesh
         void queryNode(
             std::size_t node,
             const Aabb &bounds,
-            std::vector<CollisionPrimitiveId> &result) const;
+            std::vector<CollisionPrimitiveId> &result,
+            std::uint64_t query_epoch) const;
         bool rootContains(const Aabb &bounds) const;
 
         IncrementalCollisionIndexOptions options_;
         std::vector<StoredPrimitive> primitives_;
         std::map<CollisionGroupId, std::vector<CollisionPrimitiveId>> groups_;
         std::vector<Node> nodes_;
+        mutable std::vector<std::uint64_t> query_marks_;
+        mutable std::uint64_t query_epoch_{};
         mutable CollisionIndexDiagnostics diagnostics_;
     };
 }

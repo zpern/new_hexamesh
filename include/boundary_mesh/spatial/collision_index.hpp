@@ -41,6 +41,11 @@ namespace boundary_mesh
 
         std::vector<std::size_t> queryIllegalContacts(
             const CollisionTriangle &query) const;
+        void queryIllegalContacts(
+            const CollisionTriangle &query,
+            std::vector<std::size_t> &candidate_scratch,
+            std::vector<std::size_t> &traversal_scratch,
+            std::vector<std::size_t> &contacts) const;
 
         std::size_t primitiveCount() const noexcept;
 
@@ -57,4 +62,8 @@ namespace boundary_mesh
         const SurfaceMesh &mesh,
         const SurfaceTopology &topology,
         const CollisionBoundaryPolicy &policy = {});
+
+    Result<CollisionIndex, SpatialError> buildNonWallSurfaceCollisionIndex(
+        const SurfaceMesh &mesh,
+        const SurfaceTopology &topology);
 }

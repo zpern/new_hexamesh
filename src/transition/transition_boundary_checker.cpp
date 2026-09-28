@@ -55,9 +55,7 @@ namespace boundary_mesh
             const LayerBoundaryOwner &owner,
             std::vector<LayerBoundaryOwner> *colliding_owners)
         {
-            rollback.insert(rollback.end(),
-                owner.rollback_high_faces.begin(),
-                owner.rollback_high_faces.end());
+            appendLayerBoundaryRollbackFaces(owner, rollback);
             if (colliding_owners == nullptr) return;
             const LayerBoundaryOwnerKey owner_key =
                 layerBoundaryOwnerKey(owner);
@@ -105,8 +103,17 @@ namespace boundary_mesh
 
         bool belongsToHistoricalTop(
             const OwnedBoundaryTriangle &candidate,
-            const CollisionTriangle &historical)
+            const CollisionTriangle &historical,
+            const std::vector<OwnedBoundaryTriangle> *prior_transition = nullptr)
         {
+            if (historical.owner_kind == CollisionOwnerKind::LayerCandidate)
+            {
+                if (prior_transition == nullptr ||
+                    historical.owner_id >= prior_transition->size())
+                    return false;
+                return transitionTriangleKey(candidate) ==
+                    transitionTriangleKey((*prior_transition)[historical.owner_id]);
+            }
             if (candidate.owner.role != BoundaryOwnerRole::TopCap ||
                 candidate.owner.source_face_id != historical.owner_id)
                 return false;
@@ -188,8 +195,14 @@ namespace boundary_mesh
         context.original_surface_ = input.original_surface;
         context.historical_boundary_ = input.historical_boundary;
         context.historical_index_ = input.historical_index;
+        context.historical_index_includes_transition_ =
+            input.historical_index_includes_transition;
         context.prior_transition_boundary_ =
             input.prior_transition_boundary;
+        context.shared_prior_transition_index_ =
+            input.prior_transition_index;
+        context.shared_prior_transition_dynamic_index_ =
+            input.prior_transition_dynamic_index;
         context.sliding_surface_ = input.sliding_surface;
         if (input.historical_index == nullptr &&
             input.historical_boundary != nullptr)
@@ -209,7 +222,10 @@ namespace boundary_mesh
                     std::move(built.value());
             }
         }
-        if (input.prior_transition_boundary != nullptr &&
+        if (!input.historical_index_includes_transition &&
+            input.prior_transition_index == nullptr &&
+            input.prior_transition_dynamic_index == nullptr &&
+            input.prior_transition_boundary != nullptr &&
             !input.prior_transition_boundary->empty())
         {
             std::vector<CollisionTriangle> prior;
@@ -230,14 +246,23 @@ namespace boundary_mesh
 
     Result<bool, TransitionBoundaryError>
     TransitionStaticObstacleContext::intersects(
-        const OwnedBoundaryTriangle &owned) const
+        const OwnedBoundaryTriangle &owned,
+        std::vector<TrianglePoints> *collided_faces,
+        TransitionStaticObstacleQueryScratch *scratch) const
     {
         using HitResult = Result<bool, TransitionBoundaryError>;
+        TransitionStaticObstacleQueryScratch local_scratch;
+        TransitionStaticObstacleQueryScratch &workspace =
+            scratch != nullptr ? *scratch : local_scratch;
+        bool intersected = false;
         const CollisionTriangle collision =
             makeTransitionCollisionTriangle(owned, 0);
         if (original_surface_ != nullptr)
-            for (const std::size_t contact :
-                 original_surface_->queryIllegalContacts(collision))
+        {
+            original_surface_->queryIllegalContacts(
+                collision, workspace.candidate_ids,
+                workspace.traversal_nodes, workspace.contact_ids);
+            for (const std::size_t contact : workspace.contact_ids)
             {
                 const CollisionTriangle &obstacle =
                     original_surface_->primitive(contact);
@@ -254,17 +279,41 @@ namespace boundary_mesh
                         CollisionOwnerKind::OriginalSurface &&
                     obstacle.owner_id == owned.owner.source_face_id;
                 if (!own_zero_layer_cap && !own_regular_source)
-                    return HitResult::success(true);
+                {
+                    if (collided_faces == nullptr)
+                        return HitResult::success(true);
+                    collided_faces->push_back(obstacle.points);
+                    intersected = true;
+                }
             }
+        }
         if (historical_index_ != nullptr)
+        {
+            historical_index_->queryIllegalContacts(
+                collision, workspace.incremental_candidate_ids,
+                workspace.incremental_contact_ids);
             for (const CollisionPrimitiveId contact :
-                 historical_index_->queryIllegalContacts(collision))
+                 workspace.incremental_contact_ids)
+            {
+                const auto &obstacle = historical_index_->primitive(contact);
                 if (!belongsToHistoricalTop(
-                        owned, historical_index_->primitive(contact)))
-                    return HitResult::success(true);
+                        owned, obstacle,
+                        historical_index_includes_transition_
+                            ? prior_transition_boundary_ : nullptr))
+                {
+                    if (collided_faces == nullptr)
+                        return HitResult::success(true);
+                    collided_faces->push_back(obstacle.points);
+                    intersected = true;
+                }
+            }
+        }
         if (immutable_historical_index_.has_value())
-            for (const std::size_t contact :
-                 immutable_historical_index_->queryIllegalContacts(collision))
+        {
+            immutable_historical_index_->queryIllegalContacts(
+                collision, workspace.candidate_ids,
+                workspace.traversal_nodes, workspace.contact_ids);
+            for (const std::size_t contact : workspace.contact_ids)
             {
                 const CollisionTriangle &obstacle =
                     immutable_historical_index_->primitive(contact);
@@ -274,18 +323,64 @@ namespace boundary_mesh
                         CollisionOwnerKind::ExposedBoundary &&
                     obstacle.owner_id < faces.size() &&
                     belongsToHistoricalTop(owned, faces[obstacle.owner_id]);
-                if (!own_top) return HitResult::success(true);
+                if (!own_top)
+                {
+                    if (collided_faces == nullptr)
+                        return HitResult::success(true);
+                    collided_faces->push_back(obstacle.points);
+                    intersected = true;
+                }
             }
-        if (prior_transition_index_.has_value())
-            for (const std::size_t contact :
-                 prior_transition_index_->queryIllegalContacts(collision))
+        }
+        const CollisionIndex *prior_index =
+            shared_prior_transition_index_ != nullptr
+                ? shared_prior_transition_index_
+                : (prior_transition_index_.has_value()
+                    ? &*prior_transition_index_ : nullptr);
+        if (prior_index != nullptr)
+        {
+            prior_index->queryIllegalContacts(
+                collision, workspace.candidate_ids,
+                workspace.traversal_nodes, workspace.contact_ids);
+            for (const std::size_t contact : workspace.contact_ids)
             {
                 const auto &prior = (*prior_transition_boundary_)[
-                    prior_transition_index_->primitive(contact).owner_id];
+                    prior_index->primitive(contact).owner_id];
                 if (transitionTriangleKey(owned) !=
                     transitionTriangleKey(prior))
-                    return HitResult::success(true);
+                {
+                    if (collided_faces == nullptr)
+                        return HitResult::success(true);
+                    collided_faces->push_back(prior.points);
+                    intersected = true;
+                }
             }
+        }
+        if (shared_prior_transition_dynamic_index_ != nullptr)
+        {
+            shared_prior_transition_dynamic_index_->queryIllegalContacts(
+                collision, workspace.incremental_candidate_ids,
+                workspace.incremental_contact_ids);
+            for (const CollisionPrimitiveId contact :
+                 workspace.incremental_contact_ids)
+            {
+                const auto &obstacle =
+                    shared_prior_transition_dynamic_index_->primitive(contact);
+                if (obstacle.owner_id >= prior_transition_boundary_->size())
+                    return HitResult::failure(TransitionBoundaryError{
+                        SpatialError::InvalidTopologyReference});
+                const auto &prior =
+                    (*prior_transition_boundary_)[obstacle.owner_id];
+                if (transitionTriangleKey(owned) !=
+                    transitionTriangleKey(prior))
+                {
+                    if (collided_faces == nullptr)
+                        return HitResult::success(true);
+                    collided_faces->push_back(prior.points);
+                    intersected = true;
+                }
+            }
+        }
         if (sliding_surface_ != nullptr)
         {
             const auto permissions = buildSlidingContactPermissions(
@@ -306,11 +401,17 @@ namespace boundary_mesh
                 if (!legal.hasValue())
                     return HitResult::failure(
                         TransitionBoundaryError{legal.error()});
-                if (!legal.value()) return HitResult::success(true);
+                if (!legal.value())
+                {
+                    if (collided_faces == nullptr)
+                        return HitResult::success(true);
+                    intersected = true;
+                    break;
+                }
                 ignored.insert(hit.value().region_id);
             }
         }
-        return HitResult::success(false);
+        return HitResult::success(intersected);
     }
 
     Result<std::vector<OwnedBoundaryTriangle>, TransitionBoundaryError>
@@ -319,20 +420,18 @@ namespace boundary_mesh
     {
         using AssemblyResult = Result<
             std::vector<OwnedBoundaryTriangle>, TransitionBoundaryError>;
-        for (std::size_t first = 0;
-             first < input.diagonal_requirements.size(); ++first)
-            for (std::size_t second = first + 1;
-                 second < input.diagonal_requirements.size(); ++second)
-                if (sameKey(input.diagonal_requirements[first].key,
-                            input.diagonal_requirements[second].key) &&
-                    input.diagonal_requirements[first].diagonal !=
-                        input.diagonal_requirements[second].diagonal)
+        std::map<std::pair<SurfaceFaceId, std::uint32_t>, QuadDiagonal> seen;
+        for (const auto &requirement : input.diagonal_requirements)
+        {
+                const auto [found, inserted] = seen.emplace(
+                    std::make_pair(requirement.key.source_face_id, requirement.key.layer),
+                    requirement.diagonal);
+                if (!inserted && found->second != requirement.diagonal)
                     return AssemblyResult::failure(
                         TransitionBoundaryError{
                             ConflictingLayerQuadDiagonal{
-                                input.diagonal_requirements[first].key,
-                                input.diagonal_requirements[first].diagonal,
-                                input.diagonal_requirements[second].diagonal}});
+                                requirement.key, found->second, requirement.diagonal}});
+        }
 
         std::vector<std::pair<
             TransitionTriangleKey, OwnedBoundaryTriangle>> sorted;
@@ -433,8 +532,11 @@ namespace boundary_mesh
             }
         }
 
-        std::optional<CollisionIndex> prior_transition_index;
-        if (input.prior_transition_boundary != nullptr &&
+        std::optional<CollisionIndex> owned_prior_transition_index;
+        if (!input.historical_index_includes_transition &&
+            input.prior_transition_index == nullptr &&
+            input.prior_transition_dynamic_index == nullptr &&
+            input.prior_transition_boundary != nullptr &&
             !input.prior_transition_boundary->empty())
         {
             std::vector<CollisionTriangle> prior;
@@ -448,8 +550,13 @@ namespace boundary_mesh
             if (!built.hasValue())
                 return RollbackResult::failure(
                     TransitionBoundaryError{built.error()});
-            prior_transition_index = std::move(built.value());
+            owned_prior_transition_index = std::move(built.value());
         }
+        const CollisionIndex *prior_transition_index =
+            input.prior_transition_index != nullptr
+                ? input.prior_transition_index
+                : (owned_prior_transition_index.has_value()
+                    ? &*owned_prior_transition_index : nullptr);
 
         std::vector<SurfaceFaceId> rollback;
         for (std::size_t index = 0; index < collisions.size(); ++index)
@@ -490,7 +597,10 @@ namespace boundary_mesh
                 {
                     const CollisionTriangle &obstacle =
                         input.historical_index->primitive(contact);
-                    if (!belongsToHistoricalTop(owned[index], obstacle))
+                    if (!belongsToHistoricalTop(
+                            owned[index], obstacle,
+                            input.historical_index_includes_transition
+                                ? input.prior_transition_boundary : nullptr))
                     {
                         hit = true;
                         break;
@@ -518,7 +628,31 @@ namespace boundary_mesh
                         break;
                     }
                 }
-            if (prior_transition_index.has_value())
+            if (input.prior_transition_dynamic_index != nullptr)
+            {
+                std::vector<CollisionPrimitiveId> candidates, contacts;
+                input.prior_transition_dynamic_index->queryIllegalContacts(
+                    collisions[index], candidates, contacts);
+                for (const CollisionPrimitiveId contact : contacts)
+                {
+                    const auto &obstacle =
+                        input.prior_transition_dynamic_index->primitive(contact);
+                    if (obstacle.owner_id >=
+                        input.prior_transition_boundary->size())
+                        return RollbackResult::failure(
+                            TransitionBoundaryError{
+                                SpatialError::InvalidTopologyReference});
+                    const auto &prior = (*input.prior_transition_boundary)[
+                        obstacle.owner_id];
+                    if (transitionTriangleKey(owned[index]) !=
+                        transitionTriangleKey(prior))
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
+            }
+            else if (prior_transition_index != nullptr)
                 for (const std::size_t contact :
                      prior_transition_index->queryIllegalContacts(
                          collisions[index]))

@@ -8,7 +8,7 @@ namespace boundary_mesh
 {
     struct SkewnessNormalOptimizationOptions
     {
-        bool enabled{true};
+        bool enabled{false}; // Temporarily opt-in: retain normal/height smoothing.
         Scalar activation_skewness{0.8};
         Scalar first_angle_degrees{5};
         Scalar second_angle_degrees{2};

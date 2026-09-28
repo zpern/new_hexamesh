@@ -30,11 +30,19 @@ namespace boundary_mesh
 
         const std::vector<LayerBoundaryCandidate> &candidates() const noexcept;
         const std::vector<LayerBoundaryOwner> &owners() const noexcept;
+        const std::vector<std::vector<SurfaceFaceId>> &
+        adjacentSourceFaceIds() const noexcept;
+        const std::vector<bool> &activeOwners() const noexcept;
+        Result<std::vector<std::size_t>, SpatialError> deactivateOwners(
+            const std::vector<std::size_t> &owner_indices);
         const LayerBoundaryBatchDiagnostics &diagnostics() const noexcept;
 
     private:
         std::vector<LayerBoundaryCandidate> candidates_;
         std::vector<LayerBoundaryOwner> owners_;
+        std::vector<std::vector<SurfaceFaceId>> adjacent_source_face_ids_;
+        std::vector<std::vector<std::size_t>> adjacent_owner_indices_;
+        std::vector<bool> active_owners_;
         LayerBoundaryBatchDiagnostics diagnostics_;
     };
 }

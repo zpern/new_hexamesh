@@ -50,6 +50,12 @@ int main()
     assert((select({edge(0, 20), edge(1, 21), edge(2, 22)})
                 .retained_local_edges ==
             std::vector<std::size_t>{0, 1}));
+    const auto candidates = quadHighNeighborCandidates({
+        edge(0,20),edge(1,21),edge(2,22)});
+    const std::vector<std::vector<std::size_t>> expected_candidates{
+        {0,1},{1,2}};
+    assert(candidates == expected_candidates);
+    if (candidates != expected_candidates) return 1;
     const auto all = select({
         edge(3, 23), edge(2, 22), edge(1, 21), edge(0, 20)});
     assert((all.retained_local_edges ==

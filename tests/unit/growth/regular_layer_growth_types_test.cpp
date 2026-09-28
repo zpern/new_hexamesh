@@ -3,6 +3,7 @@
 
 #include <boundary_mesh/growth/regular_layer_growth.hpp>
 #include <boundary_mesh/growth/regular_layer_growth_error.hpp>
+#include <boundary_mesh/boundary_layer/terminal_layer_lookup.hpp>
 
 int main()
 {
@@ -56,7 +57,7 @@ int main()
     {
         return 5;
     }
-    if (!options.field_smoothing.skewness.enabled ||
+    if (options.field_smoothing.skewness.enabled ||
         options.field_smoothing.skewness.activation_skewness != Scalar{0.8} ||
         options.field_smoothing.skewness.first_angle_degrees != Scalar{5} ||
         options.field_smoothing.skewness.second_angle_degrees != Scalar{2} ||
@@ -76,6 +77,36 @@ int main()
     {
         return 7;
     }
+
+    GrowthFront lookup_front;
+    lookup_front.source_face_ids = {21};
+    lookup_front.faces = {Quad{{0, 1, 2, 3}}};
+    lookup_front.vertices = {
+        GrowthFrontVertex{Point3::Zero(), 7},
+        GrowthFrontVertex{Point3::Zero(), 7},
+        GrowthFrontVertex{Point3::Zero(), 8},
+        GrowthFrontVertex{Point3::Zero(), 9}};
+    lookup_front.vertices[0].branch_id = 0;
+    lookup_front.vertices[1].branch_id = 1;
+    LayerVertexTable lookup_records{
+        LayerVertexRecord{7, {0, 1}, 0},
+        LayerVertexRecord{7, {2, 3}, 1},
+        LayerVertexRecord{8, {4, 5}, 0},
+        LayerVertexRecord{9, {6, 7}, 0}};
+    const TerminalLayerLookup lookup(lookup_front, lookup_records);
+    VolumeMesh lookup_mesh;
+    for (std::uint32_t i = 0; i < 8; ++i)
+        lookup_mesh.vertices.emplace_back(
+            static_cast<Scalar>(i), Scalar{0}, Scalar{0});
+    const auto hexa = lookup.hexaPoints(21, 1, lookup_front,
+                                        lookup_records, lookup_mesh);
+    if (!hexa.has_value() || (*hexa)[0].x() != Scalar{0} ||
+        (*hexa)[4].x() != Scalar{1} || (*hexa)[1].x() != Scalar{2} ||
+        (*hexa)[5].x() != Scalar{3})
+        return 8;
+    if (lookup.hexaPoints(22, 1, lookup_front, lookup_records, lookup_mesh)
+            .has_value())
+        return 9;
 
     static_assert(
         static_cast<std::size_t>(

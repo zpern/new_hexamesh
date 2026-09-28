@@ -339,8 +339,9 @@ namespace boundary_mesh
             !validIds(input.low, *input.mesh_vertices) ||
             !validIds(input.high, *input.mesh_vertices) ||
             input.high_edges.size() > 2 ||
-            !std::isfinite(input.distance_scale) ||
-            input.distance_scale <= Scalar{0})
+            (!input.apex_point.has_value() &&
+             (!std::isfinite(input.distance_scale) ||
+              input.distance_scale <= Scalar{0})))
             return BuildResult::failure(TransitionTemplateError{
                 InvalidTransitionTemplateInput{input.source_face_id, 15}});
 
@@ -523,6 +524,96 @@ namespace boundary_mesh
         characteristic /= Scalar{4};
         if (!std::isfinite(characteristic) || characteristic <= Scalar{0})
             return result;
+
+        if (input.high_edges.empty())
+        {
+            // For a fixed quad and a center-normal ray, both pyramid
+            // subtet signed volumes are affine in the apex height. Intersect
+            // their positive half-lines to avoid probing degenerate or
+            // inverted heights (especially for warped quads).
+            Point3 center = Point3::Zero();
+            for (const VertexId id : input.low)
+                center += (*input.mesh_vertices)[id];
+            center /= Scalar{4};
+            const Scalar scale3 = characteristic * characteristic *
+                characteristic;
+            const Scalar volume_tolerance = std::max(
+                Scalar{64} * std::numeric_limits<Scalar>::epsilon() * scale3,
+                input.length_tolerance * characteristic * characteristic);
+            Scalar minimum_height = Scalar{0};
+            Scalar maximum_height =
+                std::numeric_limits<Scalar>::infinity();
+            constexpr std::array<std::array<std::size_t,3>,2> subtets{{
+                {{0,1,2}}, {{0,2,3}}}};
+            for (const auto &subtet : subtets)
+            {
+                const Point3 &a = (*input.mesh_vertices)[input.low[subtet[0]]];
+                const Point3 &b = (*input.mesh_vertices)[input.low[subtet[1]]];
+                const Point3 &c = (*input.mesh_vertices)[input.low[subtet[2]]];
+                const Vector3 first = b-a;
+                const Vector3 second = c-a;
+                const Scalar intercept = first.dot(second.cross(center-a));
+                const Scalar slope = first.dot(second.cross(direction));
+                if (!std::isfinite(intercept) || !std::isfinite(slope))
+                    return result;
+                if (slope > Scalar{0})
+                    minimum_height = std::max(minimum_height,
+                        (volume_tolerance-intercept)/slope);
+                else if (slope < Scalar{0})
+                    maximum_height = std::min(maximum_height,
+                        (volume_tolerance-intercept)/slope);
+                else if (intercept <= volume_tolerance)
+                    return result;
+            }
+            minimum_height = std::max(minimum_height,
+                Scalar{64} * std::numeric_limits<Scalar>::epsilon() *
+                    characteristic);
+            if (!(maximum_height > minimum_height)) return result;
+
+            const Scalar gap = std::isfinite(maximum_height)
+                ? maximum_height-minimum_height
+                : std::numeric_limits<Scalar>::infinity();
+            const Scalar margin = std::isfinite(gap)
+                ? std::max(Scalar{64} *
+                    std::numeric_limits<Scalar>::epsilon() * characteristic,
+                    gap * Scalar{1e-8})
+                : std::max(Scalar{64} *
+                    std::numeric_limits<Scalar>::epsilon() * characteristic,
+                    input.length_tolerance);
+            Scalar height = std::max(
+                input.distance_scale * characteristic,
+                minimum_height + margin);
+            if (std::isfinite(maximum_height))
+                height = std::min(height, maximum_height-margin);
+            if (!(height > minimum_height && height < maximum_height))
+                return result;
+
+            const Scalar lower = minimum_height + margin;
+            const Scalar upper = std::isfinite(maximum_height)
+                ? maximum_height-margin
+                : std::numeric_limits<Scalar>::infinity();
+            for (std::size_t candidate = 0;
+                 candidate < maximum_candidates; ++candidate)
+            {
+                Scalar candidate_height = height;
+                if (candidate > 0)
+                {
+                    const Scalar factor = std::ldexp(Scalar{1},
+                        -static_cast<int>(candidate));
+                    candidate_height = lower + (height-lower)*factor;
+                    if (!(candidate_height > lower) ||
+                        candidate_height >= upper)
+                        break;
+                }
+                ExternalQuadPatchInput trial = input;
+                trial.apex_point = center + candidate_height*direction;
+                if (!buildExternalQuadPatch(trial).hasValue()) continue;
+                result.push_back(*trial.apex_point);
+            }
+            if (!result.empty()) return result;
+            // Only if the center-normal ray has no valid geometry do we fall
+            // through to the legacy local lateral-search fallback below.
+        }
 
         Vector3 tangent = Vector3::Zero();
         for (std::size_t edge = 0; edge < 4; ++edge)

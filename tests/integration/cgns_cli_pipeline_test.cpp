@@ -64,6 +64,7 @@ int main()
     };
     expect_argument_error({});
     expect_argument_error({"--unknown", "1"});
+    expect_argument_error({"--verify-transition-rebuilds", "invalid"});
     expect_argument_error({"--input", "a.cgns", "--input", "b.cgns",
                            "--first-height", "0.1", "--growth-ratio", "1",
                            "--layer-count", "1"});

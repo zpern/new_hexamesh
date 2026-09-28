@@ -1,41 +1,59 @@
 #include <boundary_mesh/growth/farfield_boundary_builder.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
+#include <functional>
 #include <limits>
 #include <type_traits>
+#include <unordered_map>
 #include <variant>
 
 namespace boundary_mesh
 {
     namespace
     {
-        bool sameKey(
-            const CollisionVertexKey &left,
-            const CollisionVertexKey &right)
+        using OutputVertexKey = std::array<std::uint64_t, 2>;
+
+        OutputVertexKey outputVertexKey(const CollisionVertexKey &key)
         {
-            return left.source_vertex_id == right.source_vertex_id &&
-                   left.layer == right.layer &&
-                   left.branch_id == right.branch_id;
+            return {
+                static_cast<std::uint64_t>(key.source_vertex_id),
+                (static_cast<std::uint64_t>(key.layer) << 32) |
+                    key.branch_id};
         }
+
+        struct OutputVertexKeyHash
+        {
+            std::size_t operator()(const OutputVertexKey &key) const noexcept
+            {
+                const std::size_t first =
+                    std::hash<std::uint64_t>{}(key[0]);
+                const std::size_t second =
+                    std::hash<std::uint64_t>{}(key[1]);
+                return first ^ (second + 0x9e3779b9U +
+                                (first << 6) + (first >> 2));
+            }
+        };
 
         Result<VertexId, SpatialError> appendVertex(
             SurfaceMesh &output,
-            std::vector<CollisionVertexKey> &keys,
+            std::unordered_map<OutputVertexKey, VertexId,
+                               OutputVertexKeyHash> &vertex_ids,
             const CollisionVertexKey &key,
             const Point3 &point)
         {
-            for (std::size_t index = 0; index < keys.size(); ++index)
+            const OutputVertexKey packed_key = outputVertexKey(key);
+            const auto existing = vertex_ids.find(packed_key);
+            if (existing != vertex_ids.end())
             {
-                if (sameKey(keys[index], key))
+                const VertexId id = existing->second;
+                if (!(output.vertices[id].array() == point.array()).all())
                 {
-                    if (!(output.vertices[index].array() == point.array()).all())
-                    {
-                        return Result<VertexId, SpatialError>::failure(
-                            SpatialError::InvalidTopologyReference);
-                    }
-                    return Result<VertexId, SpatialError>::success(
-                        static_cast<VertexId>(index));
+                    return Result<VertexId, SpatialError>::failure(
+                        SpatialError::InvalidTopologyReference);
                 }
+                return Result<VertexId, SpatialError>::success(id);
             }
             if (output.vertices.size() >=
                 static_cast<std::size_t>(
@@ -46,7 +64,7 @@ namespace boundary_mesh
             }
             const VertexId id = static_cast<VertexId>(output.vertices.size());
             output.vertices.push_back(point);
-            keys.push_back(key);
+            vertex_ids.emplace(packed_key, id);
             return Result<VertexId, SpatialError>::success(id);
         }
     }
@@ -55,7 +73,8 @@ namespace boundary_mesh
         const SurfaceMesh &original_surface,
         const GrowthFront &zero_layer_front,
         const ExposedBoundaryTracker &exposed_boundary,
-        const std::vector<SurfaceFaceId> &zero_layer_source_face_ids)
+        const std::vector<SurfaceFaceId> &zero_layer_source_face_ids,
+        bool include_boundary_layer_interface)
     {
         if (original_surface.faces.size() !=
             original_surface.face_tags.size())
@@ -65,7 +84,9 @@ namespace boundary_mesh
         }
 
         SurfaceMesh output;
-        std::vector<CollisionVertexKey> output_keys;
+        std::unordered_map<OutputVertexKey, VertexId, OutputVertexKeyHash>
+            output_vertex_ids;
+        output_vertex_ids.reserve(original_surface.vertices.size());
         for (std::size_t face_index = 0;
              face_index < original_surface.faces.size();
              ++face_index)
@@ -95,7 +116,7 @@ namespace boundary_mesh
                         }
                         const auto id = appendVertex(
                             output,
-                            output_keys,
+                            output_vertex_ids,
                             {source_id, 0},
                             original_surface.vertices[source_index]);
                         if (!id.hasValue())
@@ -134,6 +155,8 @@ namespace boundary_mesh
                     SpatialError::InvalidTopologyReference);
             }
             selected[face_index] = true;
+            if (!include_boundary_layer_interface)
+                continue;
 
             for (std::size_t front_face_index = 0;
                  front_face_index < zero_layer_front.faces.size();
@@ -169,7 +192,7 @@ namespace boundary_mesh
                             zero_layer_front.vertices[front_index];
                         const auto id = appendVertex(
                             output,
-                            output_keys,
+                            output_vertex_ids,
                             {vertex.source_vertex_id,
                              zero_layer_front.layer,
                              vertex.branch_id},
@@ -199,6 +222,10 @@ namespace boundary_mesh
 
         for (const BoundaryFace &face : exposed_boundary.faces())
         {
+            if (!include_boundary_layer_interface &&
+                face.boundary_kind ==
+                    SurfaceBoundaryKind::BoundaryLayerInterface)
+                continue;
             std::vector<VertexId> ids;
             ids.reserve(face.points.size());
             for (std::size_t reverse = face.points.size(); reverse > 0; --reverse)
@@ -206,7 +233,7 @@ namespace boundary_mesh
                 const std::size_t index = reverse - 1;
                 const auto id = appendVertex(
                     output,
-                    output_keys,
+                    output_vertex_ids,
                     face.vertex_keys[index],
                     face.points[index]);
                 if (!id.hasValue())
@@ -309,7 +336,8 @@ namespace boundary_mesh
     Result<SurfaceMesh, SpatialError> buildFarfieldBoundary(
         const SurfaceMesh &original_surface,
         const ExposedBoundaryTracker &exposed_boundary,
-        const std::vector<SurfaceFaceId> &zero_layer_source_face_ids)
+        const std::vector<SurfaceFaceId> &zero_layer_source_face_ids,
+        bool include_boundary_layer_interface)
     {
         GrowthFront original_front;
         original_front.vertices.reserve(original_surface.vertices.size());
@@ -347,6 +375,7 @@ namespace boundary_mesh
             original_surface,
             original_front,
             exposed_boundary,
-            zero_layer_source_face_ids);
+            zero_layer_source_face_ids,
+            include_boundary_layer_interface);
     }
 }

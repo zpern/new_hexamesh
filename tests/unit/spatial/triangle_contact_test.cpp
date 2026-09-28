@@ -88,6 +88,24 @@ int main()
                overlap,
                unrelated_keys)
                .value());
+
+    // Reproduce the edge-through-face pair reported from the farfield VTK:
+    // the triangles share one vertex, but the second triangle's opposite
+    // edge crosses the interior of the first triangle.
+    const TrianglePoints reported_face{{
+        {-41.809330285848183,156.24687726388987,358.87439701189749},
+        {-52.870437599740114,149.20018645489199,354.86151434023742},
+        {-39.766110368704268,157.45464135270569,365.12105297931237}}};
+    const TrianglePoints reported_edge_face{{
+        {-52.230204143127828,168.55519405454916,353.94416819740519},
+        {-41.809330285848183,156.24687726388987,358.87439701189749},
+        {-37.591896255781016,150.73513071375501,365.02808608850063}}};
+    assert(hasIllegalTriangleContact(
+               reported_face,
+               {{{89100,0},{89102,0},{89101,0}}},
+               reported_edge_face,
+               {{{89625,0},{89102,0},{89626,0}}})
+               .value());
     assert(!hasIllegalTriangleContact(
                 first,
                 first_keys,
@@ -489,5 +507,35 @@ int main()
             .value())
     {
         return 1;
+    }
+
+    // blades 12-layer farfield: the external edge crosses the side top face.
+    const TrianglePoints blades_side{{
+        {-511.02064602792603, -1565.2563634912583, 412.89263855186715},
+        {-511.82673714998901, -1563.1466957279374, 411.55778894122983},
+        {-513.84918182461377, -1562.0732016879131, 406.39776397447048}}};
+    const TrianglePoints blades_external{{
+        blades_side[2],
+        {-510.99719500405888, -1563.8734480287476, 410.53773099765749},
+        {-512.64591192436956, -1563.3866874505352, 409.93120450106795}}};
+    const CollisionTriangle blades_side_triangle = makeCollisionTriangle(
+        blades_side,
+        {{{255789, 12, 0}, {256761, 12, 0}, {256762, 11, 0}}},
+        {{blades_side[0], blades_side[1], blades_side[2], Point3{}}},
+        {{{255789, 12, 0}, {256761, 12, 0}, {256762, 11, 0}, {}}},
+        3);
+    const CollisionTriangle blades_external_triangle = makeCollisionTriangle(
+        blades_external,
+        {{{256762, 11, 0}, {256761, 11, 0},
+          {445377, 11, 4294967295u}}},
+        {{blades_external[0], blades_external[1],
+          blades_external[2], Point3{}}},
+        {{{256762, 11, 0}, {256761, 11, 0},
+          {445377, 11, 4294967295u}, {}}},
+        3);
+    if (!hasIllegalTriangleContact(
+             blades_side_triangle, blades_external_triangle).value())
+    {
+        return 2;
     }
 }

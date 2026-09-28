@@ -129,15 +129,56 @@ int main()
     assert(crossing_full.hasValue());
     if (collision_state.value().collisionReport().rollback_faces !=
             crossing_full.value().rollback_faces ||
-        collision_state.value().collisionReport().colliding_owners.size() !=
-            crossing_full.value().colliding_owners.size())
+            collision_state.value().collisionReport().colliding_owners.size() !=
+            crossing_full.value().colliding_owners.size() ||
+        collision_state.value().diagnostics().reported_colliding_primitives != 2 ||
+        collision_state.value().diagnostics().self_collision_exact_tests != 1)
         return 7;
+
+    // Resolver inputs may mark RegularCandidate geometry as already validated
+    // by the rule-layer obstacle and self-collision stages. Keep it in the
+    // index so transition geometry can still collide with it, but do not
+    // repeat regular-vs-regular pair tests or static-obstacle queries.
+    auto regular_first = first;
+    regular_first.owner = {
+        70, 2, BoundaryOwnerRole::RegularCandidate, {70}};
+    auto transition_second = second;
+    transition_second.owner = {
+        80, 2, BoundaryOwnerRole::SideTransition, {80}};
+    TransitionBoundaryInput prevalidated_mixed;
+    prevalidated_mixed.regular_candidate_geometry_prevalidated = true;
+    prevalidated_mixed.candidate_triangles = {
+        regular_first, transition_second};
+    auto mixed_state = IncrementalTransitionCollisionState::build(
+        prevalidated_mixed);
+    assert(mixed_state.hasValue());
+    if (mixed_state.value().collisionReport().rollback_faces !=
+            std::vector<SurfaceFaceId>{70, 80} ||
+        mixed_state.value().diagnostics().self_collision_exact_tests != 1 ||
+        mixed_state.value().diagnostics().static_obstacle_queries != 1)
+        return 13;
+
+    auto regular_second = transition_second;
+    regular_second.owner = {
+        80, 2, BoundaryOwnerRole::RegularCandidate, {80}};
+    TransitionBoundaryInput prevalidated_regular_pair;
+    prevalidated_regular_pair.regular_candidate_geometry_prevalidated = true;
+    prevalidated_regular_pair.candidate_triangles = {
+        regular_first, regular_second};
+    auto regular_pair_state = IncrementalTransitionCollisionState::build(
+        prevalidated_regular_pair);
+    assert(regular_pair_state.hasValue());
+    if (!regular_pair_state.value().collisionReport().rollback_faces.empty() ||
+        regular_pair_state.value().diagnostics().self_collision_exact_tests != 0 ||
+        regular_pair_state.value().diagnostics().static_obstacle_queries != 0)
+        return 14;
 
     TransitionBoundaryInput separated = crossing;
     for (Point3 &point : separated.candidate_triangles[0].points)
         point.z() += 5;
     const auto separated_update = collision_state.value().update(
-        separated, {{70,2,BoundaryOwnerRole::SideTransition}});
+        separated, {{70,2,BoundaryOwnerRole::SideTransition}},
+        {separated.candidate_triangles[0]});
     assert(separated_update.hasValue());
     const auto separated_full = checker.inspect(separated);
     assert(separated_full.hasValue());
@@ -145,8 +186,10 @@ int main()
             separated_full.value().rollback_faces ||
         collision_state.value().collisionReport().colliding_owners.size() !=
             separated_full.value().colliding_owners.size() ||
+        collision_state.value().diagnostics().reported_colliding_primitives != 0 ||
         collision_state.value().diagnostics().full_collision_builds != 0 ||
-        collision_state.value().diagnostics().self_collision_queries != 1)
+        collision_state.value().diagnostics().self_collision_queries != 1 ||
+        collision_state.value().diagnostics().staged_exposed_triangles != 1)
         return 8;
 
     TransitionBoundaryInput changed_columns = separated;
@@ -161,4 +204,35 @@ int main()
     assert(columns_update.hasValue());
     if (collision_state.value().diagnostics().self_collision_queries != 1)
         return 9;
+
+    // Repeated local moves must preserve untouched buckets and remove stale
+    // contact adjacency when two colliding owners disappear together.
+    auto sparse_input = crossing;
+    const auto untouched = owned(90, {{{30,2,0},{31,2,0},{32,2,0}}}, 10);
+    auto shared_owner = first;
+    shared_owner.owner = {91,2,BoundaryOwnerRole::SideTransition,{91}};
+    sparse_input.candidate_triangles.push_back(untouched);
+    sparse_input.candidate_triangles.push_back(shared_owner);
+    auto local_state = IncrementalTransitionCollisionState::build(sparse_input);
+    if (!local_state.hasValue()) return 10;
+    for (int round = 0; round < 12; ++round)
+    {
+        auto next = crossing;
+        if (round % 3 == 1)
+            for (auto &point : next.candidate_triangles[0].points) point.z() += 5;
+        if (round % 3 == 2) next.candidate_triangles.clear();
+        next.candidate_triangles.push_back(untouched);
+        next.candidate_triangles.push_back(shared_owner);
+        const auto update = local_state.value().update(next,
+            {{70,2,BoundaryOwnerRole::SideTransition}, {80,2,BoundaryOwnerRole::SideTransition}});
+        const auto full = checker.inspect(next);
+        const auto exposed = checker.assembleExposedBoundary(next);
+        if (!update.hasValue() || !full.hasValue() || !exposed.hasValue() ||
+            !sameExposed(local_state.value().exposedBoundary(), exposed.value()) ||
+            local_state.value().collisionReport().rollback_faces != full.value().rollback_faces ||
+            local_state.value().collisionReport().colliding_owners.size() != full.value().colliding_owners.size())
+            return 11;
+    }
+    if (local_state.value().diagnostics().transition_index_rebuilds == 0)
+        return 12;
 }

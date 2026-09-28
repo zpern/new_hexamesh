@@ -16,7 +16,8 @@ namespace boundary_mesh
     {
         struct CellView
         {
-            std::vector<VertexId> vertex_ids;
+            std::array<VertexId, 8> vertex_ids{};
+            std::uint8_t vertex_count{};
             int vtk_type{};
         };
 
@@ -26,9 +27,15 @@ namespace boundary_mesh
                 [](const auto &value)
                 {
                     using Face = std::decay_t<decltype(value)>;
-                    return CellView{
-                        {value.vertex_ids.begin(), value.vertex_ids.end()},
-                        std::is_same_v<Face, Triangle> ? 5 : 9};
+                    CellView cell;
+                    cell.vertex_count = static_cast<std::uint8_t>(
+                        value.vertex_ids.size());
+                    for (std::size_t index = 0;
+                         index < value.vertex_ids.size(); ++index)
+                        cell.vertex_ids[index] = value.vertex_ids[index];
+                    cell.vtk_type =
+                        std::is_same_v<Face, Triangle> ? 5 : 9;
+                    return cell;
                 },
                 face);
         }
@@ -45,16 +52,20 @@ namespace boundary_mesh
                         type = 14;
                     else if constexpr (std::is_same_v<Cell, Prism>)
                     {
-                        type = 13;
-                        return CellView{
-                            {value.vertex_ids[0], value.vertex_ids[2],
-                             value.vertex_ids[1], value.vertex_ids[3],
-                             value.vertex_ids[5], value.vertex_ids[4]},
-                            type};
+                        return CellView{{
+                            value.vertex_ids[0], value.vertex_ids[2],
+                            value.vertex_ids[1], value.vertex_ids[3],
+                            value.vertex_ids[5], value.vertex_ids[4]},
+                            6, 13};
                     }
-                    return CellView{
-                        {value.vertex_ids.begin(), value.vertex_ids.end()},
-                        type};
+                    CellView view;
+                    view.vertex_count = static_cast<std::uint8_t>(
+                        value.vertex_ids.size());
+                    for (std::size_t index = 0;
+                         index < value.vertex_ids.size(); ++index)
+                        view.vertex_ids[index] = value.vertex_ids[index];
+                    view.vtk_type = type;
+                    return view;
                 },
                 cell);
         }
@@ -79,7 +90,7 @@ namespace boundary_mesh
                  ++cell_index)
             {
                 const CellView &cell = cells[cell_index];
-                connectivity_count += cell.vertex_ids.size() + 1;
+                connectivity_count += cell.vertex_count + 1;
                 if (connectivity_count > maximum)
                 {
                     return VtkWriteStatus::failure(
@@ -88,8 +99,10 @@ namespace boundary_mesh
                          cell_index,
                          0});
                 }
-                for (const VertexId vertex_id : cell.vertex_ids)
+                for (std::size_t vertex_index = 0;
+                     vertex_index < cell.vertex_count; ++vertex_index)
                 {
+                    const VertexId vertex_id = cell.vertex_ids[vertex_index];
                     if (static_cast<std::size_t>(vertex_id) >=
                         vertices.size())
                     {
@@ -140,10 +153,11 @@ namespace boundary_mesh
                    << connectivity_count << '\n';
             for (const CellView &cell : cells)
             {
-                output << cell.vertex_ids.size();
-                for (const VertexId vertex_id : cell.vertex_ids)
+                output << static_cast<unsigned int>(cell.vertex_count);
+                for (std::size_t vertex_index = 0;
+                     vertex_index < cell.vertex_count; ++vertex_index)
                 {
-                    output << ' ' << vertex_id;
+                    output << ' ' << cell.vertex_ids[vertex_index];
                 }
                 output << '\n';
             }

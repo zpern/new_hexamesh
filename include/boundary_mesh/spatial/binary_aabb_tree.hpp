@@ -18,6 +18,10 @@ namespace boundary_mesh
 
         std::vector<std::size_t> query(
             const Aabb &bounds) const;
+        void query(
+            const Aabb &bounds,
+            std::vector<std::size_t> &result,
+            std::vector<std::size_t> &traversal_scratch) const;
 
         std::size_t nearest(
             const Point3 &point,

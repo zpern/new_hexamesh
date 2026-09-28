@@ -54,6 +54,8 @@ namespace boundary_mesh
         std::vector<ResolvedTransitionTopology> resolved_topology;
         std::vector<SurfaceFaceId> forced_rollback_high_faces;
         bool all_top_faces_are_triangles{};
+        // Provenance is needed to remove stale forced rollbacks on patch replacement.
+        std::map<SurfaceFaceId, std::vector<SurfaceFaceId>> forced_rollback_by_source;
     };
 
     struct ExternalPatchControls
@@ -63,10 +65,12 @@ namespace boundary_mesh
         std::map<SurfaceFaceId, std::size_t> robust_candidate_indices;
         std::map<SurfaceFaceId, Point3> explicit_apex_points;
         std::vector<SurfaceFaceId> keep_hexa_faces;
+        std::vector<SurfaceFaceId> force_keep_hexa_faces;
 
         Scalar distanceScale(SurfaceFaceId id) const;
         std::size_t apexCandidateIndex(SurfaceFaceId id) const;
         bool keepHexa(SurfaceFaceId id) const;
+        bool forceKeepHexa(SurfaceFaceId id) const;
     };
 
     using LayerTransitionError = std::variant<
@@ -79,15 +83,35 @@ namespace boundary_mesh
 
     struct LayerTransitionInput
     {
+        // Owning fields remain for compatibility; layer-scoped callers may
+        // provide read-only views to avoid copying large fronts.
         GrowthFront current_front;
         GrowthFront candidate_front;
+        const GrowthFront *current_front_view{};
+        const GrowthFront *candidate_front_view{};
+        // Sorted source face IDs omitted from the initial retained set.
+        // The candidate front itself remains intact and can be shared.
+        std::vector<SurfaceFaceId> excluded_candidate_faces;
+        // Set by the incremental growth pipeline after rule-layer collision
+        // filtering; standalone Resolver callers retain full validation.
+        bool regular_candidate_geometry_prevalidated{};
+        const GrowthFront &currentFront() const
+        { return current_front_view ? *current_front_view : current_front; }
+        const GrowthFront &candidateFront() const
+        { return candidate_front_view ? *candidate_front_view : candidate_front; }
         LayerFaceSets face_sets;
         std::uint32_t completed_layer{};
         Scalar length_tolerance{1e-12};
+        // Preferred non-owning path for layer-scoped immutable obstacle data.
+        // The value field below remains for source compatibility with callers
+        // that construct a self-contained resolver input.
+        const CollisionIndex *original_surface_view{};
         std::optional<CollisionIndex> original_surface;
         const ExposedBoundaryTracker *historical_boundary{};
+        bool historical_index_includes_transition{};
         const std::vector<OwnedBoundaryTriangle>
             *prior_transition_boundary{};
+        const IncrementalCollisionIndex *prior_transition_dynamic_index{};
         const SlidingIntersectionIndex *sliding_surface{};
         std::function<std::optional<HexaPoints>(SurfaceFaceId)>
             terminal_hexa_points;
@@ -100,6 +124,16 @@ namespace boundary_mesh
             const LayerFaceSets &,
             const std::vector<SurfaceFaceId> &,
             const ExternalPatchControls &)> build_external_patches;
+        // Return every role for selected sources, including rollback provenance.
+        // Incomplete provenance or non-triangle aggregates use the full builder.
+        std::function<ProvisionalLayerTransitionResult(
+            const std::vector<SurfaceFaceId> &,
+            const LayerFaceSets &,
+            const std::vector<SurfaceFaceId> &,
+            const ExternalPatchControls &)> build_transition_patches;
+        std::function<std::vector<SurfaceFaceId>(
+            const std::vector<SurfaceFaceId> &)> affected_transition_faces;
+        bool verify_local_rebuilds{};
     };
 
     struct StableLayerTransition
@@ -112,6 +146,9 @@ namespace boundary_mesh
         bool all_top_faces_are_triangles{};
         std::uint64_t collision_full_builds{};
         std::uint64_t collision_incremental_updates{};
+        std::uint64_t provisional_full_builds{};
+        std::uint64_t provisional_local_rebuilds{};
+        std::uint64_t search_index_full_builds{};
     };
 
     class LayerTransitionResolver

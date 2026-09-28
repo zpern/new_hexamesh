@@ -226,12 +226,6 @@ namespace boundary_mesh
             return output;
         }
 
-        output.diagnostics.maximum_skewness_before = globalMaximum(
-            front,
-            adjacency,
-            baseline_directions,
-            fixed_actual_heights);
-
         std::vector<bool> active(front.vertices.size(), false);
         for (std::size_t vertex = 0;
              vertex < front.vertices.size();
@@ -244,6 +238,10 @@ namespace boundary_mesh
                 adjacency,
                 baseline_directions,
                 fixed_actual_heights);
+            if (objective.valid)
+                output.diagnostics.maximum_skewness_before = std::max(
+                    output.diagnostics.maximum_skewness_before,
+                    objective.maximum);
             active[vertex] = objective.valid &&
                 objective.maximum > options.activation_skewness;
             if (active[vertex])

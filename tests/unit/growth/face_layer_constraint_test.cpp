@@ -52,4 +52,13 @@ int main()
     assert(table.value().find(2)->requested_layer_count == 2);
     assert(table.value().find(2)->limit_kind ==
            FaceLayerLimitKind::Requested);
+
+    auto duplicated_front = front.value();
+    duplicated_front.faces.push_back(duplicated_front.faces.front());
+    duplicated_front.source_face_ids.push_back(
+        duplicated_front.source_face_ids.front());
+    const auto duplicated_constraints = buildFaceLayerConstraints(
+        patch.value(), duplicated_front, profiles.value());
+    assert(duplicated_constraints.hasValue());
+    assert(duplicated_constraints.value().entries().size() == 2);
 }

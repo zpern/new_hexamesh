@@ -141,6 +141,30 @@ int main()
            owner_intersecting.value().illegal_owner_ids);
     assert(reverse_order.value().diagnostics.owner_pairs == 1);
 
+    const std::vector<CollisionOwnerTriangles> changed_owner_set{
+        owner(4, {horizontal}), owner(2, {vertical}), owner(9, {distant})};
+    const auto persistent_index = BatchSelfCollisionIndex::build(
+        changed_owner_set,
+        {changed_owner_set[0].bounds,
+         changed_owner_set[1].bounds,
+         changed_owner_set[2].bounds});
+    assert(persistent_index.hasValue());
+    const auto persistent_changed = persistent_index.value().detectChanged(
+        changed_owner_set, {0});
+    assert(persistent_changed.hasValue());
+    assert((persistent_changed.value().illegal_owner_ids ==
+            std::vector<std::uint32_t>{2, 4}));
+    assert(persistent_changed.value().diagnostics.exact_tests == 1);
+    Aabb too_small = changed_owner_set[0].bounds;
+    too_small.maximum.x() = too_small.minimum.x();
+    const auto invalid_persistent_index = BatchSelfCollisionIndex::build(
+        changed_owner_set,
+        {too_small,
+         changed_owner_set[1].bounds,
+         changed_owner_set[2].bounds});
+    assert(!invalid_persistent_index.hasValue());
+    assert(invalid_persistent_index.error() == SpatialError::InvalidAabb);
+
     CollisionOwnerTriangles invalid_owner = owner(4, {horizontal});
     invalid_owner.bounds.minimum.x() =
         std::numeric_limits<Scalar>::quiet_NaN();

@@ -39,6 +39,9 @@ namespace boundary_mesh
     using QuadHighNeighborSelectionResult = Result<
         QuadHighNeighborSelection, TransitionTemplateError>;
 
+    std::vector<std::vector<std::size_t>> quadHighNeighborCandidates(
+        const std::vector<QuadHighNeighbor> &high_neighbors);
+
     QuadHighNeighborSelectionResult selectQuadHighNeighbors(
         const QuadHighNeighborSelectionInput &input);
 }

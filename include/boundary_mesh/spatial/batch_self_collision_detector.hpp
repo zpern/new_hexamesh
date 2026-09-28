@@ -44,5 +44,22 @@ namespace boundary_mesh
 
         static Result<BatchSelfCollisionResult, SpatialError> detectOwners(
             const std::vector<CollisionOwnerTriangles> &owners);
+
+    };
+
+    class BatchSelfCollisionIndex
+    {
+    public:
+        static Result<BatchSelfCollisionIndex, SpatialError> build(
+            const std::vector<CollisionOwnerTriangles> &owners,
+            const std::vector<Aabb> &conservative_owner_bounds);
+
+        Result<BatchSelfCollisionResult, SpatialError> detectChanged(
+            const std::vector<CollisionOwnerTriangles> &active_owners,
+            const std::vector<std::size_t> &changed_owner_indices) const;
+
+    private:
+        BinaryAabbTree tree_;
+        std::vector<std::uint32_t> owner_ids_;
     };
 }

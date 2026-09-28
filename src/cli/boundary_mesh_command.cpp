@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -137,6 +138,7 @@ namespace boundary_mesh
             value = get("max_layer_diff"); if (!value.empty() && !parseUnsigned(value, options.max_layer_diff)) { message = "invalid max_layer_diff in config"; return false; }
             value = get("isotropic_height"); if (!value.empty() && !parseScalar(value, options.isotropic_height)) { message = "invalid isotropic_height in config"; return false; }
             value = get("multi_normal"); if (!value.empty() && !parseBoolean(value, options.multi_normal_enabled)) { message = "invalid multi_normal in config"; return false; }
+            value = get("split"); if (!value.empty() && !parseBoolean(value, options.split_failed_hexa_columns)) { message = "invalid split in config"; return false; }
             value = get("debug_log"); if (!value.empty() && !parseBoolean(value, options.debug_log_enabled)) { message = "invalid debug_log in config"; return false; }
             return true;
         }
@@ -251,6 +253,22 @@ namespace boundary_mesh
                         return ParseStatus::Failure;
                     }
                 }
+                else if (name == "--split")
+                {
+                    if (!parseBoolean(value, options.split_failed_hexa_columns))
+                    {
+                        message = "invalid split flag";
+                        return ParseStatus::Failure;
+                    }
+                }
+                else if (name == "--verify-transition-rebuilds")
+                {
+                    if (!parseBoolean(value, options.verify_transition_rebuilds))
+                    {
+                        message = "invalid transition verification flag";
+                        return ParseStatus::Failure;
+                    }
+                }
                 else if (name == "--output-prefix")
                 {
                     options.output_prefix = value;
@@ -291,6 +309,8 @@ namespace boundary_mesh
                 << "[--max-neighbor-layer-difference COUNT] "
                 << "[--isotropic-height VALUE] "
                 << "[--multi-normal true|false] "
+                << "[--split true|false] "
+                << "[--verify-transition-rebuilds true|false] "
                 << "[--debuglog true|false] "
                 << "[--output-prefix PATH]\n";
             error << "   or: boundary_mesh_cli --config FILE [command-line overrides]\n";
@@ -376,7 +396,8 @@ namespace boundary_mesh
                       << " stop_layer=" << face.stop_layer << '\n';
             for (const auto &diagnostic :
                  growth.terminal_transition_diagnostics)
-                debug << "error terminal_quad_transition source_face="
+                debug << (diagnostic.split_succeeded ? "warning" : "error")
+                      << " terminal_quad_transition source_face="
                       << diagnostic.source_face_id
                       << " layer=" << diagnostic.layer
                       << " cell=" << diagnostic.cell_id
@@ -462,6 +483,9 @@ namespace boundary_mesh
         growth_options.cell_quality.maximum_skewness = command_options.maximum_skewness;
         growth_options.max_layer_diff = command_options.max_layer_diff;
         growth_options.isotropic_height = command_options.isotropic_height;
+        growth_options.verify_transition_rebuilds = command_options.verify_transition_rebuilds;
+        growth_options.split_failed_hexa_columns =
+            command_options.split_failed_hexa_columns;
 
         MultiNormalOptions multi_normal_options;
         multi_normal_options.enabled = command_options.multi_normal_enabled;
@@ -487,6 +511,26 @@ namespace boundary_mesh
                         &growth.error()))
             {
                 error << ", cause=" << regular->cause.index();
+                if (const auto *boundary =
+                        std::get_if<TransitionBoundaryError>(
+                            &regular->cause))
+                {
+                    if (const auto *unresolved =
+                            std::get_if<UnresolvedTransitionCollision>(
+                                boundary))
+                    {
+                        error << ", unresolved_transition_owners="
+                              << unresolved->owners.size();
+                        if (!unresolved->owners.empty())
+                            error << ", first_source_face="
+                                  << unresolved->owners.front().source_face_id
+                                  << ", first_layer="
+                                  << unresolved->owners.front().layer
+                                  << ", first_role="
+                                  << static_cast<int>(
+                                      unresolved->owners.front().role);
+                    }
+                }
                 if (const auto *transition =
                         std::get_if<TransitionTemplateError>(
                             &regular->cause))
@@ -506,7 +550,9 @@ namespace boundary_mesh
 
         for (const auto &diagnostic :
              growth.value().regular.terminal_transition_diagnostics)
-            error << "error: terminal quad transition failed"
+            error << (diagnostic.split_succeeded
+                          ? "warning: terminal quad transition failed; column split succeeded"
+                          : "error: terminal quad transition failed; column split failed")
                   << " source_face=" << diagnostic.source_face_id
                   << " layer=" << diagnostic.layer
                   << " cell=" << diagnostic.cell_id
@@ -536,6 +582,7 @@ namespace boundary_mesh
             command_options.output_prefix.string() +
             "_boundary_layer_top.vtk");
 
+        const auto write_started = std::chrono::steady_clock::now();
         const auto volume_status = writeLegacyVtk(
             volume_path,
             growth.value().mesh);
@@ -545,6 +592,9 @@ namespace boundary_mesh
         const auto top_status = writeLegacyVtk(
             top_path,
             growth.value().top_surface);
+        output << "temporary vtk-output ms="
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - write_started).count() << '\n';
         if (!volume_status.hasValue() ||
             !farfield_status.hasValue() ||
             !top_status.hasValue())

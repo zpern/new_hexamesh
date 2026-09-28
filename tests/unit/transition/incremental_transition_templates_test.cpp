@@ -145,6 +145,28 @@ int main()
     if (!allPositive(no_high_external.value().volume_cells, no_high_points))
         return 14;
 
+    // An explicit apex is already a complete geometric candidate; unrelated
+    // distance-scale input must not reject it.
+    const auto explicit_apex_zero_scale = buildExternalQuadPatch({
+        9, 1, {0,1,2,3}, {0,1,2,3}, {}, &points, 8,
+        Scalar{0}, Scalar{1e-12}, Point3{0.5,0.5,0.2}});
+    if (!explicit_apex_zero_scale.hasValue()) return 42;
+    const auto zero_height_pyramid = buildExternalQuadPatch({
+        9, 1, {0,1,2,3}, {0,1,2,3}, {}, &points, 8,
+        Scalar{0}, Scalar{1e-12}, Point3{0.5,0.5,0}});
+    if (zero_height_pyramid.hasValue()) return 45;
+
+    // Zero-high candidates must first follow the outward center-normal ray.
+    const auto center_ray_candidates = findExternalQuadPatchApexCandidates(
+        {9,1,{0,1,2,3},{0,1,2,3},{},&points,8,
+         Scalar{0.25},Scalar{1e-12}}, 4);
+    if (center_ray_candidates.empty()) return 43;
+    for (const Point3 &candidate : center_ray_candidates)
+        if ((candidate.x()-Scalar{0.5}) != Scalar{0} ||
+            (candidate.y()-Scalar{0.5}) != Scalar{0} ||
+            !(candidate.z() > Scalar{0}))
+            return 44;
+
     const auto one_high_external = buildExternalQuadPatch({
         9, 1, {0,1,2,3}, {4,5,2,3}, {0}, &points, 8,
         Scalar{0.25}, Scalar{1e-12}});
@@ -172,6 +194,34 @@ int main()
     const ExternalQuadPatchInput warped_input{
         42722, 8, {0,1,2,3}, {0,1,2,3}, {}, &warped_points, 4,
         Scalar{0.001}, Scalar{1e-12}};
+    const std::vector<Point3> range_test_points{
+        {0,0,0}, {1,0,0.2}, {1,1,-0.5}, {0,1,-1}};
+    const ExternalQuadPatchInput range_test_input{
+        42723,8,{0,1,2,3},{0,1,2,3},{},&range_test_points,4,
+        Scalar{0.001},Scalar{1e-12}};
+    const auto warped_center_ray = findExternalQuadPatchApexCandidates(
+        range_test_input,2);
+    if (warped_center_ray.empty()) return 46;
+    Vector3 warped_normal =
+        (range_test_points[1]-range_test_points[0]).cross(
+            range_test_points[2]-range_test_points[0]) +
+        (range_test_points[2]-range_test_points[0]).cross(
+            range_test_points[3]-range_test_points[0]);
+    warped_normal.normalize();
+    Point3 warped_center = Point3::Zero();
+    for (const Point3 &point : range_test_points) warped_center += point;
+    warped_center /= Scalar{4};
+    for (const Point3 &candidate : warped_center_ray)
+    {
+        const Vector3 displacement = candidate-warped_center;
+        if (!(displacement.dot(warped_normal) > 0) ||
+            (displacement-displacement.dot(warped_normal)*warped_normal).norm()
+                > Scalar{1e-10})
+            return 47;
+        ExternalQuadPatchInput trial = range_test_input;
+        trial.apex_point = candidate;
+        if (!buildExternalQuadPatch(trial).hasValue()) return 48;
+    }
     const auto robust = findRobustExternalQuadPatchApexCandidates(
         warped_input, 8);
     if (robust.empty() || robust.size() > 8) return 19;

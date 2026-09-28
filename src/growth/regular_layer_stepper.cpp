@@ -1,8 +1,11 @@
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <iostream>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -27,14 +30,25 @@ namespace boundary_mesh
             std::vector<std::size_t> previous_face_indices;
         };
 
-        std::vector<VertexId> faceVertexIds(const SurfaceFace &face)
+        struct FaceVertexIds
+        {
+            std::array<VertexId, 4> values{};
+            std::size_t count{};
+
+            const VertexId *begin() const { return values.data(); }
+            const VertexId *end() const { return values.data() + count; }
+        };
+
+        FaceVertexIds faceVertexIds(const SurfaceFace &face)
         {
             return std::visit(
                 [](const auto &value)
                 {
-                    return std::vector<VertexId>{
-                        value.vertex_ids.begin(),
-                        value.vertex_ids.end()};
+                    FaceVertexIds result;
+                    result.count = value.vertex_ids.size();
+                    std::copy(value.vertex_ids.begin(),
+                              value.vertex_ids.end(), result.values.begin());
+                    return result;
                 },
                 face);
         }
@@ -165,6 +179,15 @@ namespace boundary_mesh
     {
         using StepResult =
             Result<LayerStepResult, RegularLayerGrowthError>;
+        auto stage_started = std::chrono::steady_clock::now();
+        const auto report_stage = [&](const char *name)
+        {
+            const auto now = std::chrono::steady_clock::now();
+            std::cerr << "temporary stepper stage " << name << " ms="
+                << std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - stage_started).count() << '\n';
+            stage_started = now;
+        };
 
         if (!std::isfinite(options.isotropic_height) ||
             options.isotropic_height <= Scalar{0})
@@ -271,6 +294,7 @@ namespace boundary_mesh
 
         CompactFront eligible = compactFaces(
             current_front, eligible_face_indices, current_front.layer);
+        report_stage("eligibility-compact");
         const auto front_evaluation = FrontEvaluator{}.evaluate(
             eligible.front);
         if (!front_evaluation.hasValue())
@@ -282,6 +306,7 @@ namespace boundary_mesh
         }
 
         const auto adjacency_result = buildFrontAdjacency(eligible.front);
+        report_stage("front-evaluation-adjacency");
         if (!adjacency_result.hasValue())
         {
             return StepResult::failure(
@@ -292,6 +317,7 @@ namespace boundary_mesh
             eligible.front,
             front_evaluation.value(),
             adjacency_result.value());
+        report_stage("directions");
         if (!direction_result.hasValue())
         {
             return StepResult::failure(
@@ -346,6 +372,7 @@ namespace boundary_mesh
 
         const auto sliding = buildGrowthSlidingConstraints(
             sliding_surfaces, eligible.front, front_evaluation.value());
+        report_stage("heights-sliding");
         if (!sliding.hasValue())
             return StepResult::failure(GrowthDirectionFailure{
                 target_layer, sliding.error()});
@@ -359,6 +386,7 @@ namespace boundary_mesh
             provisional_heights,
             options.field_smoothing,
             &sliding.value());
+        report_stage("field-smoothing");
         if (!field_result.hasValue())
         {
             return StepResult::failure(
@@ -422,6 +450,7 @@ namespace boundary_mesh
             candidate_front,
             adjacency_result.value(),
             options.isotropic_height);
+        report_stage("project-isotropic");
         if (!isotropic.hasValue())
         {
             return StepResult::failure(isotropic.error());
@@ -524,6 +553,7 @@ namespace boundary_mesh
 
         CompactFront accepted = compactFaces(
             candidate_front, accepted_eligible_faces, target_layer);
+        report_stage("quality-compact");
         output.next_front = std::move(accepted.front);
         output.previous_front_vertex_indices.reserve(
             accepted.previous_vertex_indices.size());

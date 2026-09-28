@@ -570,6 +570,7 @@ int main()
         hexa_patch.value(), skewed_profile_input);
     if (!skewed_profiles.hasValue()) return 24;
     RegularLayerGrowthOptions strict_options;
+    strict_options.field_smoothing.skewness.enabled = true;
     strict_options.cell_quality.maximum_skewness = 0.05;
     strict_options.field_smoothing.skewness.activation_skewness = Scalar{0};
     const auto stopped = RegularLayerStepper{}.step(

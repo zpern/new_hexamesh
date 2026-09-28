@@ -48,6 +48,11 @@ int main()
         topology.value());
     assert(index.hasValue());
     assert(index.value().primitiveCount() == 4);
+    const auto farfield_index = buildNonWallSurfaceCollisionIndex(
+        mesh, topology.value());
+    assert(farfield_index.hasValue());
+    assert(farfield_index.value().primitiveCount() == 2);
+    assert(farfield_index.value().primitive(0).owner_id == 1);
 
     const CollisionTriangle &wall_primitive =
         index.value().primitive(0);
@@ -65,6 +70,14 @@ int main()
         7};
     const auto wall_contacts = index.value().queryIllegalContacts(wall_hit);
     assert(wall_contacts.size() == 2);
+    std::vector<std::size_t> obstacle_candidates{99};
+    std::vector<std::size_t> tree_scratch{99};
+    std::vector<std::size_t> reusable_wall_contacts{99};
+    index.value().queryIllegalContacts(
+        wall_hit, obstacle_candidates, tree_scratch,
+        reusable_wall_contacts);
+    assert(reusable_wall_contacts == wall_contacts);
+    assert(!obstacle_candidates.empty());
 
     const CollisionTriangle symmetry_only_hit{
         {{{0.2, 0.0, 0.2},
@@ -74,6 +87,11 @@ int main()
         CollisionOwnerKind::LayerCandidate,
         8};
     assert(index.value().queryIllegalContacts(symmetry_only_hit).empty());
+    index.value().queryIllegalContacts(
+        symmetry_only_hit, obstacle_candidates, tree_scratch,
+        reusable_wall_contacts);
+    assert(reusable_wall_contacts.empty());
+    assert(obstacle_candidates.empty());
 
     const std::array<Point3, 4> quad_points{{
         {0.0, 0.0, 0.0},

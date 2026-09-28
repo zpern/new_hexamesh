@@ -256,6 +256,64 @@ int main()
     assert(count(external_final.value().mesh, CellType::Pyramid) == 1);
     assert(count(external_final.value().mesh, CellType::Tetra) == 0);
 
+    // A failed terminal transition splits every Hexa in the source-face
+    // column using one diagonal selected for the complete column.
+    SurfaceMesh split_surface;
+    split_surface.vertices = {
+        {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0}};
+    split_surface.faces = {Quad{{0,1,2,3}}};
+    split_surface.face_tags = {{SurfaceBoundaryKind::Wall,14}};
+    GrowthFront split_front;
+    split_front.vertices = {
+        {{0,0,0},0}, {{1,0,0},1}, {{1,1,0},2}, {{0,1,0},3}};
+    split_front.faces = split_surface.faces;
+    split_front.source_face_ids = {0};
+    RegularLayerGrowthResult split_regular;
+    split_regular.mesh.vertices = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0},
+        {0,0,1},{1,0,1},{1,1,1},{0,1,1},
+        {0,0,2},{1,0,2},{1,1,2},{0,1,2}};
+    split_regular.mesh.cells = {
+        Hexa{{0,1,2,3,4,5,6,7}},
+        Hexa{{4,5,6,7,8,9,10,11}}};
+    split_regular.mesh.metadata = {
+        {CellRole::RegularLayer,0,1},
+        {CellRole::RegularLayer,0,2}};
+    split_regular.faces = {{
+        0,2,FaceGrowthStatus::Completed,
+        FaceStopReason::VertexLayerLimit,3}};
+    split_regular.layer_vertices = {
+        {0,{0,4,8},0},{1,{1,5,9},0},
+        {2,{2,6,10},0},{3,{3,7,11},0}};
+    ResolvedTransitionTopology keep_hexa_topology;
+    keep_hexa_topology.source_face_id = 0;
+    keep_hexa_topology.layer = 2;
+    keep_hexa_topology.template_kind = TransitionTemplateKind::QuadTopCap;
+    keep_hexa_topology.low_diagonal = QuadDiagonal::ZeroTwo;
+    keep_hexa_topology.terminal_quad_decision =
+        TerminalQuadDecision::KeepHexa;
+    auto unsplit_regular = split_regular;
+    const auto split_final = finalizeIncrementalLayerTopology(
+        split_surface, split_front, std::move(split_regular),
+        {keep_hexa_topology});
+    assert(split_final.hasValue());
+    assert(count(split_final.value().mesh, CellType::Hexa) == 0);
+    assert(count(split_final.value().mesh, CellType::Prism) == 4);
+    assert(split_final.value().mesh.cells.size() ==
+           split_final.value().mesh.metadata.size());
+    assert(split_final.value().terminal_transition_diagnostics.size() == 1);
+    assert(split_final.value().terminal_transition_diagnostics.front().reason ==
+           "no positive non-intersecting terminal quad patch; split column into prisms");
+    const auto unsplit_final = finalizeIncrementalLayerTopology(
+        split_surface, split_front, std::move(unsplit_regular),
+        {keep_hexa_topology}, false);
+    assert(unsplit_final.hasValue());
+    assert(count(unsplit_final.value().mesh, CellType::Hexa) == 2);
+    assert(count(unsplit_final.value().mesh, CellType::Prism) == 0);
+    assert(unsplit_final.value().terminal_transition_diagnostics.size() == 1);
+    assert(unsplit_final.value().terminal_transition_diagnostics.front().reason ==
+           "no positive non-intersecting terminal quad patch");
+
     SurfaceMesh triangle_surface;
     triangle_surface.vertices = {
         {0,0,0}, {1,0,0}, {0,1,0}};

@@ -98,6 +98,7 @@ int main()
         Vector3::UnitZ()};
     const std::vector<Scalar> fixed_heights(3, Scalar{0.4});
     SkewnessNormalOptimizationOptions options;
+    options.enabled = true;
     options.activation_skewness = Scalar{0};
 
     const auto refined = refineDirectionsForSkewness(

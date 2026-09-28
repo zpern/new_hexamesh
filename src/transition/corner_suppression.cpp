@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <array>
+#include <cstdlib>
+#include <iostream>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -34,6 +36,23 @@ namespace boundary_mesh
             return std::binary_search(ids.begin(), ids.end(), id);
         }
 
+        bool traceFace(SurfaceFaceId id)
+        {
+            const char *value = std::getenv("BOUNDARY_MESH_TRACE_FACE");
+            if (value == nullptr) return false;
+            while (*value != '\0')
+            {
+                char *end = nullptr;
+                const auto parsed = std::strtoull(value, &end, 10);
+                if (end != value && parsed == id) return true;
+                if (end == value) break;
+                value = end;
+                while (*value == ',' || *value == ';' || *value == ' ')
+                    ++value;
+            }
+            return false;
+        }
+
         void removeHigh(
             CornerSuppressionResult &result,
             SurfaceFaceId id,
@@ -53,12 +72,53 @@ namespace boundary_mesh
         }
     }
 
+    CornerSuppressionContext::CornerSuppressionContext(
+        const GrowthFront &current_front,
+        const GrowthFront &candidate_front)
+        : current_front_(&current_front),
+          candidate_front_(&candidate_front)
+    {
+        face_indices_.reserve(current_front.faces.size());
+        edge_faces_.reserve(current_front.faces.size() * 2);
+        vertex_faces_.reserve(current_front.vertices.size());
+        const std::size_t face_count = std::min(
+            current_front.faces.size(),
+            current_front.source_face_ids.size());
+        for (std::size_t index = 0; index < face_count; ++index)
+        {
+            const SurfaceFaceId id = current_front.source_face_ids[index];
+            face_indices_[id] = index;
+            const auto ids = vertices(current_front.faces[index]);
+            for (std::size_t edge = 0; edge < ids.size(); ++edge)
+                edge_faces_[edgeKey(ids[edge], ids[(edge + 1) % ids.size()])]
+                    .push_back(id);
+            for (const VertexId vertex : ids)
+                vertex_faces_[vertex].push_back(id);
+        }
+        candidate_points_.reserve(candidate_front.vertices.size());
+        for (const auto &vertex : candidate_front.vertices)
+            candidate_points_.emplace(
+                vertex.source_vertex_id, vertex.position);
+    }
+
     Result<CornerSuppressionResult, TransitionCoordinationError>
-    applyCornerSuppression(const CornerSuppressionInput &input)
+    applyCornerSuppression(const CornerSuppressionView &input)
+    {
+        const CornerSuppressionContext context(
+            input.current_front, input.candidate_front);
+        return applyCornerSuppression(input, context);
+    }
+
+    Result<CornerSuppressionResult, TransitionCoordinationError>
+    applyCornerSuppression(
+        const CornerSuppressionView &input,
+        const CornerSuppressionContext &context)
     {
         using SuppressionResult = Result<
             CornerSuppressionResult, TransitionCoordinationError>;
-        if (input.current_front.faces.size() !=
+        if (context.current_front_ != &input.current_front ||
+            context.candidate_front_ != &input.candidate_front ||
+            input.current_front.faces.size() !=
                 input.current_front.source_face_ids.size() ||
             input.candidate_front.faces.size() !=
                 input.candidate_front.source_face_ids.size())
@@ -67,7 +127,7 @@ namespace boundary_mesh
 
         CornerSuppressionResult result;
         result.face_sets = input.face_sets;
-        result.retained_high_faces = input.candidate_front.source_face_ids;
+        result.retained_high_faces = input.retained_high_faces;
         std::sort(result.retained_high_faces.begin(),
                   result.retained_high_faces.end());
         result.retained_high_faces.erase(std::unique(
@@ -77,32 +137,10 @@ namespace boundary_mesh
 
         const std::vector<SurfaceFaceId> seeds =
             input.face_sets.corner_suppression_seeds;
-        std::unordered_map<SurfaceFaceId, std::size_t> face_indices;
-        std::unordered_map<std::uint64_t, std::vector<SurfaceFaceId>>
-            edge_faces;
-        std::unordered_map<VertexId, std::vector<SurfaceFaceId>>
-            vertex_faces;
-        for (std::size_t index = 0;
-             index < input.current_front.faces.size(); ++index)
-        {
-            const SurfaceFaceId id =
-                input.current_front.source_face_ids[index];
-            face_indices[id] = index;
-            const auto ids = vertices(input.current_front.faces[index]);
-            for (std::size_t edge = 0; edge < ids.size(); ++edge)
-                edge_faces[edgeKey(ids[edge], ids[(edge + 1) % ids.size()])]
-                    .push_back(id);
-            for (const VertexId vertex : ids)
-                vertex_faces[vertex].push_back(id);
-        }
-        std::unordered_map<VertexId, Point3> candidate_points;
-        for (const auto &vertex : input.candidate_front.vertices)
-            candidate_points.emplace(
-                vertex.source_vertex_id, vertex.position);
         for (const SurfaceFaceId seed_id : seeds)
         {
-            const auto seed_position = face_indices.find(seed_id);
-            if (seed_position == face_indices.end())
+            const auto seed_position = context.face_indices_.find(seed_id);
+            if (seed_position == context.face_indices_.end())
                 return SuppressionResult::failure(
                     TransitionCoordinationError{
                         MissingTransitionFaceState{seed_id}});
@@ -114,10 +152,10 @@ namespace boundary_mesh
             const auto seed_ids = vertices(*seed);
             for (std::size_t edge = 0; edge < seed_ids.size(); ++edge)
             {
-                const auto uses = edge_faces.find(edgeKey(
+                const auto uses = context.edge_faces_.find(edgeKey(
                     seed_ids[edge],
                     seed_ids[(edge + 1) % seed_ids.size()]));
-                if (uses == edge_faces.end()) continue;
+                if (uses == context.edge_faces_.end()) continue;
                 for (const SurfaceFaceId other_id : uses->second)
                     if (other_id != seed_id &&
                         retained(result.retained_high_faces, other_id))
@@ -146,9 +184,9 @@ namespace boundary_mesh
                     high[index] = static_cast<VertexId>(points.size());
                     const auto &low_vertex = input.current_front.vertices[
                         seed_vertices[index]];
-                    const auto candidate = candidate_points.find(
+                    const auto candidate = context.candidate_points_.find(
                         low_vertex.source_vertex_id);
-                    points.push_back(candidate == candidate_points.end()
+                    points.push_back(candidate == context.candidate_points_.end()
                         ? low_vertex.position : candidate->second);
                 }
                 for (const auto &[edge, id] : highs)
@@ -171,6 +209,21 @@ namespace boundary_mesh
                 selected_edges.push_back(highs.front().first);
             }
 
+            if (traceFace(seed_id))
+            {
+                std::cerr << "trace corner_suppression seed=" << seed_id
+                          << " selected_edges=";
+                for (const std::size_t edge : selected_edges)
+                    std::cerr << edge << ',';
+                std::cerr << " high_neighbors=";
+                for (const auto &[edge, id] : highs)
+                    std::cerr << edge << ':' << id << ',';
+                std::cerr << " explicit_removals=";
+                for (const SurfaceFaceId id : explicitly_suppressed)
+                    std::cerr << id << ',';
+                std::cerr << '\n';
+            }
+
             for (const SurfaceFaceId id : explicitly_suppressed)
                 removeHigh(result, id, input.completed_layer);
 
@@ -190,8 +243,8 @@ namespace boundary_mesh
             std::vector<SurfaceFaceId> incident_highs;
             for (const VertexId vertex : non_contact)
             {
-                const auto incident = vertex_faces.find(vertex);
-                if (incident != vertex_faces.end())
+                const auto incident = context.vertex_faces_.find(vertex);
+                if (incident != context.vertex_faces_.end())
                     incident_highs.insert(
                         incident_highs.end(), incident->second.begin(),
                         incident->second.end());
@@ -213,6 +266,9 @@ namespace boundary_mesh
                                           high.first) != selected_edges.end();
                         }) != highs.end())
                     continue;
+                if (traceFace(seed_id))
+                    std::cerr << "trace corner_suppression_removed seed="
+                              << seed_id << " high=" << high_id << '\n';
                 removeHigh(result, high_id, input.completed_layer);
             }
         }
@@ -224,5 +280,17 @@ namespace boundary_mesh
             result.removed_high_faces.end()),
             result.removed_high_faces.end());
         return SuppressionResult::success(std::move(result));
+    }
+
+    Result<CornerSuppressionResult, TransitionCoordinationError>
+    applyCornerSuppression(const CornerSuppressionInput &input)
+    {
+        return applyCornerSuppression(CornerSuppressionView{
+            input.current_front,
+            input.candidate_front,
+            input.candidate_front.source_face_ids,
+            input.face_sets,
+            input.completed_layer,
+            input.length_tolerance});
     }
 }

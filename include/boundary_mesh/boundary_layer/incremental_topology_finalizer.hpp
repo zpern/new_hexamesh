@@ -11,5 +11,6 @@ namespace boundary_mesh
         const GrowthFront &initial_front,
         RegularLayerGrowthResult regular,
         const std::vector<ResolvedTransitionTopology> &
-            resolved_topology = {});
+            resolved_topology = {},
+        bool split_failed_hexa_columns = true);
 }

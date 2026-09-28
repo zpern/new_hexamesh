@@ -288,6 +288,7 @@ int main()
         disabled);
 
     GrowthFieldSmoothingOptions enabled;
+    enabled.skewness.enabled = true;
     enabled.skewness.activation_skewness = Scalar{0};
     const auto refined_result = GrowthFieldSmoother{}.smooth(
         front,

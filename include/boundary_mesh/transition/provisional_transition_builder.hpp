@@ -5,6 +5,7 @@
 
 #include <boundary_mesh/transition/layer_transition_resolver.hpp>
 #include <boundary_mesh/transition/transition_template_types.hpp>
+#include <boundary_mesh/transition/incremental_transition_templates.hpp>
 
 namespace boundary_mesh
 {
@@ -23,6 +24,10 @@ namespace boundary_mesh
         { return current_edge_faces_; }
         const auto &currentVertices() const { return current_vertices_; }
         const auto &candidateVertices() const { return candidate_vertices_; }
+        std::vector<SurfaceFaceId> affectedFaces(
+            const std::vector<SurfaceFaceId> &changed_faces) const;
+        std::optional<Point3> positiveCenter(
+            SurfaceFaceId id, const PositiveQuadTopCapCenterInput &input) const;
 
     private:
         const GrowthFront &current_;
@@ -31,14 +36,32 @@ namespace boundary_mesh
         std::unordered_map<SurfaceFaceId, std::size_t> candidate_faces_;
         std::unordered_map<std::uint64_t, std::vector<SurfaceFaceId>>
             current_edge_faces_;
+        std::unordered_map<std::uint64_t, std::vector<SurfaceFaceId>>
+            current_vertex_faces_;
         std::unordered_map<std::uint64_t, std::size_t> current_vertices_;
         std::unordered_map<std::uint64_t, std::size_t> candidate_vertices_;
+        struct CenterCacheEntry
+        {
+            PositiveQuadTopCapCenterInput input;
+            std::optional<Point3> result;
+        };
+        mutable std::unordered_map<SurfaceFaceId, CenterCacheEntry> center_cache_;
     };
 
     ProvisionalLayerTransitionResult buildProvisionalTransition(
         const ProvisionalTransitionBuildContext &context,
         const std::vector<SurfaceFaceId> &retained,
         const LayerFaceSets &face_sets,
+        const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
+            terminal_hexa_points = {},
+        const ExternalPatchControls &external_controls = {},
+        const std::vector<SurfaceFaceId> &terminal_candidate_faces = {});
+
+    ProvisionalLayerTransitionResult buildProvisionalTransitionPatches(
+        const ProvisionalTransitionBuildContext &context,
+        const std::vector<SurfaceFaceId> &retained,
+        const LayerFaceSets &face_sets,
+        const std::vector<SurfaceFaceId> &selected_faces,
         const std::function<std::optional<HexaPoints>(SurfaceFaceId)> &
             terminal_hexa_points = {},
         const ExternalPatchControls &external_controls = {},
