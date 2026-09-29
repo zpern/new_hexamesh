@@ -20,6 +20,7 @@
 #include <boundary_mesh/growth/growth_patch_builder.hpp>
 #include <boundary_mesh/io/cgns_surface_reader.hpp>
 #include <boundary_mesh/io/legacy_vtk_writer.hpp>
+#include <boundary_mesh/mesh/mesh_surface_orientation.hpp>
 #include <boundary_mesh/mesh/mesh_surface_topology_builder.hpp>
 #include <boundary_mesh/boundary_layer/boundary_layer_generator.hpp>
 
@@ -424,13 +425,38 @@ namespace boundary_mesh
             return 2;
         }
 
-        const auto surface = readCgnsSurface(command_options.input);
+        auto surface = readCgnsSurface(command_options.input);
         if (!surface.hasValue())
         {
             error << "failed to read CGNS surface\n";
             return 3;
         }
         printInputBoundaries(output, surface.value());
+
+        const auto orientation = unifySurfaceOrientation(surface.value());
+        if (!orientation.hasValue())
+        {
+            error << "failed to unify surface orientation: ";
+            std::visit(
+                [&error](const auto &detail)
+                {
+                    using Error = std::decay_t<decltype(detail)>;
+                    if constexpr (std::is_same_v<Error, NonOrientableSurface>)
+                        error << "non-orientable surface: vertices="
+                              << detail.edge_vertices[0] << ','
+                              << detail.edge_vertices[1]
+                              << " faces=" << detail.first_face_id << ','
+                              << detail.second_face_id;
+                    else
+                        printSurfaceTopologyError(
+                            error, SurfaceTopologyError{detail});
+                },
+                orientation.error());
+            error << '\n';
+            return 4;
+        }
+        output << "surface_orientation flipped_faces="
+               << orientation.value() << '\n';
 
         const auto topology = SurfaceTopologyBuilder{}.build(surface.value());
         if (!topology.hasValue())

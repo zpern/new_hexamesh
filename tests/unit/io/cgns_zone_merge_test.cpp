@@ -116,7 +116,7 @@ int main()
     write_map(same_zone_path);
     const auto same_zone = readCgnsSurface(same_zone_path);
     assert(same_zone.hasValue());
-    assert(same_zone.value().vertices.size() == 7);
+    assert(same_zone.value().vertices.size() == 6);
 
     const auto reversed_path = directory / "reversed.cgns";
     boundary_mesh::test::writeTwoZoneConnectedSurface(

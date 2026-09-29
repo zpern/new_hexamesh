@@ -38,7 +38,7 @@
                 "--input",
                 "${config:boundaryMesh.caseName}/${config:boundaryMesh.caseName}.cgns",
                 "--first-height",
-                "0.0027",
+                "0.1",
                 "--growth-ratio",
                 "1.2",
                 "--layer-count",

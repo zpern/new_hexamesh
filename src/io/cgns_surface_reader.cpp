@@ -894,17 +894,10 @@ namespace boundary_mesh
                     zone.vertex_offset + local_vertex;
                 auto &matches = coordinate_occurrences[
                     exactPointKey(mesh.vertices[vertex_index])];
-                const auto prior = std::find_if(
-                    matches.begin(),
-                    matches.end(),
-                    [&](const CoordinateOccurrence &candidate)
-                    {
-                        return candidate.zone_id != zone.id;
-                    });
-                if (prior != matches.end())
+                if (!matches.empty())
                 {
                     connected_vertices.merge(
-                        prior->vertex_index,
+                        matches.front().vertex_index,
                         vertex_index);
                 }
                 matches.push_back({zone.id, vertex_index});
